@@ -1,4 +1,4 @@
-import { generatePerlinNoise } from 'perlin-noise';
+import { generatePerlinNoise } from '../utils/PerlinNoise';
 import { Config } from './Config';
 import { BiomeType, determineBiome } from './Biome';
 

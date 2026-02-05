@@ -25,6 +25,5 @@
     "webpack-dev-server": "^4.15.1"
   },
   "dependencies": {
-    "perlin-noise": "^1.0.0"
   }
 }
