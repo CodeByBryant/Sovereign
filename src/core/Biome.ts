@@ -118,11 +118,8 @@ export function determineBiome(
   if (temp < 0.4) {
     if (humidity < 0.3) {
       return BiomeType.TUNDRA;
-    } else if (humidity < 0.6) {
-      return BiomeType.TAIGA;
-    } else {
-      return BiomeType.TAIGA;
     }
+    return BiomeType.TAIGA;
   }
 
   // TEMPERATE biomes (temp < 0.7)

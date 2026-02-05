@@ -15,7 +15,6 @@ export class Config {
   static readonly NOISE_SCALE = 0.01;
   static readonly OCTAVES = 6;
   static readonly PERSISTENCE = 0.5;
-  static readonly LACUNARITY = 2.0;
 
   // Rendering
   static readonly TARGET_FPS = 60;
