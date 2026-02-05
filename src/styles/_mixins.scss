@@ -1,0 +1,33 @@
+@mixin panel-style {
+  background: $ui-panel-bg;
+  border: 2px solid $ui-panel-border;
+  border-radius: $radius-md;
+  box-shadow: $shadow-lg;
+  backdrop-filter: blur(5px);
+}
+
+@mixin button-style {
+  background: $button-bg;
+  color: $text-light;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  padding: $spacing-sm $spacing-md;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: $font-md;
+  
+  &:hover {
+    background: $button-hover;
+    border-color: $accent-gold;
+  }
+  
+  &:active {
+    background: $button-active;
+  }
+}
+
+@mixin medieval-text {
+  font-family: 'Georgia', serif;
+  color: $accent-gold;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+}

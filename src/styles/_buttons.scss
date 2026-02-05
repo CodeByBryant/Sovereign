@@ -1,0 +1,24 @@
+.btn {
+  @include button-style;
+  
+  &.btn-primary {
+    background: linear-gradient(135deg, $accent-gold, darken($accent-gold, 10%));
+    border-color: $accent-gold;
+    
+    &:hover {
+      background: linear-gradient(135deg, lighten($accent-gold, 5%), $accent-gold);
+    }
+  }
+  
+  &.btn-small {
+    padding: $spacing-xs $spacing-sm;
+    font-size: $font-sm;
+  }
+  
+  &.btn-toggle {
+    &.active {
+      background: $accent-blue;
+      border-color: $accent-blue;
+    }
+  }
+}

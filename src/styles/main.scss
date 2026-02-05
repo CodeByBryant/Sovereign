@@ -1,0 +1,26 @@
+@import 'variables';
+@import 'mixins';
+@import 'canvas';
+@import 'panels';
+@import 'buttons';
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: $primary-dark;
+  color: $text-light;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+}
+
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
