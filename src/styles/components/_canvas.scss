@@ -1,0 +1,137 @@
+@use '../themes/tokens' as *;
+@use '../utils/mixins' as *;
+
+// Full-screen canvas shell — no border, no padding, 100% viewport.
+.canvas-shell {
+  background: #050607;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.canvas-shell__viewport {
+  background: #050607;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+// HUD overlay — top-left FPS/mode readout.
+.canvas-shell__hud {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-xs);
+  background: rgba(20, 16, 12, 0.75);
+  color: $color-accent-soft;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  z-index: 3;
+}
+
+// Bottom-centre horizontal toolbar.
+.canvas-shell__toolbar {
+  position: absolute;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(20, 16, 12, 0.82);
+  border: 1px solid rgba(107, 93, 79, 0.5);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(8px);
+  z-index: 3;
+}
+
+// Toolbar icon button.
+.toolbar-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  color: $color-text-muted;
+  font-family: var(--font-display);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+
+  svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+    opacity: 0.8;
+  }
+
+  &:hover {
+    background: rgba(107, 93, 79, 0.3);
+    color: $color-text;
+
+    svg {
+      opacity: 1;
+    }
+  }
+
+  &--active {
+    border-color: rgba(212, 175, 55, 0.6);
+    color: $color-accent-soft;
+    background: rgba(212, 175, 55, 0.12);
+
+    svg {
+      opacity: 1;
+    }
+  }
+}
+
+// Divider between button groups.
+.toolbar-divider {
+  width: 1px;
+  height: 28px;
+  background: rgba(107, 93, 79, 0.4);
+  margin: 0 var(--space-1);
+}
+
+// Toggle button top-right to show/hide toolbar.
+.canvas-shell__toggle {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  z-index: 3;
+}
+
+// Tooltip near cursor.
+.canvas-shell__tooltip {
+  position: absolute;
+  z-index: 4;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-xs);
+  background: rgba(20, 16, 12, 0.88);
+  color: $color-accent-soft;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+}

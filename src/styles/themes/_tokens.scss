@@ -1,0 +1,57 @@
+// WorldBox-inspired theme tokens.
+:root {
+  --color-bg: #0d1117;
+  --color-bg-alt: #161b22;
+  --color-surface: #2d2520;
+  --color-surface-strong: #3e342d;
+  --color-border: #6b5d4f;
+  --color-border-light: #8b7355;
+  --color-accent: #d4af37;
+  --color-accent-soft: #f4e4b5;
+  --color-success: #6b8e23;
+  --color-danger: #8b2500;
+  --color-text: #f0e6d2;
+  --color-text-muted: #c4b5a0;
+  --color-text-contrast: #1f1a14;
+  --shadow-strong: rgba(10, 7, 4, 0.55);
+  --shadow-soft: rgba(10, 7, 4, 0.35);
+  --glow-gold: rgba(212, 175, 55, 0.35);
+
+  --font-body: 'Source Sans 3', 'Trebuchet MS', sans-serif;
+  --font-display: 'Cinzel', 'Times New Roman', serif;
+
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --panel-border-width: 3px;
+  --panel-inner-border: 1px;
+  --panel-texture-opacity: 0.15;
+  --focus-ring: 0 0 0 3px rgba(212, 175, 55, 0.45);
+}
+
+// SCSS aliases to keep authoring succinct.
+$color-bg: var(--color-bg);
+$color-bg-alt: var(--color-bg-alt);
+$color-surface: var(--color-surface);
+$color-surface-strong: var(--color-surface-strong);
+$color-border: var(--color-border);
+$color-border-light: var(--color-border-light);
+$color-accent: var(--color-accent);
+$color-accent-soft: var(--color-accent-soft);
+$color-success: var(--color-success);
+$color-danger: var(--color-danger);
+$color-text: var(--color-text);
+$color-text-muted: var(--color-text-muted);
+$color-text-contrast: var(--color-text-contrast);
+$shadow-strong: var(--shadow-strong);
+$shadow-soft: var(--shadow-soft);
+$glow-gold: var(--glow-gold);

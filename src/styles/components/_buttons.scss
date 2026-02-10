@@ -1,0 +1,45 @@
+@use '../themes/tokens' as *;
+@use '../utils/mixins' as *;
+
+.btn {
+  @include button-raised(#3f352f, #1b1511, $color-text);
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+  text-transform: uppercase;
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    filter: grayscale(0.4);
+    box-shadow: none;
+  }
+}
+
+.btn--primary {
+  @include button-raised(#6b5d4f, #3a3028, $color-text);
+}
+
+.btn--secondary {
+  @include button-raised(#2f2721, #1d1712, $color-text-muted);
+}
+
+.btn--danger {
+  @include button-raised(#7a2410, #4c1408, $color-text);
+}
+
+.btn--gold {
+  @include button-raised(#d4af37, #87681d, $color-text-contrast);
+  @include gold-glow();
+}
+
+.btn--active {
+  @include gold-glow();
+  filter: brightness(1.08);
+}

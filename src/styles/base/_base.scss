@@ -1,0 +1,109 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-body);
+  background:
+    radial-gradient(circle at top left, rgba(80, 70, 60, 0.5), transparent 55%),
+    radial-gradient(circle at bottom right, rgba(40, 35, 30, 0.7), transparent 55%),
+    linear-gradient(180deg, var(--color-bg), var(--color-bg-alt));
+  color: var(--color-text);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  letter-spacing: 0.03em;
+  margin: 0 0 var(--space-4);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+p {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-muted);
+}
+
+a {
+  color: var(--color-accent-soft);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-accent);
+}
+
+.app {
+  min-height: 100vh;
+  display: grid;
+  gap: var(--space-6);
+}
+
+// Full-bleed canvas mode — no padding, no gap, just the viewport.
+.app--canvas {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.app__header {
+  max-width: 720px;
+}
+
+.app__eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-size: 0.75rem;
+  color: var(--color-accent-soft);
+  margin: 0 0 var(--space-4);
+}
+
+.app__title {
+  font-size: clamp(2.8rem, 6vw, 5.4rem);
+  color: var(--color-text);
+}
+
+.app__subtitle {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  max-width: 540px;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-text-contrast);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+// Scrollbar styling matches the wood-toned UI.
+*::-webkit-scrollbar {
+  width: 12px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #1a1511;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #5a4a3a;
+  border-radius: 10px;
+  border: 2px solid #1a1511;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #7b644b;
+}
+
+@media (max-width: 720px) {
+  .app {
+    padding: var(--space-6) var(--space-4);
+  }
+}

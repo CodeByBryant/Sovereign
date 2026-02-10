@@ -1,0 +1,44 @@
+@use '../themes/tokens' as *;
+@use '../utils/mixins' as *;
+
+// Panel surfaces emulate carved wood/stone frames.
+.panel,
+.app__panel {
+  @include panel-frame();
+  @include inset-shadow();
+  padding: var(--space-6);
+  max-width: 720px;
+}
+
+.panel--compact {
+  padding: var(--space-4);
+}
+
+.panel__title {
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  margin-top: 0;
+  @include text-shadow-soft();
+}
+
+.panel__meta {
+  color: $color-text-muted;
+  font-size: 0.9rem;
+}
+
+.panel__toolbar {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+// Tooltip styling with parchment vibes.
+.tooltip {
+  background: linear-gradient(180deg, #f4e4b5, #c9b089);
+  color: #3a2a1a;
+  border: 2px solid #7b6649;
+  border-radius: var(--radius-xs);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.85rem;
+  box-shadow: 0 6px 12px $shadow-soft;
+}
