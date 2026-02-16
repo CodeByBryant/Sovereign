@@ -101,8 +101,8 @@ export const defaultConfig = {
     map: {
       /** Map width in tiles. @default 2000 */
       width: 2000,
-      /** Map height in tiles. @default 1200 */
-      height: 1200,
+      /** Map height in tiles. @default 2000 */
+      height: 2000,
       /**
        * Each logical tile is rendered as `tileSize × tileSize` canvas pixels.
        * Increase for a blockier, more pixel-art look.
@@ -161,7 +161,9 @@ export const defaultConfig = {
       /** Ocean-carving noise frequency. @default 0.00012 */
       oceanScale: 0.00012,
       /** Subtraction strength for ocean basins (0–1). @default 0.3 */
-      oceanStrength: 0.3
+      oceanStrength: 0.3,
+      /** Power curve for elevation redistribution (>1 flattens lowlands). @default 1.4 */
+      redistributionPower: 1.4
     },
 
     /* ------------------------------------------------------------ */
@@ -193,7 +195,9 @@ export const defaultConfig = {
        */
       latitudeStrength: 0.65,
       /** How much elevation reduces temperature (0–1). @default 0.55 */
-      elevationCooling: 0.55
+      elevationCooling: 0.55,
+      /** Continentality: how much inland tiles amplify temp extremes (0–1). @default 0.3 */
+      continentalStrength: 0.3
     },
 
     /* ------------------------------------------------------------ */
@@ -242,7 +246,7 @@ export const defaultConfig = {
      */
     rivers: {
       /** Primary river noise frequency. @default 0.0018 */
-      primaryScale: 0.0018,
+      primaryScale: 0.0009,
       /** Tributary noise frequency. @default 0.004 */
       secondaryScale: 0.004,
       /** Width of the primary zero-crossing band (bigger = more river). @default 0.032 */
@@ -260,7 +264,15 @@ export const defaultConfig = {
       /** Normalised elevation above which rivers taper to nothing. @default 0.82 */
       mountainCutoff: 0.82,
       /** Normalised land-height at which rivers begin fading near coasts. @default 0.1 */
-      shoreTaper: 0.1
+      shoreTaper: 0.1,
+      /** Domain warp strength for organic river shapes. @default 40 */
+      warpStrength: 40,
+      /** Noise octaves for river fBm sampling. @default 3 */
+      noiseOctaves: 3,
+      /** Noise persistence for river fBm sampling. @default 0.5 */
+      noisePersistence: 0.5,
+      /** Noise lacunarity for river fBm sampling. @default 2.2 */
+      noiseLacunarity: 2.2
     },
 
     /* ------------------------------------------------------------ */
@@ -310,11 +322,7 @@ export const defaultConfig = {
       /** Amplitude decay. @default 0.5 */
       persistence: 0.5,
       /** Frequency multiplier. @default 2 */
-      lacunarity: 2,
-      /** Temperature jitter magnitude (0–1). @default 0.12 */
-      tempJitter: 0.12,
-      /** Humidity jitter magnitude (0–1). @default 0.12 */
-      humidityJitter: 0.12
+      lacunarity: 2
     },
 
     /* ------------------------------------------------------------ */
@@ -346,6 +354,33 @@ export const defaultConfig = {
       tempJitter: 0.1,
       /** Per-tile humidity jitter from biome noise (0–1). @default 0.1 */
       humidityJitter: 0.1
+    },
+
+    /* ------------------------------------------------------------ */
+    /*  Resources                                                    */
+    /* ------------------------------------------------------------ */
+
+    /**
+     * Tuning for the resource generation layer.
+     *
+     * Resources are derived from biome type, ore noise, elevation
+     * and river proximity.  Gold and iron use an independent simplex
+     * noise layer whose frequency is set by `oreScale`.
+     *
+     * @example Making gold rarer
+     * ```ts
+     * defaultConfig.terrain.resources.goldRarity = 0.93
+     * ```
+     */
+    resources: {
+      /** Ore noise frequency. Smaller = larger deposit clusters. @default 0.008 */
+      oreScale: 0.008,
+      /** Gold rarity threshold (0–1, higher = rarer). @default 0.88 */
+      goldRarity: 0.88,
+      /** Iron rarity threshold (0–1, higher = rarer). @default 0.72 */
+      ironRarity: 0.72,
+      /** Minimum density to register a resource (0–255). @default 30 */
+      minDensity: 30
     }
   }
 }
@@ -355,3 +390,6 @@ export type Config = typeof defaultConfig
 
 /** Shorthand type for the strategic sub-section. */
 export type StrategicConfig = typeof defaultConfig.terrain.strategic
+
+/** Shorthand type for the resources sub-section. */
+export type ResourcesConfig = typeof defaultConfig.terrain.resources

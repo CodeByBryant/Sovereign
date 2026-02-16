@@ -43,6 +43,14 @@ export interface RiverConfig {
   mountainCutoff: number
   /** Blend factor for shore tapering (how close to sea-level rivers fade). */
   shoreTaper: number
+  /** Domain warp strength for organic river shapes. @default 40 */
+  warpStrength?: number
+  /** Noise octaves for river sampling. @default 3 */
+  noiseOctaves?: number
+  /** Noise persistence for river sampling. @default 0.5 */
+  noisePersistence?: number
+  /** Noise lacunarity for river sampling. @default 2.2 */
+  noiseLacunarity?: number
 }
 
 export interface RiverData {
@@ -103,14 +111,38 @@ export class RiverGenerator {
         if (elev <= seaLevel) continue
 
         // ---- domain-warp for more organic shapes ----
-        const warpStrength = 40
+        const warpStrength = config.warpStrength ?? 40
         const wx = x + this.warpNoiseX(x * 0.002, y * 0.002) * warpStrength
         const wy = y + this.warpNoiseY(x * 0.002, y * 0.002) * warpStrength
 
+        const octaves = config.noiseOctaves ?? 3
+        const persistence = config.noisePersistence ?? 0.5
+        const lacunarity = config.noiseLacunarity ?? 2.2
+
         // ---- primary rivers (abs-noise zero-crossing) ----
-        const p = Math.abs(this.sampleNoise(this.primaryNoise, wx, wy, config.primaryScale))
+        const p = Math.abs(
+          this.sampleNoise(
+            this.primaryNoise,
+            wx,
+            wy,
+            config.primaryScale,
+            octaves,
+            persistence,
+            lacunarity
+          )
+        )
         // ---- secondary (tributaries) ----
-        const s = Math.abs(this.sampleNoise(this.secondaryNoise, wx, wy, config.secondaryScale))
+        const s = Math.abs(
+          this.sampleNoise(
+            this.secondaryNoise,
+            wx,
+            wy,
+            config.secondaryScale,
+            octaves,
+            persistence,
+            lacunarity
+          )
+        )
 
         // ---- taper near shore so rivers don't start at the waterline ----
         const landRatio = (elev - seaLevel) / (1 - seaLevel)
@@ -204,6 +236,7 @@ export class RiverGenerator {
             const ny = y + oy
             if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
             const ni = ny * width + nx
+            if (painted[ni] === 2) continue // already painted as water
             painted[ni] = 2 // mark as water
             const p = ni * 4
             // centre pixels -> deep, edge pixels -> shallow
@@ -232,15 +265,15 @@ export class RiverGenerator {
     noiseFn: (x: number, y: number) => number,
     x: number,
     y: number,
-    scale: number
+    scale: number,
+    octaves = 3,
+    persistence = 0.5,
+    lacunarity = 2.2
   ): number {
     let value = 0
     let amp = 1
     let freq = scale
     let maxAmp = 0
-    const octaves = 3
-    const persistence = 0.5
-    const lacunarity = 2.2
 
     for (let o = 0; o < octaves; o += 1) {
       value += noiseFn(x * freq, y * freq) * amp
@@ -310,12 +343,14 @@ export class RiverGenerator {
             const ny = y + oy
             if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
 
-            const dist = Math.sqrt(ox * ox + oy * oy)
-            if (dist > radius) continue
+            const distSq = ox * ox + oy * oy
+            if (distSq > radius * radius) continue
+            const dist = Math.sqrt(distSq)
 
             const boost = config.humidityBoost * (1 - dist / (radius + 0.01))
             const target = ny * width + nx
-            boosted[target] = Math.min(1, boosted[target] + boost)
+            // Use max instead of += to prevent overlapping stacking
+            boosted[target] = Math.min(1, Math.max(boosted[target], humidity[target] + boost))
           }
         }
       }

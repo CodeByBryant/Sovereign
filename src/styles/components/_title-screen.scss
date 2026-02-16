@@ -1,0 +1,123 @@
+@use '../themes/tokens' as *;
+@use '../utils/mixins' as *;
+
+// ── Title screen ──────────────────────────────────────────────────
+
+.title-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.title-screen__backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(212, 175, 55, 0.08) 0%, transparent 60%),
+    radial-gradient(circle at 20% 80%, rgba(80, 60, 40, 0.35), transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(40, 30, 25, 0.5), transparent 55%),
+    linear-gradient(180deg, var(--color-bg) 0%, var(--color-bg-alt) 100%);
+  z-index: 0;
+}
+
+.title-screen__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  text-align: center;
+}
+
+.title-screen__logo {
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 8vw, 5.5rem);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: $color-accent;
+  text-shadow:
+    0 0 40px rgba(212, 175, 55, 0.3),
+    0 2px 0 rgba(0, 0, 0, 0.6),
+    0 4px 12px rgba(0, 0, 0, 0.4);
+  margin: 0 0 var(--space-1);
+  text-transform: uppercase;
+}
+
+.title-screen__tagline {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  letter-spacing: 0.18em;
+  color: $color-text-muted;
+  margin: 0 0 var(--space-5);
+  text-transform: uppercase;
+}
+
+.title-screen__card {
+  @include panel-frame();
+  @include inset-shadow();
+  padding: var(--space-6);
+  width: min(380px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.title-screen__label {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+  color: $color-text-muted;
+  text-align: left;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.title-screen__hint {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+.title-screen__input {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 2px solid $color-border;
+  background: rgba(0, 0, 0, 0.35);
+  color: $color-text;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  outline: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+
+  &::placeholder {
+    color: rgba(196, 181, 160, 0.4);
+  }
+
+  &:focus {
+    border-color: $color-accent;
+    box-shadow: var(--focus-ring);
+  }
+}
+
+.title-screen__btn {
+  margin-top: var(--space-2);
+  width: 100%;
+  font-size: 1rem;
+  padding: var(--space-4) var(--space-5);
+}
+
+.title-screen__version {
+  margin-top: var(--space-5);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  color: rgba(196, 181, 160, 0.35);
+}

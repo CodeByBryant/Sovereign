@@ -72,7 +72,7 @@ const BIOME_PALETTE: Record<BiomeKey, { name: string; color: [number, number, nu
   grassland: { name: 'Grassland', color: [124, 186, 61] },
   woodland: { name: 'Woodland', color: [98, 150, 82] },
   temperate_forest: { name: 'Temperate Forest', color: [76, 132, 76] },
-  chaparral: { name: 'Chaparral', color: [140, 152, 86] },
+  chaparral: { name: 'Scrubland', color: [140, 152, 86] },
   swamp: { name: 'Swamp', color: [64, 92, 78] },
   desert: { name: 'Desert', color: [224, 192, 151] },
   badlands: { name: 'Badlands', color: [191, 148, 98] },
@@ -177,7 +177,9 @@ export const determineBiome = (
     if (humid < 0.25) return 'polar_desert'
     if (humid < 0.55) return 'tundra'
     if (humid < 0.8) return 'taiga'
-    return 'glacier'
+    // High-altitude → glacier; low-altitude wet polar → tundra
+    if (elevation > config.highlandElevation) return 'glacier'
+    return 'tundra'
   }
 
   // --- Cool (temp 0.2–0.4) ---
@@ -185,7 +187,7 @@ export const determineBiome = (
     if (humid < 0.2) return 'cold_steppe'
     if (humid < 0.45) return 'taiga'
     if (humid < 0.7) return 'boreal_forest'
-    return 'tundra'
+    return 'swamp' // subarctic wetland / bog
   }
 
   // --- Temperate (temp 0.4–0.7) ---
@@ -195,6 +197,8 @@ export const determineBiome = (
     if (humid < 0.5) return 'grassland'
     if (humid < 0.68) return 'woodland'
     if (humid < 0.82) return 'temperate_forest'
+    // Swamp: very wet + low-lying (near sea level)
+    if (elevation < seaLevel + 0.05) return 'swamp'
     return 'wetland'
   }
 

@@ -57,6 +57,8 @@ export interface TerrainConfig extends NoiseLayerConfig {
   oceanScale: number
   /** Subtractive strength of ocean layer. */
   oceanStrength: number
+  /** Elevation redistribution power curve (>1 flattens lowlands, steepens highlands). @default 1.4 */
+  redistributionPower?: number
 }
 
 /**
@@ -70,6 +72,8 @@ export interface TemperatureConfig extends NoiseLayerConfig {
   latitudeStrength: number
   /** Temperature penalty multiplied by elevation (0–1). */
   elevationCooling: number
+  /** How strongly continental interior amplifies temperature extremes (0–1). @default 0.3 */
+  continentalStrength?: number
 }
 
 /**
@@ -91,10 +95,7 @@ export interface HumidityConfig extends NoiseLayerConfig {
  * Provides per-tile jitter values that are applied inside the
  * biome classifier to create softer biome edges.
  */
-export interface BiomeNoiseConfig extends NoiseLayerConfig {
-  tempJitter: number
-  humidityJitter: number
-}
+export interface BiomeNoiseConfig extends NoiseLayerConfig {}
 
 /* ------------------------------------------------------------------ */
 /*  Generator class                                                    */
@@ -107,6 +108,8 @@ export interface BiomeNoiseConfig extends NoiseLayerConfig {
  */
 export class TerrainGenerator {
   private elevationNoise: (x: number, y: number) => number
+  private continentNoise: (x: number, y: number) => number
+  private oceanNoise: (x: number, y: number) => number
   private temperatureNoise: (x: number, y: number) => number
   private humidityNoise: (x: number, y: number) => number
   private biomeNoise: (x: number, y: number) => number
@@ -114,6 +117,8 @@ export class TerrainGenerator {
   /** @param seed - A string or number used to deterministically seed all noise layers. */
   constructor(seed: string | number) {
     this.elevationNoise = this.createNoise(`${seed}-elevation`)
+    this.continentNoise = this.createNoise(`${seed}-continent`)
+    this.oceanNoise = this.createNoise(`${seed}-ocean`)
     this.temperatureNoise = this.createNoise(`${seed}-temperature`)
     this.humidityNoise = this.createNoise(`${seed}-humidity`)
     this.biomeNoise = this.createNoise(`${seed}-biome-variation`)
@@ -145,19 +150,21 @@ export class TerrainGenerator {
           x,
           y,
           { scale: config.continentScale, octaves: 2, persistence: 0.6, lacunarity: 2 },
-          this.elevationNoise
+          this.continentNoise
         )
         const ocean = this.sampleLayer(
           x,
           y,
           { scale: config.oceanScale, octaves: 2, persistence: 0.6, lacunarity: 2 },
-          this.elevationNoise
+          this.oceanNoise
         )
-        const elevation = this.clamp01(
+        const raw = this.clamp01(
           base * (1 - config.continentStrength) +
             continent * config.continentStrength -
             ocean * config.oceanStrength
         )
+        // Redistribution: exponent > 1 flattens lowlands and steepens highlands
+        const elevation = Math.pow(raw, config.redistributionPower ?? 1.4)
         const index = y * width + x
         elevations[index] = config.islandMode
           ? elevation * this.islandFalloff(x, y, width, height)
@@ -203,10 +210,12 @@ export class TerrainGenerator {
   generateTemperatureField(
     elevation: Float32Array,
     terrain: TerrainConfig,
-    config: TemperatureConfig
+    config: TemperatureConfig,
+    waterDistance?: Float32Array
   ): Float32Array {
     const { width, height } = terrain
     const temperatures = new Float32Array(width * height)
+    const continentalStrength = config.continentalStrength ?? 0.3
 
     for (let y = 0; y < height; y += 1) {
       const latitude = 1 - Math.abs((y / height) * 2 - 1)
@@ -214,11 +223,17 @@ export class TerrainGenerator {
         const noise = this.sampleLayer(x, y, config, this.temperatureNoise)
         const index = y * width + x
         const elevationCooling = elevation[index] * config.elevationCooling
-        temperatures[index] = this.clamp01(
+        let temp = this.clamp01(
           latitude * config.latitudeStrength +
             noise * (1 - config.latitudeStrength) -
             elevationCooling
         )
+        // Continentality: interior tiles have more extreme temperatures
+        if (waterDistance && continentalStrength > 0) {
+          const inland = waterDistance[index]
+          temp = this.clamp01(temp + (temp - 0.5) * continentalStrength * inland)
+        }
+        temperatures[index] = temp
       }
     }
 
@@ -258,11 +273,13 @@ export class TerrainGenerator {
   generateHumidityField(
     elevation: Float32Array,
     terrain: TerrainConfig,
-    config: HumidityConfig
+    config: HumidityConfig,
+    precomputedWaterDistance?: Float32Array
   ): Float32Array {
     const { width, height, seaLevel } = terrain
     const humidity = new Float32Array(width * height)
-    const waterDistance = this.computeDistanceToWater(elevation, width, height, seaLevel)
+    const waterDistance =
+      precomputedWaterDistance ?? this.computeDistanceToWater(elevation, width, height, seaLevel)
 
     for (let y = 0; y < height; y += 1) {
       for (let x = 0; x < width; x += 1) {
@@ -375,7 +392,7 @@ export class TerrainGenerator {
    * is divided by the maximum distance found so coastal tiles → 0,
    * inland centres → 1.
    */
-  private computeDistanceToWater(
+  computeDistanceToWater(
     elevation: Float32Array,
     width: number,
     height: number,
@@ -385,44 +402,47 @@ export class TerrainGenerator {
     const distances = new Int32Array(size)
     distances.fill(-1)
 
-    const queueX = new Int32Array(size)
-    const queueY = new Int32Array(size)
+    // Single flat-index queue instead of separate X/Y arrays (saves 9.6 MB)
+    const queue = new Int32Array(size)
     let head = 0
     let tail = 0
 
     for (let i = 0; i < size; i += 1) {
       if (elevation[i] <= seaLevel) {
         distances[i] = 0
-        queueX[tail] = i % width
-        queueY[tail] = Math.floor(i / width)
+        queue[tail] = i
         tail += 1
       }
     }
 
-    const directions = [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1]
-    ]
-
     while (head < tail) {
-      const x = queueX[head]
-      const y = queueY[head]
-      const index = y * width + x
-      const distance = distances[index]
+      const idx = queue[head]
+      const distance = distances[idx]
       head += 1
+      const x = idx % width
+      const y = (idx - x) / width
 
-      for (const [dx, dy] of directions) {
-        const nx = x + dx
-        const ny = y + dy
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
-        const nextIndex = ny * width + nx
-        if (distances[nextIndex] !== -1) continue
-        distances[nextIndex] = distance + 1
-        queueX[tail] = nx
-        queueY[tail] = ny
-        tail += 1
+      // Right
+      if (x + 1 < width && distances[idx + 1] === -1) {
+        distances[idx + 1] = distance + 1
+        queue[tail++] = idx + 1
+      }
+      // Left
+      if (x - 1 >= 0 && distances[idx - 1] === -1) {
+        distances[idx - 1] = distance + 1
+        queue[tail++] = idx - 1
+      }
+      // Down
+      const below = idx + width
+      if (y + 1 < height && distances[below] === -1) {
+        distances[below] = distance + 1
+        queue[tail++] = below
+      }
+      // Up
+      const above = idx - width
+      if (y - 1 >= 0 && distances[above] === -1) {
+        distances[above] = distance + 1
+        queue[tail++] = above
       }
     }
 

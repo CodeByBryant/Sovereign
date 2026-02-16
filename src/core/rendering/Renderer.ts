@@ -35,8 +35,10 @@ export class Renderer {
   private dpr = window.devicePixelRatio || 1
   private background = defaultConfig.canvas.background
   private chunks: MapChunk[] = []
-  private mapWidth = 0
-  private mapHeight = 0
+
+  /** Total map dimensions in world pixels. */
+  mapWidth = 0
+  mapHeight = 0
 
   /** Cached half-dimensions to avoid recomputing every frame. */
   private halfWidth = 0
