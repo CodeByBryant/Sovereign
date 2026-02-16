@@ -41,6 +41,8 @@ export interface TerrainWorkerRequest {
   biomes: BiomeConfig
   strategic: StrategicConfig
   resources: ResourceConfig
+  /** Minimum land-to-total tile ratio. Sea level auto-lowers if needed. */
+  minLandRatio?: number
 }
 
 export interface TerrainWorkerResponse {
@@ -79,53 +81,103 @@ ctx.onmessage = (event: MessageEvent<TerrainWorkerRequest>): void => {
   const msg = event.data
   if (msg.type !== 'generate') return
 
-  const { seed, terrain, temperature, humidity, biomeNoise, rivers, biomes, strategic, resources } =
-    msg
+  const {
+    seed,
+    terrain,
+    temperature,
+    humidity,
+    biomeNoise,
+    rivers,
+    biomes,
+    strategic,
+    resources,
+    minLandRatio
+  } = msg
 
   // ---- Field generation ----
   const generator = new TerrainGenerator(seed)
   const elevationField = generator.generateElevationField(terrain)
 
+  // ---- Land-fraction guarantee ----
+  // If a seed produces too little land, lower the effective sea level
+  // until at least minLandRatio of tiles are above water.
+  let effectiveSeaLevel = terrain.seaLevel
+  if (minLandRatio !== undefined && minLandRatio > 0) {
+    const totalTiles = elevationField.length
+    const targetLand = Math.floor(totalTiles * minLandRatio)
+
+    // Count land at current sea level
+    let landCount = 0
+    for (let i = 0; i < totalTiles; i += 1) {
+      if (elevationField[i] > effectiveSeaLevel) landCount += 1
+    }
+
+    if (landCount < targetLand) {
+      // Sort a sample of elevations to find the threshold quickly
+      // Full sort of 4M elements is too slow — sample every 4th tile
+      const step = 4
+      const sampleSize = Math.ceil(totalTiles / step)
+      const sample = new Float32Array(sampleSize)
+      for (let i = 0; i < sampleSize; i += 1) {
+        sample[i] = elevationField[i * step]
+      }
+      sample.sort()
+
+      // Find the elevation value at the (1 - minLandRatio) percentile
+      const cutIdx = Math.floor(sampleSize * (1 - minLandRatio))
+      effectiveSeaLevel = Math.min(terrain.seaLevel, sample[cutIdx] - 0.001)
+      if (effectiveSeaLevel < 0.05) effectiveSeaLevel = 0.05
+    }
+  }
+
+  // Patch terrain config with the adjusted sea level
+  const adjustedTerrain: TerrainConfig = { ...terrain, seaLevel: effectiveSeaLevel }
+
   const waterDistance = generator.computeDistanceToWater(
     elevationField,
-    terrain.width,
-    terrain.height,
-    terrain.seaLevel
+    adjustedTerrain.width,
+    adjustedTerrain.height,
+    adjustedTerrain.seaLevel
   )
 
   const temperatureField = generator.generateTemperatureField(
     elevationField,
-    terrain,
+    adjustedTerrain,
     temperature,
     waterDistance
   )
 
   const baseHumidityField = generator.generateHumidityField(
     elevationField,
-    terrain,
+    adjustedTerrain,
     humidity,
     waterDistance
   )
 
   const riverGenerator = new RiverGenerator(seed)
-  const riverData = riverGenerator.generate(elevationField, baseHumidityField, terrain, rivers)
+  const riverData = riverGenerator.generate(
+    elevationField,
+    baseHumidityField,
+    adjustedTerrain,
+    rivers
+  )
   const humidityField = riverData.humidity
 
-  const biomeNoiseField = generator.generateBiomeNoiseField(biomeNoise, terrain)
+  const biomeNoiseField = generator.generateBiomeNoiseField(biomeNoise, adjustedTerrain)
 
   // ---- ImageData rendering ----
-  const elevationMap = generator.generateElevationMap(elevationField, terrain)
-  const temperatureMap = generator.generateTemperatureMap(temperatureField, terrain)
-  const humidityMap = generator.generateHumidityMap(humidityField, terrain)
+  const elevationMap = generator.generateElevationMap(elevationField, adjustedTerrain)
+  const temperatureMap = generator.generateTemperatureMap(temperatureField, adjustedTerrain)
+  const humidityMap = generator.generateHumidityMap(humidityField, adjustedTerrain)
 
   const { imageData: biomeMap, biomeIds } = buildBiomeMap(
     elevationField,
     temperatureField,
     humidityField,
     biomeNoiseField,
-    terrain.width,
-    terrain.height,
-    terrain.seaLevel,
+    adjustedTerrain.width,
+    adjustedTerrain.height,
+    adjustedTerrain.seaLevel,
     biomes
   )
   riverGenerator.applyToImage(biomeMap, riverData.riverWidth)
@@ -136,9 +188,9 @@ ctx.onmessage = (event: MessageEvent<TerrainWorkerRequest>): void => {
     humidityField,
     biomeIds,
     riverData.riverMask,
-    terrain.width,
-    terrain.height,
-    terrain.seaLevel,
+    adjustedTerrain.width,
+    adjustedTerrain.height,
+    adjustedTerrain.seaLevel,
     seed,
     resources
   )
@@ -148,15 +200,15 @@ ctx.onmessage = (event: MessageEvent<TerrainWorkerRequest>): void => {
     biomeMap,
     resourceType,
     resourceDensity,
-    terrain.width,
-    terrain.height
+    adjustedTerrain.width,
+    adjustedTerrain.height
   )
 
   // ---- Strategic overlay ----
   const strategicData = detectStrategicPoints(
     elevationField,
     riverData.riverMask,
-    terrain,
+    adjustedTerrain,
     biomes,
     strategic
   )
@@ -165,9 +217,9 @@ ctx.onmessage = (event: MessageEvent<TerrainWorkerRequest>): void => {
   // ---- Post results with transferable buffers ----
   const result: TerrainWorkerResponse = {
     type: 'done',
-    width: terrain.width,
-    height: terrain.height,
-    seaLevel: terrain.seaLevel,
+    width: adjustedTerrain.width,
+    height: adjustedTerrain.height,
+    seaLevel: adjustedTerrain.seaLevel,
     elevationPixels: elevationMap.data.buffer,
     temperaturePixels: temperatureMap.data.buffer,
     humidityPixels: humidityMap.data.buffer,

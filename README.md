@@ -22,11 +22,19 @@ Watch nations rise and fall in a living, breathing world of emergent geopolitics
 
 ### Procedural World Generation
 
-- **Massive maps** — 2 000 × 1 200 tile worlds rendered with chunked Canvas 2D
-- **Three noise layers** — elevation, temperature and humidity via seeded simplex noise + domain warping
+- **Massive maps** — 2 000 × 2 000 tile worlds with per-tile data (elevation, temperature, humidity, biome, river, resource, ownership)
+- **Web Worker pipeline** — entire terrain generation runs off the main thread with zero-copy `ArrayBuffer` transfers
 - **26 biomes** — from deep ocean and glaciers to tropical rainforests and volcanic peaks, with organic jittered boundaries
 - **Rivers** — Minecraft-style noise zero-crossing algorithm producing primary and secondary waterways with shore tapering
+- **8 resource types** — Timber, Stone, Iron, Gold, Fertile Soil, Fish, Fur & Game — derived from biome, ore noise, elevation and river proximity
 - **Strategic locations** — automatic detection of river crossings, mountain passes, straits and peninsulas scored 0–10
+- **Nation spawning** — 12 nations placed on habitable land with procedural names, colours, flags, governments and personality traits
+
+### Tile Data System
+
+- **Struct-of-arrays** — 8 typed-array layers (Float32Array / Uint8Array) instead of 4M JS objects
+- **WorldMap.at(x, y)** — ergonomic accessor returns a `TileInfo` snapshot with biome, resource, owner, river, shore adjacency
+- **Per-tile ownership** — Uint8Array layer tracking which nation owns each tile (255 = unclaimed)
 
 ### Rendering & Performance
 
@@ -36,15 +44,24 @@ Watch nations rise and fall in a living, breathing world of emergent geopolitics
 - **Spatial-hash tooltip grid** — O(1) strategic point lookups on hover
 - **`{ alpha: false }` canvas context** — lets the browser skip compositing
 
-### Five Overlay Modes
+### Seven Overlay Modes
 
-| Key | Mode | Visualises |
-|-----|------|-----------|
-| `E` | Elevation | Height map (blue → green → brown → white) |
-| `T` | Temperature | Heat map (blue → red) |
-| `H` | Humidity | Moisture map (tan → teal) |
-| `B` | Biome | Full 26-biome colour palette (default) |
-| `S` | Strategic | Biome base + highlighted strategic points |
+| Key | Mode        | Visualises                                |
+| --- | ----------- | ----------------------------------------- |
+| `E` | Elevation   | Height map (blue → green → brown → white) |
+| `T` | Temperature | Heat map (blue → red)                     |
+| `H` | Humidity    | Moisture map (tan → teal)                 |
+| `B` | Biome       | Full 26-biome colour palette (default)    |
+| `G` | Strategic   | Biome base + highlighted strategic points |
+| `R` | Resource    | Biome base + tinted resource deposits     |
+| `P` | Political   | Territory colours + nation borders        |
+
+### State Management & Persistence
+
+- **Zustand store** — single source of truth for phase routing, view mode, world data, nations
+- **Title screen** — seed input + "New World" button with phase-based routing
+- **Save / Load** — binary format in IndexedDB (~68 MB per 2000×2000 world)
+- **Tile inspector** — hover tooltip showing biome · river · resource · strategic · nation (toggle: `I`)
 
 ### Desktop & Web
 
@@ -98,15 +115,19 @@ npm run build:linux
 
 ## Controls
 
-| Input | Action |
-|-------|--------|
-| Click + drag | Pan the camera |
-| Scroll wheel | Zoom in / out |
-| `E` | Elevation overlay |
-| `T` | Temperature overlay |
-| `H` | Humidity overlay |
-| `B` | Biome overlay |
-| `S` | Strategic overlay |
+| Input        | Action                |
+| ------------ | --------------------- |
+| Click + drag | Pan the camera        |
+| Scroll wheel | Zoom in / out         |
+| `E`          | Elevation overlay     |
+| `T`          | Temperature overlay   |
+| `H`          | Humidity overlay      |
+| `B`          | Biome overlay         |
+| `G`          | Strategic overlay     |
+| `R`          | Resource overlay      |
+| `P`          | Political overlay     |
+| `I`          | Toggle tile inspector |
+| `S`          | Toggle toolbar        |
 
 ---
 
@@ -114,39 +135,57 @@ npm run build:linux
 
 ```
 sovereign/
-├── electron/              # Electron main + preload
+├── electron/                # Electron main + preload
 │   ├── main/
 │   └── preload/
 ├── src/
 │   ├── config/
-│   │   └── Config.ts      # Every tunable parameter in one place
+│   │   └── Config.ts        # Every tunable parameter in one place
 │   ├── core/
-│   │   ├── ai/            # (Phase 2+) AI decision systems
+│   │   ├── ai/              # (Phase 4+) AI decision systems
 │   │   ├── camera/
-│   │   │   └── Camera.ts  # Pan / zoom state
-│   │   ├── entities/      # (Phase 2+) Nations, units
+│   │   │   └── Camera.ts    # Pan / zoom state
+│   │   ├── entities/
+│   │   │   ├── Nation.ts          # Nation class (provinces, stats, personality)
+│   │   │   ├── NameGenerator.ts   # Procedural nation names
+│   │   │   ├── ColorGenerator.ts  # Golden-angle colour spacing
+│   │   │   └── FlagGenerator.ts   # Procedural flag patterns
 │   │   ├── rendering/
-│   │   │   └── Renderer.ts# Chunked Canvas 2D draw loop
+│   │   │   └── Renderer.ts  # Chunked Canvas 2D draw loop
 │   │   ├── simulation/
 │   │   │   └── Simulation.ts
+│   │   ├── state/
+│   │   │   ├── GameStore.ts      # Zustand global store
+│   │   │   └── persistence.ts    # IndexedDB save / load
+│   │   ├── systems/
+│   │   │   └── NationSpawner.ts  # Greedy spawn + territory claiming
 │   │   ├── terrain/
 │   │   │   ├── biomes.ts           # 26-biome classifier
 │   │   │   ├── rivers.ts           # Noise zero-crossing rivers
+│   │   │   ├── resources.ts        # 8 resource types generator
 │   │   │   ├── strategic.ts        # Strategic point detection
+│   │   │   ├── terrain.worker.ts   # Web Worker pipeline
 │   │   │   └── TerrainGenerator.ts # Orchestrates all layers
-│   │   ├── systems/       # (Phase 2+) ECS-style systems
 │   │   └── world/
-│   │       └── WorldMap.ts
-│   ├── styles/            # SCSS w/ tokens, mixins, components
-│   ├── types/             # Shared TypeScript interfaces
+│   │       └── WorldMap.ts   # Struct-of-arrays tile storage
+│   ├── styles/               # SCSS w/ tokens, mixins, components
+│   ├── types/
+│   │   ├── resources.ts      # ResourceType enum + metadata
+│   │   └── tile.ts           # TileInfo / TileData interfaces
 │   └── ui/
-│       ├── App.tsx         # Main React component + toolbar
-│       └── main.tsx        # Entry point
-├── public/                # Static assets
-├── docs/                  # Documentation
-├── electron-builder.yml   # Desktop packaging config
+│       ├── App.tsx           # Phase router
+│       ├── MapView.tsx       # Canvas + toolbar + tooltip + worker
+│       ├── TitleScreen.tsx   # Seed input + New World
+│       └── main.tsx          # Entry point
+├── public/                   # Static assets
+├── docs/                     # Documentation
+│   ├── architecture.md
+│   ├── terrain.md
+│   ├── nations.md
+│   └── save-load.md
+├── electron-builder.yml      # Desktop packaging config
 ├── electron.vite.config.ts
-└── vite.config.ts         # Web-only Vite config
+└── vite.config.ts            # Web-only Vite config
 ```
 
 ---
@@ -161,15 +200,21 @@ sovereign/
 - [x] Camera pan & zoom
 - [x] River generation (primary + secondary waterways)
 - [x] Strategic point detection (river crossings, mountain passes, straits, peninsulas)
-- [x] Five overlay modes with bottom toolbar
+- [x] Web Worker terrain pipeline with zero-copy transfers
 - [x] JSDoc documentation across all modules
 
-### Phase 2 — Nation Spawning (next)
+### Phase 2 — Foundation & Nation Spawning ✅
 
-- [ ] Nation entity system with unique traits
-- [ ] 5 × 5 starting territories
-- [ ] Political map overlay
-- [ ] Province selection & tooltips
+- [x] Struct-of-arrays tile data (WorldMap)
+- [x] 8 resource types derived from biome, ore noise, elevation & rivers
+- [x] Title screen with seed input
+- [x] Zustand state management + phase routing
+- [x] Save / Load via IndexedDB (binary format)
+- [x] Seven overlay modes (Elevation, Temperature, Humidity, Biome, Strategic, Resource, Political)
+- [x] Tile inspector tooltip
+- [x] Nation entity system with procedural names, colours, flags & personality
+- [x] Greedy spawn placement + 5 × 5 starting territories
+- [x] Political map overlay with territory colouring
 
 ### Phase 3 — Expansion & Borders
 
@@ -188,7 +233,7 @@ sovereign/
 - [ ] God Mode (intervention tools)
 - [ ] Historical timeline & statistics
 
-> See individual phase docs in `docs/` for details.
+> See individual phase docs in [`docs/`](docs/) for details.
 
 ---
 

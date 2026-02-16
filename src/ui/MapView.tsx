@@ -1,7 +1,7 @@
 /**
  * @module MapView
- * @description Full-screen map canvas with camera, renderer, toolbar
- * and tooltip inspector. Extracted from the original App component.
+ * @description Full-screen map canvas with camera, renderer, compact toolbar,
+ * tile inspector panel and nation detail panel.
  *
  * Wired to zustand GameStore for view mode, FPS and world data.
  */
@@ -11,21 +11,45 @@ import { Renderer } from '../core/rendering/Renderer'
 import { Simulation } from '../core/simulation/Simulation'
 import { defaultConfig } from '../config/Config'
 import type { TerrainConfig } from '../core/terrain/TerrainGenerator'
-import { getBiomeById } from '../core/terrain/biomes'
-import { STRATEGIC_META, type StrategicPoint } from '../core/terrain/strategic'
+import { type StrategicPoint } from '../core/terrain/strategic'
 import { WorldMap } from '../core/world/WorldMap'
+import { spawnNations } from '../core/systems/NationSpawner'
+import type { Nation } from '../core/entities/Nation'
 import type { TerrainWorkerRequest, TerrainWorkerResponse } from '../core/terrain/terrain.worker'
 import { useGameStore, type ViewMode } from '../core/state/GameStore'
+import TileInspector, { type InspectorData } from './TileInspector'
+import NationPanel from './NationPanel'
 
-const VIEWS: ViewMode[] = ['elevation', 'temperature', 'humidity', 'biome', 'strategic', 'resource']
+const VIEWS: ViewMode[] = [
+  'elevation',
+  'temperature',
+  'humidity',
+  'biome',
+  'strategic',
+  'resource',
+  'political'
+]
+
+/** Keyboard shortcut letter per view mode (shown in toolbar tooltip). */
+const VIEW_KEYS: Record<ViewMode, string> = {
+  elevation: 'E',
+  temperature: 'T',
+  humidity: 'H',
+  biome: 'B',
+  strategic: 'G',
+  resource: 'R',
+  political: 'P'
+}
 
 const MapView: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const shellRef = useRef<HTMLDivElement | null>(null)
   const rendererRef = useRef<Renderer | null>(null)
+  const cameraRef = useRef<Camera | null>(null)
   const mapsRef = useRef<Partial<Record<ViewMode, ImageBitmap[]>>>({})
   const mapSizeRef = useRef({ width: 0, height: 0, tileSize: 1 })
   const biomeIdsRef = useRef<Uint8Array | null>(null)
+  const nationsRef = useRef<Nation[]>([])
   const strategicPointsRef = useRef<StrategicPoint[]>([])
   const strategicGridRef = useRef<Map<number, StrategicPoint>>(new Map())
   const chunkLayoutRef = useRef<Array<{ x: number; y: number; width: number; height: number }>>([])
@@ -35,15 +59,18 @@ const MapView: React.FC = () => {
   const view = useGameStore((s) => s.view)
   const fps = useGameStore((s) => s.fps)
   const inspectorEnabled = useGameStore((s) => s.inspectorEnabled)
+  const selectedNation = useGameStore((s) => s.selectedNation)
   const setView = useGameStore((s) => s.setView)
   const setFps = useGameStore((s) => s.setFps)
   const setPhase = useGameStore((s) => s.setPhase)
   const setWorldMap = useGameStore((s) => s.setWorldMap)
   const setStrategicPoints = useGameStore((s) => s.setStrategicPoints)
+  const setNations = useGameStore((s) => s.setNations)
+  const selectNation = useGameStore((s) => s.selectNation)
 
   const [isFullscreen, setIsFullscreen] = React.useState(false)
   const [showToolbar, setShowToolbar] = React.useState(true)
-  const [tooltip, setTooltip] = React.useState<{ x: number; y: number; text: string } | null>(null)
+  const [inspectorData, setInspectorData] = React.useState<InspectorData | null>(null)
 
   /* ---------------------------------------------------------------- */
   /*  Canvas / Camera / Renderer bootstrap                             */
@@ -58,6 +85,7 @@ const MapView: React.FC = () => {
     })
     const renderer = new Renderer(canvas, camera)
     rendererRef.current = renderer
+    cameraRef.current = camera
     const simulation = new Simulation(renderer, setFps)
 
     const resize = (): void => renderer.resize()
@@ -79,7 +107,7 @@ const MapView: React.FC = () => {
 
     const onPointerMove = (e: PointerEvent): void => {
       if (!isDragging) {
-        handleTooltip(e, canvas, camera, renderer)
+        handleHover(e, canvas, camera, renderer)
         return
       }
       camera.pan(e.clientX - lastX, e.clientY - lastY)
@@ -102,11 +130,16 @@ const MapView: React.FC = () => {
       camera.zoomAt(scale, anchorX, anchorY, width, height)
     }
 
+    const onClick = (e: MouseEvent): void => {
+      handleClick(e, canvas, camera, renderer)
+    }
+
     canvas.addEventListener('pointerdown', onPointerDown)
     canvas.addEventListener('pointermove', onPointerMove)
     canvas.addEventListener('pointerup', onPointerUp)
     canvas.addEventListener('pointerleave', onPointerUp)
     canvas.addEventListener('wheel', onWheel, { passive: false })
+    canvas.addEventListener('click', onClick)
 
     /* ------------- Spawn terrain worker ------------- */
     const { tileSize, chunkSize, ...mapConfig } = defaultConfig.terrain.map
@@ -128,7 +161,8 @@ const MapView: React.FC = () => {
       rivers: defaultConfig.terrain.rivers,
       biomes: defaultConfig.terrain.biomes,
       strategic: defaultConfig.terrain.strategic,
-      resources: defaultConfig.terrain.resources
+      resources: defaultConfig.terrain.resources,
+      minLandRatio: defaultConfig.terrain.map.minLandRatio
     }
 
     worker.postMessage(request)
@@ -212,6 +246,7 @@ const MapView: React.FC = () => {
       strategicGridRef.current = sGrid
 
       // Build WorldMap from raw fields
+      const ownershipArr = new Uint8Array(width * height).fill(255)
       const worldMap = new WorldMap({
         width,
         height,
@@ -223,10 +258,94 @@ const MapView: React.FC = () => {
         riverMask: new Uint8Array(data.riverMask),
         resourceType: new Uint8Array(data.resourceType),
         resourceDensity: new Uint8Array(data.resourceDensity),
-        ownership: new Uint8Array(width * height).fill(255)
+        ownership: ownershipArr
       })
+
+      // --- Nation spawning ---
+      const nationsConfig = defaultConfig.terrain.nations
+      const terrainForSpawn: TerrainConfig = {
+        width,
+        height,
+        seaLevel: data.seaLevel,
+        islandMode: defaultConfig.terrain.map.islandMode,
+        ...defaultConfig.terrain.elevation
+      }
+      const { nations, ownerMap } = spawnNations(
+        worldMap.elevation,
+        worldMap.biomeIds,
+        worldMap.riverMask,
+        terrainForSpawn,
+        nationsConfig.count,
+        useSeed,
+        nationsConfig.minSpacing
+      )
+
+      // Write string-based ownerMap into Uint8Array ownership layer
+      // Nation index (0–254) maps to nation array index; '' → 255 (unclaimed)
+      const nationIdToIndex = new Map<string, number>()
+      for (let ni = 0; ni < nations.length; ni += 1) {
+        nationIdToIndex.set(nations[ni].id, ni)
+      }
+      for (let i = 0; i < ownerMap.length; i += 1) {
+        if (ownerMap[i] !== '') {
+          const nIdx = nationIdToIndex.get(ownerMap[i])
+          if (nIdx !== undefined) ownershipArr[i] = nIdx
+        }
+      }
+      nationsRef.current = nations
+
       setWorldMap(worldMap)
       setStrategicPoints(data.strategicPoints)
+      setNations(nations)
+
+      // --- Build political overlay ImageData ---
+      const politicalData = new Uint8ClampedArray(biomeMap.data)
+      const alpha = nationsConfig.territoryAlpha
+      const darken = nationsConfig.borderDarken
+
+      // Pre-compute border set for each nation
+      const borderSet = new Set<number>()
+      for (const nation of nations) {
+        const nIdx = nationIdToIndex.get(nation.id)!
+        for (const tileIdx of nation.provinces) {
+          const tx = tileIdx % width
+          const ty = (tileIdx - tx) / width
+          const neighbours = [
+            tx > 0 ? tileIdx - 1 : -1,
+            tx < width - 1 ? tileIdx + 1 : -1,
+            ty > 0 ? tileIdx - width : -1,
+            ty < height - 1 ? tileIdx + width : -1
+          ]
+          for (const ni of neighbours) {
+            if (ni >= 0 && ownershipArr[ni] !== nIdx) {
+              borderSet.add(tileIdx)
+              break
+            }
+          }
+        }
+      }
+
+      // Blend nation colours onto biome base
+      for (let i = 0; i < ownerMap.length; i += 1) {
+        if (ownershipArr[i] === 255) continue
+        const nation = nations[ownershipArr[i]]
+        const [nr, ng, nb] = nation.color
+        const px = i * 4
+        const isBorder = borderSet.has(i)
+        const blend = isBorder ? alpha + darken : alpha
+        politicalData[px] = Math.round(politicalData[px] * (1 - blend) + nr * blend)
+        politicalData[px + 1] = Math.round(politicalData[px + 1] * (1 - blend) + ng * blend)
+        politicalData[px + 2] = Math.round(politicalData[px + 2] * (1 - blend) + nb * blend)
+        if (isBorder) {
+          // Darken border tiles slightly more
+          politicalData[px] = Math.round(politicalData[px] * 0.7)
+          politicalData[px + 1] = Math.round(politicalData[px + 1] * 0.7)
+          politicalData[px + 2] = Math.round(politicalData[px + 2] * 0.7)
+        }
+      }
+      const politicalImg = new ImageData(politicalData, width, height)
+      const polC = await buildChunks(politicalImg, chunkSize)
+      mapsRef.current.political = polC
 
       // Set initial chunks on renderer
       if (rendererRef.current) {
@@ -257,70 +376,95 @@ const MapView: React.FC = () => {
       canvas.removeEventListener('pointerup', onPointerUp)
       canvas.removeEventListener('pointerleave', onPointerUp)
       canvas.removeEventListener('wheel', onWheel)
+      canvas.removeEventListener('click', onClick)
       rendererRef.current = null
+      cameraRef.current = null
       biomeIdsRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /* ---------------------------------------------------------------- */
-  /*  Tooltip handler                                                  */
+  /*  Tile lookup helpers                                              */
   /* ---------------------------------------------------------------- */
-  const handleTooltip = useCallback(
-    (e: PointerEvent, canvas: HTMLCanvasElement, camera: Camera, renderer: Renderer) => {
-      if (!inspectorEnabled || !biomeIdsRef.current) {
-        setTooltip(null)
-        return
-      }
-
-      const rect = canvas.getBoundingClientRect()
-      const screenX = e.clientX - rect.left
-      const screenY = e.clientY - rect.top
+  const getTileAt = useCallback(
+    (screenX: number, screenY: number, camera: Camera, renderer: Renderer) => {
       const { width, height } = renderer.getViewportSize()
       const world = camera.screenToWorld(screenX, screenY, width, height)
-      const { width: mapWidth, height: mapHeight, tileSize } = mapSizeRef.current
-      const mapX = Math.floor((world.x + (mapWidth * tileSize) / 2) / tileSize)
-      const mapY = Math.floor((world.y + (mapHeight * tileSize) / 2) / tileSize)
-
-      if (mapX < 0 || mapY < 0 || mapX >= mapWidth || mapY >= mapHeight) {
-        setTooltip(null)
-        return
-      }
-
-      // Use WorldMap.at() for rich tile info
+      const { width: mapW, height: mapH, tileSize } = mapSizeRef.current
+      const mapX = Math.floor((world.x + (mapW * tileSize) / 2) / tileSize)
+      const mapY = Math.floor((world.y + (mapH * tileSize) / 2) / tileSize)
+      if (mapX < 0 || mapY < 0 || mapX >= mapW || mapY >= mapH) return null
       const worldMap = useGameStore.getState().worldMap
-      if (worldMap) {
-        const tile = worldMap.at(mapX, mapY)
-        if (tile) {
-          const parts: string[] = [getBiomeById(tile.biomeId).name]
-          if (tile.isRiver) parts.push('River')
-          if (tile.resource !== 0) parts.push(tile.resourceLabel)
+      return worldMap ? worldMap.at(mapX, mapY) : null
+    },
+    []
+  )
 
-          // Check strategic points
-          const SCELL = 8
-          const sgridW = Math.ceil(mapSizeRef.current.width / SCELL)
-          const cellKey = Math.floor(mapY / SCELL) * sgridW + Math.floor(mapX / SCELL)
-          for (let dy = -1; dy <= 1; dy += 1) {
-            for (let dx = -1; dx <= 1; dx += 1) {
-              const sp = strategicGridRef.current.get(cellKey + dy * sgridW + dx)
-              if (sp && Math.abs(sp.x - mapX) + Math.abs(sp.y - mapY) <= 4) {
-                parts.push(`${STRATEGIC_META[sp.type].label} (${sp.value}/10)`)
-                break
-              }
-            }
+  const buildInspectorData = useCallback(
+    (
+      screenX: number,
+      screenY: number,
+      camera: Camera,
+      renderer: Renderer
+    ): InspectorData | null => {
+      const tile = getTileAt(screenX, screenY, camera, renderer)
+      if (!tile) return null
+      // Strategic point near tile
+      const SCELL = 8
+      const sgridW = Math.ceil(mapSizeRef.current.width / SCELL)
+      const cellKey = Math.floor(tile.y / SCELL) * sgridW + Math.floor(tile.x / SCELL)
+      let sp: StrategicPoint | null = null
+      outer: for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const candidate = strategicGridRef.current.get(cellKey + dy * sgridW + dx)
+          if (candidate && Math.abs(candidate.x - tile.x) + Math.abs(candidate.y - tile.y) <= 4) {
+            sp = candidate
+            break outer
           }
-
-          setTooltip({ x: screenX, y: screenY, text: parts.join(' · ') })
-          return
         }
       }
-
-      // Fallback to basic biome lookup
-      const biomeIds = biomeIdsRef.current
-      const biome = getBiomeById(biomeIds[mapY * mapWidth + mapX])
-      setTooltip({ x: screenX, y: screenY, text: biome.name })
+      // Nation ownership
+      const nation =
+        tile.ownerId >= 0 && tile.ownerId < nationsRef.current.length
+          ? nationsRef.current[tile.ownerId]
+          : null
+      return { tile, strategic: sp, nation }
     },
-    [inspectorEnabled]
+    [getTileAt]
+  )
+
+  /* ---------------------------------------------------------------- */
+  /*  Hover handler                                                    */
+  /* ---------------------------------------------------------------- */
+  const handleHover = useCallback(
+    (e: PointerEvent, canvas: HTMLCanvasElement, camera: Camera, renderer: Renderer) => {
+      if (!inspectorEnabled) {
+        setInspectorData(null)
+        return
+      }
+      const rect = canvas.getBoundingClientRect()
+      setInspectorData(
+        buildInspectorData(e.clientX - rect.left, e.clientY - rect.top, camera, renderer)
+      )
+    },
+    [inspectorEnabled, buildInspectorData]
+  )
+
+  /* ---------------------------------------------------------------- */
+  /*  Click handler (nation selection)                                 */
+  /* ---------------------------------------------------------------- */
+  const handleClick = useCallback(
+    (e: MouseEvent, canvas: HTMLCanvasElement, camera: Camera, renderer: Renderer) => {
+      const rect = canvas.getBoundingClientRect()
+      const tile = getTileAt(e.clientX - rect.left, e.clientY - rect.top, camera, renderer)
+      if (tile && tile.ownerId >= 0 && tile.ownerId < nationsRef.current.length) {
+        selectNation(tile.ownerId)
+      } else {
+        selectNation(-1)
+      }
+    },
+    [getTileAt, selectNation]
   )
 
   /* ---------------------------------------------------------------- */
@@ -336,8 +480,10 @@ const MapView: React.FC = () => {
       else if (key === 'b') setView('biome')
       else if (key === 'g') setView('strategic')
       else if (key === 'r') setView('resource')
+      else if (key === 'p') setView('political')
       else if (key === 's') setShowToolbar((prev) => !prev)
       else if (key === 'i') useGameStore.getState().toggleInspector()
+      else if (key === 'escape') selectNation(-1)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -376,6 +522,14 @@ const MapView: React.FC = () => {
   }, [])
 
   /* ---------------------------------------------------------------- */
+  /*  Active nation for panel                                          */
+  /* ---------------------------------------------------------------- */
+  const activeNation =
+    selectedNation >= 0 && selectedNation < nationsRef.current.length
+      ? nationsRef.current[selectedNation]
+      : null
+
+  /* ---------------------------------------------------------------- */
   /*  Render                                                           */
   /* ---------------------------------------------------------------- */
   return (
@@ -400,18 +554,32 @@ const MapView: React.FC = () => {
           {VIEWS.map((v) => (
             <button
               key={v}
-              className={`toolbar-btn${view === v ? ' toolbar-btn--active' : ''}`}
+              className={`toolbar-btn toolbar-btn--compact${view === v ? ' toolbar-btn--active' : ''}`}
               onClick={() => setView(v)}
-              title={`${v.charAt(0).toUpperCase() + v.slice(1)} (${v[0].toUpperCase()})`}
+              title={`${v.charAt(0).toUpperCase() + v.slice(1)} (${VIEW_KEYS[v]})`}
             >
               <ToolbarIcon mode={v} />
-              <span>{v.length > 5 ? v.slice(0, 5) : v.charAt(0).toUpperCase() + v.slice(1)}</span>
             </button>
           ))}
 
           <div className="toolbar-divider" />
 
-          <button className="toolbar-btn" onClick={toggleFullscreen} title="Fullscreen">
+          <button
+            className={`toolbar-btn toolbar-btn--compact${inspectorEnabled ? ' toolbar-btn--active' : ''}`}
+            onClick={() => useGameStore.getState().toggleInspector()}
+            title="Inspector (I)"
+          >
+            <svg viewBox="0 0 16 16">
+              <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M8 5v2M8 9v4" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </button>
+
+          <button
+            className="toolbar-btn toolbar-btn--compact"
+            onClick={toggleFullscreen}
+            title="Fullscreen"
+          >
             <svg viewBox="0 0 16 16">
               {isFullscreen ? (
                 <path d="M5 1v4H1v2h6V1zm6 0v6h6V5h-4V1zM1 11h4v4H3v-2H1zm10 0h2v2h2v2h-4z" />
@@ -419,19 +587,13 @@ const MapView: React.FC = () => {
                 <path d="M1 1h5v2H3v3H1zm9 0h5v5h-2V3h-3zM1 10h2v3h3v2H1zm12 3h-3v2h5v-5h-2z" />
               )}
             </svg>
-            <span>{isFullscreen ? 'Exit' : 'Full'}</span>
           </button>
         </div>
       )}
 
-      {tooltip && (
-        <div
-          className="canvas-shell__tooltip"
-          style={{ left: tooltip.x + 12, top: tooltip.y + 12 }}
-        >
-          {tooltip.text}
-        </div>
-      )}
+      {inspectorEnabled && <TileInspector data={inspectorData} />}
+
+      {activeNation && <NationPanel nation={activeNation} onClose={() => selectNation(-1)} />}
     </section>
   )
 }
@@ -477,6 +639,12 @@ const ToolbarIcon: React.FC<{ mode: ViewMode }> = ({ mode }) => {
         <svg viewBox="0 0 16 16">
           <path d="M4 2l4 2 4-2v9l-4 3-4-3z" />
           <path d="M8 4v10M4 2l4 2M12 2l-4 2" fill="none" stroke="currentColor" strokeWidth="0.5" />
+        </svg>
+      )
+    case 'political':
+      return (
+        <svg viewBox="0 0 16 16">
+          <path d="M3 2h4v5H3zM9 2h4v5H9zM3 9h4v5H3zM9 9h4v5H9z" />
         </svg>
       )
     default:

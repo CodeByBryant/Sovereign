@@ -62,8 +62,8 @@ export const defaultConfig = {
   camera: {
     /** Minimum zoom level (fully zoomed out). @default 0.2 */
     minZoom: 0.2,
-    /** Maximum zoom level (fully zoomed in). @default 3.5 */
-    maxZoom: 3.5,
+    /** Maximum zoom level (fully zoomed in). @default 10 */
+    maxZoom: 10,
     /** Multiplicative step per scroll tick. @default 0.1 */
     zoomStep: 0.1
   },
@@ -121,6 +121,13 @@ export const defaultConfig = {
        * @default 0.37
        */
       seaLevel: 0.37,
+      /**
+       * Minimum fraction of tiles that must be land (0–1).
+       * If the generated elevation produces less land than this,
+       * the sea level is automatically lowered until the target is met.
+       * @default 0.25
+       */
+      minLandRatio: 0.25,
       /**
        * When `true`, elevation falls off radially from the centre
        * producing a single island continent.
@@ -381,6 +388,36 @@ export const defaultConfig = {
       ironRarity: 0.72,
       /** Minimum density to register a resource (0–255). @default 30 */
       minDensity: 30
+    },
+
+    /* ------------------------------------------------------------ */
+    /*  Nations                                                      */
+    /* ------------------------------------------------------------ */
+
+    /**
+     * Configuration for nation spawning.
+     *
+     * @example Fewer, more spread-out nations
+     * ```ts
+     * defaultConfig.terrain.nations.count = 6
+     * defaultConfig.terrain.nations.minSpacing = 120
+     * ```
+     */
+    nations: {
+      /** Number of nations to spawn. @default 12 */
+      count: 12,
+      /** Minimum tile distance between spawn points. @default 70 */
+      minSpacing: 70,
+      /**
+       * Alpha blend for territory fill on the political overlay (0–1).
+       * @default 0.45
+       */
+      territoryAlpha: 0.45,
+      /**
+       * Darkening factor for border tiles on the political overlay (0–1).
+       * @default 0.35
+       */
+      borderDarken: 0.35
     }
   }
 }
@@ -393,3 +430,6 @@ export type StrategicConfig = typeof defaultConfig.terrain.strategic
 
 /** Shorthand type for the resources sub-section. */
 export type ResourcesConfig = typeof defaultConfig.terrain.resources
+
+/** Shorthand type for the nations sub-section. */
+export type NationsConfig = typeof defaultConfig.terrain.nations
