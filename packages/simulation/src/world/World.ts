@@ -13,6 +13,8 @@ import {
 } from '@sovereign/config'
 import {
   BIOME_KEYS,
+  RESOURCE_CATALOG,
+  resourceDef,
   type NationSnapshot,
   type TerrainFields,
   type WorldSnapshot
@@ -23,6 +25,7 @@ import { spawnNations } from '../nations/NationSpawner'
 import { normalizeSeed } from '../random/seed'
 import { stateHasher } from '../serialization/hash'
 import { generateTerrain } from '../terrain/pipeline'
+import { buildRegrowthTable, ResourceStocks, type ResourceLayerName } from './ResourceStocks'
 import { WorldMap } from './WorldMap'
 
 /** Ownership byte for a tile that belongs to no nation. */
@@ -55,6 +58,8 @@ export class World {
   readonly terrain: TerrainFields
   readonly map: WorldMap
   readonly nations: readonly Nation[]
+  /** Drawing resources down and letting the renewable ones grow back (it works on `terrain.resources`). */
+  private readonly stocks: ResourceStocks
 
   private constructor(state: WorldState) {
     this.seed = state.seed
@@ -71,10 +76,13 @@ export class World {
       humidity: state.terrain.humidity,
       biomeIds: state.terrain.biomeIds,
       riverMask: state.terrain.riverMask,
-      resourceType: state.terrain.resourceType,
-      resourceDensity: state.terrain.resourceDensity,
+      resources: state.terrain.resources,
       ownership: state.ownership
     })
+    this.stocks = new ResourceStocks(
+      state.terrain.resources,
+      buildRegrowthTable(state.config.resources.regrowth)
+    )
   }
 
   /** Generate a new world: terrain first, then nations placed on it. */
@@ -108,6 +116,7 @@ export class World {
       terrain.elevation,
       terrain.biomeIds,
       terrain.riverMask,
+      terrain.resources,
       { ...terrainConfig, seaLevel: terrain.seaLevel },
       config.nations.count,
       seed,
@@ -141,8 +150,18 @@ export class World {
 
   /** Advance the simulation by one tick. */
   step(): void {
-    // Systems will run here, as a flat, ordered list of calls. None exist yet.
+    // Systems run here, as a flat, ordered list of calls.
+    this.stocks.regrow(this.clock.tick)
     this.clock.advance()
+  }
+
+  /**
+   * Take up to `amount` units from the resource in a tile's slot (`surface` or `ground`). Returns
+   * what was actually taken: less than asked if the stock ran out, 0 if the slot is empty. The
+   * economy and the god tools draw resources down through this.
+   */
+  extractResource(layer: ResourceLayerName, tile: number, amount: number): number {
+    return this.stocks.extract(layer, tile, amount)
   }
 
   /** Advance the simulation by `ticks` ticks. */
@@ -155,7 +174,7 @@ export class World {
 
   /**
    * A 128-bit fingerprint of the simulation state (see docs/simulation/determinism.md, section 7.3,
-   * "Version 1"). Equal hashes mean equal worlds on any engine.
+   * "Version 2"). Equal hashes mean equal worlds on any engine.
    */
   stateHash(): string {
     const h = stateHasher()
@@ -174,8 +193,11 @@ export class World {
     h.writeUint8Array(t.biomeIds)
     h.writeUint8Array(t.riverMask)
     h.writeUint8Array(t.riverWidth)
-    h.writeUint8Array(t.resourceType)
-    h.writeUint8Array(t.resourceDensity)
+    for (const layer of ['surface', 'ground'] as const) {
+      h.writeUint8Array(t.resources[layer].type)
+      h.writeUint8Array(t.resources[layer].richness)
+      h.writeUint8Array(t.resources[layer].stock)
+    }
     h.writeUint8Array(this.map.ownership)
 
     h.writeUint32(t.strategicPoints.length)
@@ -290,8 +312,6 @@ export class World {
       ['biome ids', t.biomeIds],
       ['river mask', t.riverMask],
       ['river width', t.riverWidth],
-      ['resource type', t.resourceType],
-      ['resource density', t.resourceDensity],
       ['ownership', this.map.ownership]
     ] as const) {
       if (layer.length !== size)
@@ -299,7 +319,7 @@ export class World {
     }
     checkRange('biome ids', t.biomeIds, BIOME_KEYS.length - 1)
     checkRange('river mask', t.riverMask, 1)
-    checkRange('resource type', t.resourceType, 7)
+    this.validateResources(problems)
 
     for (const p of t.strategicPoints) {
       if (p.x < 0 || p.x >= t.width || p.y < 0 || p.y >= t.height) {
@@ -343,5 +363,60 @@ export class World {
     })
 
     return problems
+  }
+
+  /** The two resource slots: array sizes, catalogue ids, the layer a resource lives in, and stocks. */
+  private validateResources(problems: string[]): void {
+    const size = this.terrain.width * this.terrain.height
+    for (const layer of ['surface', 'ground'] as const) {
+      const slot = this.terrain.resources[layer]
+      let sized = true
+      for (const [name, values] of [
+        ['type', slot.type],
+        ['richness', slot.richness],
+        ['stock', slot.stock]
+      ] as const) {
+        if (values.length !== size) {
+          problems.push(`${layer} ${name} has ${values.length} values, expected ${size}`)
+          sized = false
+        }
+      }
+      if (!sized) continue
+      for (let i = 0; i < size; i += 1) {
+        const type = slot.type[i] as number
+        const richness = slot.richness[i] as number
+        const stock = slot.stock[i] as number
+        if (type === 0) {
+          if (richness !== 0 || stock !== 0) {
+            problems.push(
+              `${layer} slot at tile ${i} holds no resource but has richness ${richness} and stock ${stock}`
+            )
+            break
+          }
+          continue
+        }
+        const def = resourceDef(type)
+        if (def === undefined) {
+          problems.push(
+            `${layer} resource type ${type} at tile ${i} is not in the catalogue (1 to ${RESOURCE_CATALOG.length})`
+          )
+          break
+        }
+        if (def.layer !== layer) {
+          problems.push(
+            `${layer} slot at tile ${i} holds ${def.key}, which belongs to the ${def.layer} layer`
+          )
+          break
+        }
+        if (richness === 0) {
+          problems.push(`${layer} slot at tile ${i} holds ${def.key} with no richness`)
+          break
+        }
+        if (stock > richness) {
+          problems.push(`${layer} stock ${stock} at tile ${i} is above its richness ${richness}`)
+          break
+        }
+      }
+    }
   }
 }

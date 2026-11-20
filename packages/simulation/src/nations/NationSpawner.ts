@@ -8,7 +8,7 @@
  *
  * @example
  * ```ts
- * const nations = spawnNations(elevation, biomeIds, terrainConfig, 12, seed)
+ * const nations = spawnNations(elevation, biomeIds, riverMask, resources, terrainConfig, 12, seed)
  * ```
  */
 import type { RandomSource } from '../random/RandomSource'
@@ -20,6 +20,8 @@ import { NameGenerator } from './NameGenerator'
 import { ColorGenerator } from './ColorGenerator'
 import { FlagGenerator } from './FlagGenerator'
 import type { TerrainConfig } from '@sovereign/config'
+import type { ResourceSlots } from '@sovereign/contracts'
+import { buildAccessGrid, type AccessGrid } from './access'
 
 /* ------------------------------------------------------------------ */
 /*  Biome desirability — higher = better spawn location                */
@@ -64,6 +66,12 @@ const BIOME_DESIRABILITY: Record<number, number> = {
   18: 0.15
 }
 
+/**
+ * How much food, timber and stone within reach add to a start's score (the biome and a river give
+ * 0.15 to 1.2). A preference, not a rule: a barren start is chosen only if nothing better is left.
+ */
+const ACCESS_WEIGHT = 0.5
+
 const GOVERNMENT_TYPES: GovernmentType[] = [
   'monarchy',
   'republic',
@@ -87,6 +95,7 @@ function findCandidates(
   elevation: Float32Array,
   biomeIds: Uint8Array,
   riverMask: Uint8Array,
+  access: AccessGrid,
   terrain: TerrainConfig
 ): { index: number; score: number }[] {
   const { width, height, seaLevel } = terrain
@@ -113,7 +122,10 @@ function findCandidates(
         }
         if (riverBonus > 0) break
       }
-      candidates.push({ index: idx, score: desirability + riverBonus })
+      candidates.push({
+        index: idx,
+        score: desirability + riverBonus + ACCESS_WEIGHT * access.at(x, y)
+      })
     }
   }
   return candidates
@@ -221,6 +233,7 @@ export interface SpawnResult {
  * @param elevation     Float32Array of tile elevations.
  * @param biomeIds      Uint8Array of biome indices per tile.
  * @param riverMask     Uint8Array river mask.
+ * @param resources     The two resource slots; starts with food, timber and stone in reach score higher.
  * @param terrain       Terrain config (width, height, seaLevel, etc.).
  * @param count         Number of nations to spawn.
  * @param seed          World seed for deterministic generation.
@@ -231,6 +244,7 @@ export function spawnNations(
   elevation: Float32Array,
   biomeIds: Uint8Array,
   riverMask: Uint8Array,
+  resources: ResourceSlots,
   terrain: TerrainConfig,
   count: number,
   seed: string | number,
@@ -246,7 +260,8 @@ export function spawnNations(
   const ownerMap = new Array<string>(width * height).fill('')
 
   // Find candidates and pick spawn points
-  const candidates = findCandidates(elevation, biomeIds, riverMask, terrain)
+  const access = buildAccessGrid(resources, width, height)
+  const candidates = findCandidates(elevation, biomeIds, riverMask, access, terrain)
   const spawnPoints = pickSpawnPoints(candidates, count, minSpacing, width, rng)
 
   const nations: Nation[] = []

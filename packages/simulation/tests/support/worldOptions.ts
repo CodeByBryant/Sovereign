@@ -1,5 +1,5 @@
 import type { WorldConfigOverrides } from '@sovereign/config'
-import { defaultWorldConfig } from '@sovereign/config'
+import { defaultWorldConfig, type ResourcePlacementSettings } from '@sovereign/config'
 
 export interface SmallWorldOptions {
   width?: number
@@ -8,6 +8,28 @@ export interface SmallWorldOptions {
   nations?: number
   minSpacing?: number
   islandMode?: boolean
+}
+
+/**
+ * The resource rules for a test-sized map: the feature windows and the regions shrink with the
+ * spatial frequencies (the default numbers are in tiles of a 2000 x 2000 map).
+ */
+export function smallResources(k = 12): ResourcePlacementSettings {
+  const d = defaultWorldConfig.resources
+  const rules: ResourcePlacementSettings['rules'] = {}
+  for (const key of Object.keys(d.rules)) {
+    const rule = d.rules[key]
+    if (rule !== undefined) rules[key] = { ...rule, regionSize: Math.max(8, rule.regionSize / k) }
+  }
+  return {
+    features: {
+      ridgeRadius: 3,
+      ridgeScale: d.features.ridgeScale,
+      slopeScale: d.features.slopeScale * k
+    },
+    rules,
+    regrowth: { ...d.regrowth }
+  }
 }
 
 /**
@@ -38,7 +60,7 @@ export function smallWorldOverrides(options: SmallWorldOptions = {}): WorldConfi
       secondaryScale: d.rivers.secondaryScale * k,
       warpStrength: 3
     },
-    resources: { oreScale: d.resources.oreScale * k },
+    resources: smallResources(k),
     nations: { count: options.nations ?? 8, minSpacing: options.minSpacing ?? 18 }
   }
 }

@@ -1,9 +1,16 @@
 // Expected checksums were captured from the OLD implementations (the ImageData-based functions
 // that lived in the simulation package) on these same synthetic fields, before they were moved.
 import { describe, expect, it } from 'vitest'
-import { BIOME_KEYS, getBiomeColor } from '@sovereign/contracts'
+import {
+  BIOME_KEYS,
+  RESOURCE_CATALOG,
+  ResourceType,
+  getBiomeColor,
+  type ResourceSlots
+} from '@sovereign/contracts'
 import {
   biomeRgba,
+  dominantResource,
   elevationRgba,
   humidityRgba,
   politicalRgba,
@@ -74,14 +81,112 @@ describe('overlays', () => {
     expect(checksum(strategicRgba(base, f.width, f.height, f.strategicPoints))).toBe('66c4f7b2')
   })
 
-  it('resource: tints tiles that have a resource, scaled by density', () => {
-    expect(checksum(resourceRgba(base, f.resourceType, f.resourceDensity))).toBe('31e89b1d')
+  it('resource: tints tiles that have a resource and leaves the others alone', () => {
+    const out = resourceRgba(base, f.resources)
+    expectOpaque(out)
+    let tinted = 0
+    for (let i = 0; i < pixels; i += 1) {
+      const has = f.resources.surface.type[i] !== 0 || f.resources.ground.type[i] !== 0
+      const same = [0, 1, 2].every((c) => out[i * 4 + c] === base[i * 4 + c])
+      if (!has) expect(same).toBe(true)
+      else if (!same) tinted += 1
+    }
+    expect(tinted).toBeGreaterThan(pixels / 4)
+    expect(checksum(out)).toBe('79ab4ecc')
+  })
+
+  describe('one tile', () => {
+    const one = (
+      surface: [number, number, number],
+      ground: [number, number, number]
+    ): ResourceSlots => ({
+      surface: {
+        type: Uint8Array.of(surface[0]),
+        richness: Uint8Array.of(surface[1]),
+        stock: Uint8Array.of(surface[2])
+      },
+      ground: {
+        type: Uint8Array.of(ground[0]),
+        richness: Uint8Array.of(ground[1]),
+        stock: Uint8Array.of(ground[2])
+      }
+    })
+    const grey = new Uint8ClampedArray([100, 100, 100, 255])
+    const colorOf = (id: number): readonly number[] => RESOURCE_CATALOG[id - 1]!.color
+    const distance = (a: ArrayLike<number>, b: readonly number[]): number =>
+      Math.abs((a[0] as number) - (b[0] as number)) +
+      Math.abs((a[1] as number) - (b[1] as number)) +
+      Math.abs((a[2] as number) - (b[2] as number))
+
+    it('moves toward the resource colour, further when more is left', () => {
+      const poor = resourceRgba(grey, one([ResourceType.Timber, 200, 10], [0, 0, 0]))
+      const rich = resourceRgba(grey, one([ResourceType.Timber, 200, 200], [0, 0, 0]))
+      expect(distance(poor, colorOf(ResourceType.Timber))).toBeLessThan(
+        distance(grey, colorOf(ResourceType.Timber))
+      )
+      expect(distance(rich, colorOf(ResourceType.Timber))).toBeLessThan(
+        distance(poor, colorOf(ResourceType.Timber))
+      )
+    })
+
+    it('a drawn-down deposit still shows faintly, so you can see where it was', () => {
+      const out = resourceRgba(grey, one([0, 0, 0], [ResourceType.Iron, 200, 0]))
+      expect(Array.from(out.slice(0, 3))).not.toEqual([100, 100, 100])
+    })
+
+    it('keeps alpha opaque', () => {
+      expect(resourceRgba(grey, one([ResourceType.Fish, 9, 9], [0, 0, 0]))[3]).toBe(255)
+    })
+  })
+
+  describe('dominantResource', () => {
+    it('is the only resource when there is one, and 0 when there is none', () => {
+      expect(dominantResource(0, 0)).toBe(0)
+      expect(dominantResource(ResourceType.Timber, 0)).toBe(ResourceType.Timber)
+      expect(dominantResource(0, ResourceType.Coal)).toBe(ResourceType.Coal)
+    })
+    it('prefers a luxury to an industrial resource to a basic one', () => {
+      expect(dominantResource(ResourceType.Spices, ResourceType.Iron)).toBe(ResourceType.Spices)
+      expect(dominantResource(ResourceType.Timber, ResourceType.Iron)).toBe(ResourceType.Iron)
+      expect(dominantResource(ResourceType.Timber, ResourceType.Gold)).toBe(ResourceType.Gold)
+      expect(dominantResource(ResourceType.Grain, ResourceType.Stone)).toBe(ResourceType.Stone)
+    })
+    it('takes the ground resource when the tiers are equal', () => {
+      expect(dominantResource(ResourceType.Tea, ResourceType.Gems)).toBe(ResourceType.Gems)
+    })
+  })
+
+  describe('with a focus', () => {
+    it('tints only tiles that hold the focused resource, in either slot, and dims the rest', () => {
+      const out = resourceRgba(base, f.resources, ResourceType.Iron)
+      let held = 0
+      for (let i = 0; i < pixels; i += 1) {
+        const has =
+          f.resources.surface.type[i] === ResourceType.Iron ||
+          f.resources.ground.type[i] === ResourceType.Iron
+        const dimmed = out[i * 4] === Math.round((base[i * 4] as number) * 0.55)
+        if (has) held += 1
+        else expect(dimmed).toBe(true)
+        if (has) expect(dimmed).toBe(false)
+      }
+      expect(held).toBeGreaterThan(0)
+    })
+    it('a focus on a resource that is nowhere just dims the map', () => {
+      const none = {
+        type: new Uint8Array(pixels),
+        richness: new Uint8Array(pixels),
+        stock: new Uint8Array(pixels)
+      }
+      const out = resourceRgba(base, { surface: none, ground: none }, ResourceType.Whales)
+      for (let i = 0; i < base.length; i += 4)
+        expect(out[i]).toBe(Math.round((base[i] as number) * 0.55))
+    })
   })
 
   it('never modifies the base image it is given', () => {
     const copy = new Uint8ClampedArray(base)
     strategicRgba(base, f.width, f.height, f.strategicPoints)
-    resourceRgba(base, f.resourceType, f.resourceDensity)
+    resourceRgba(base, f.resources)
     expect(base).toEqual(copy)
   })
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BIOME_KEYS } from '@sovereign/contracts'
+import { BIOME_KEYS, RESOURCE_CATALOG } from '@sovereign/contracts'
 import { generateTerrain } from '../src/terrain/pipeline'
 import { hashTerrain } from './support/fieldHash'
 import { smallTerrainRequest } from './support/terrainRequest'
@@ -19,8 +19,12 @@ describe('generateTerrain', () => {
       fields.biomeIds,
       fields.riverMask,
       fields.riverWidth,
-      fields.resourceType,
-      fields.resourceDensity
+      fields.resources.surface.type,
+      fields.resources.surface.richness,
+      fields.resources.surface.stock,
+      fields.resources.ground.type,
+      fields.resources.ground.richness,
+      fields.resources.ground.stock
     ]) {
       expect(layer.length).toBe(tiles)
     }
@@ -35,7 +39,9 @@ describe('generateTerrain', () => {
     }
     for (const id of fields.biomeIds) expect(id).toBeLessThan(BIOME_KEYS.length)
     for (const r of fields.riverMask) expect([0, 1]).toContain(r)
-    for (const t of fields.resourceType) expect(t).toBeLessThanOrEqual(7)
+    for (const slot of [fields.resources.surface, fields.resources.ground]) {
+      for (const t of slot.type) expect(t).toBeLessThanOrEqual(RESOURCE_CATALOG.length)
+    }
   })
 
   it('places every strategic point on the map', () => {

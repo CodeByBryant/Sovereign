@@ -35,20 +35,20 @@ describe('SAVE_FORMAT_VERSION and layout', () => {
   const bytes = encodeWorld(make(7))
   const view = new DataView(bytes.buffer, bytes.byteOffset)
 
-  it('is version 2', () => {
-    expect(SAVE_FORMAT_VERSION).toBe(2)
+  it('is version 3', () => {
+    expect(SAVE_FORMAT_VERSION).toBe(3)
   })
 
   it('starts with the magic "SOVW", the version (uint32, big-endian) and the header length', () => {
     expect([...bytes.subarray(0, 4)]).toEqual(MAGIC)
-    expect(view.getUint32(4, false)).toBe(2)
+    expect(view.getUint32(4, false)).toBe(3)
     expect(view.getUint32(8, false)).toBeGreaterThan(0)
   })
 
-  it('has exactly the header plus nine tile layers (3 x float32, 6 x byte) after it', () => {
+  it('has exactly the header plus thirteen tile layers (3 x float32, 10 x byte) after it', () => {
     const headerLength = view.getUint32(8, false)
     const tiles = 160 * 96
-    expect(bytes.length).toBe(12 + headerLength + tiles * (3 * 4 + 6))
+    expect(bytes.length).toBe(12 + headerLength + tiles * (3 * 4 + 10))
   })
 })
 
@@ -75,6 +75,23 @@ describe('round trip', () => {
     const decoded = decodeWorld(encodeWorld(world))
     world.run(6)
     decoded.run(6)
+    expect(decoded.stateHash()).toBe(world.stateHash())
+  })
+
+  it('keeps drawn-down stocks, and they go on regrowing exactly as in the original', () => {
+    const world = make(7)
+    const slot = world.terrain.resources.surface
+    const tiles: number[] = []
+    for (let i = 0; i < slot.type.length && tiles.length < 20; i += 1)
+      if (slot.type[i] !== 0) tiles.push(i)
+    for (const tile of tiles) world.extractResource('surface', tile, 200)
+    const decoded = decodeWorld(encodeWorld(world))
+    expect(decoded.terrain.resources.surface.stock).toEqual(slot.stock)
+    expect(decoded.terrain.resources.ground.richness).toEqual(
+      world.terrain.resources.ground.richness
+    )
+    world.run(400)
+    decoded.run(400)
     expect(decoded.stateHash()).toBe(world.stateHash())
   })
 
@@ -136,7 +153,7 @@ describe('decodeWorld rejects a file that is not a good save', () => {
     rejects(bad, /not a Sovereign save/)
   })
 
-  it.each([0, 1, 3, 99])('a file of unsupported format version %d', (version) => {
+  it.each([0, 1, 2, 4, 99])('a file of unsupported format version %d', (version) => {
     const bad = good.slice()
     new DataView(bad.buffer).setUint32(4, version, false)
     rejects(bad, /unsupported save format version/)

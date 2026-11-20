@@ -172,6 +172,81 @@
 }
 
 /* ------------------------------------------------------------------ */
+/*  Resource legend and focus selector – left panel (resource overlay)  */
+/* ------------------------------------------------------------------ */
+.resource-legend {
+  position: absolute;
+  top: var(--panel-top);
+  left: calc(var(--space-3) + var(--safe-left));
+  width: 220px;
+  max-height: calc(100vh - var(--panel-top) - var(--space-5));
+  max-height: calc(100dvh - var(--panel-top) - var(--space-5));
+  overflow-y: auto;
+  padding: var(--space-3);
+  background: rgba(20, 16, 12, 0.88);
+  border: 1px solid rgba(107, 93, 79, 0.5);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(10px);
+  z-index: 3;
+  font-family: var(--font-body);
+  color: $color-text;
+  font-size: 0.78rem;
+
+  &__all,
+  &__chip {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-1) var(--space-2);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-xs);
+    color: $color-text;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(107, 93, 79, 0.3);
+    }
+
+    &[aria-pressed='true'] {
+      border-color: rgba(212, 175, 55, 0.6);
+      color: $color-accent-soft;
+      background: rgba(212, 175, 55, 0.12);
+    }
+  }
+
+  &__all {
+    margin-bottom: var(--space-2);
+    font-weight: 600;
+  }
+
+  &__title {
+    margin: var(--space-2) 0 var(--space-1);
+    color: $color-text-muted;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  &__swatch {
+    flex-shrink: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+  }
+
+  // Only one panel on the left at a time: a selected nation takes its place.
+  .canvas-shell:has(.nation-panel) & {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Tile Inspector – right-side panel                                  */
 /* ------------------------------------------------------------------ */
 .inspector {
@@ -229,6 +304,37 @@
       color: $color-accent-soft;
       font-weight: 600;
     }
+  }
+
+  &__resource {
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid rgba(107, 93, 79, 0.3);
+  }
+
+  &__resource-head {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    align-items: baseline;
+  }
+
+  &__bar {
+    height: 6px;
+    margin: var(--space-1) 0;
+    border-radius: 3px;
+    background: rgba(107, 93, 79, 0.35);
+    overflow: hidden;
+  }
+
+  &__bar-fill {
+    height: 100%;
+    background: $color-accent-soft;
+  }
+
+  &__resource-foot {
+    color: $color-text-muted;
+    font-size: 0.7rem;
   }
 
   &__nation {
@@ -525,6 +631,45 @@
   .inspector {
     max-height: 30vh;
     max-height: 30dvh;
+  }
+
+  // The legend becomes one scrolling strip under the controls at the top, so it never covers the
+  // inspector sheet or the toolbar at the bottom.
+  .resource-legend {
+    left: calc(var(--space-3) + var(--safe-left));
+    right: calc(var(--space-3) + var(--safe-right));
+    width: auto;
+    max-height: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: var(--space-2);
+
+    &__all,
+    &__chip {
+      width: auto;
+      min-height: 44px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    &__all {
+      margin-bottom: 0;
+    }
+
+    &__tier,
+    &__chips {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+
+    &__title {
+      margin: 0;
+    }
   }
 
   .nation-panel {

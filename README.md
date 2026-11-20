@@ -27,7 +27,7 @@ Sovereign is heading toward a deep grand-strategy simulation: individual rulers,
 - **2 000 x 2 000 tile maps** with elevation, temperature, humidity, biome, river, resource and ownership for every tile
 - **26 biomes**, from deep ocean and glaciers to rainforest and volcanic peaks, with organic boundaries
 - **Rivers** that follow noise zero-crossings: primary and secondary waterways, tapered at the shore
-- **7 resource types**: timber, stone, iron, gold, fertile soil, fish, fur and game
+- **22 resources in two slots per tile** (surface and ground), placed by geology and ecology rather than noise: timber, grain, pasture, horses, fur, cotton, spices, wine, tea, ivory, stone, iron, copper, coal, oil, gold, silver, salt, gems, fish, pearls and whales. Metals follow ridges, oil and coal sit in basins, whole landmasses can lack some, and stocks can be drawn down (minerals for good, the renewable ones grow back)
 - **Strategic locations**: river crossings, mountain passes, straits and peninsulas, scored 0 to 10
 - **Nations**: 12 placed on habitable land, each with a name, colour, flag, government, personality and starting territory
 
@@ -43,7 +43,7 @@ Sovereign is heading toward a deep grand-strategy simulation: individual rulers,
 | `R` | Resource    | Biome plus resource deposits       |
 | `P` | Political   | Territory colours and borders      |
 
-Click a nation's territory for its panel; the tile inspector (`I`) describes whatever is under the cursor.
+Click a nation's territory for its panel; the tile inspector (`I`) describes whatever is under the cursor, including what each of its two resource slots holds and how much is left. In the resource view a legend lists all 22 resources by tier; pick one to see only where it is (a heat map), or "All resources" to see each tile's dominant one.
 
 ### Determinism is the point
 

@@ -21,3 +21,4 @@
 | [0002 Workspace layout](decisions/0002-workspace-layout.md)                     | Why five packages and three apps                           |
 | [0003 Determinism policy](decisions/0003-determinism-policy.md)                 | What "deterministic" means here and how it is enforced     |
 | [0004 Distribution-aware terrain](decisions/0004-distribution-aware-terrain.md) | Why terrain fields are reshaped by rank, and what it fixed |
+| [0005 Resources by geology](decisions/0005-resources-by-geology.md)             | Why resources have rules, two slots and stocks, not noise  |

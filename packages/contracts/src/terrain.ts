@@ -22,7 +22,27 @@ export interface TerrainFields {
   riverMask: Uint8Array
   /** River width per tile, for drawing. */
   riverWidth: Uint8Array
-  resourceType: Uint8Array
-  resourceDensity: Uint8Array
+  /** The two resource slots of every tile: surface and ground. */
+  resources: ResourceSlots
   strategicPoints: StrategicPoint[]
+}
+
+/**
+ * One resource slot of every tile (struct of arrays, one entry per tile): which resource it holds
+ * (a catalogue id, 0 for none), how rich the deposit was to begin with (1 to 255) and how much is
+ * left (0 to `richness`; it only changes by extraction and regrowth).
+ */
+export interface ResourceSlot {
+  type: Uint8Array
+  richness: Uint8Array
+  stock: Uint8Array
+}
+
+/**
+ * The two slots every tile has: the **surface** (a forest, crop or herd on land; a fishery on water)
+ * and the **ground** (a mineral; oil and salt may also lie under shallow sea).
+ */
+export interface ResourceSlots {
+  surface: ResourceSlot
+  ground: ResourceSlot
 }

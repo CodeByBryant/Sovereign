@@ -8,6 +8,8 @@ import {
   STRATEGIC_META,
   getBiomeById,
   getBiomeColor,
+  resourceDef,
+  type ResourceSlots,
   type StrategicPoint
 } from '@sovereign/contracts'
 
@@ -203,32 +205,63 @@ export function strategicRgba(
   return data
 }
 
-/** Resource tint colours (RGB) by resource type id. */
-const RESOURCE_TINTS: Readonly<Record<number, Rgb>> = {
-  1: [34, 120, 50], // Timber
-  2: [140, 130, 120], // Stone
-  3: [160, 100, 80], // Iron
-  4: [212, 175, 55], // Gold
-  5: [140, 180, 60], // Fertile
-  6: [60, 140, 200], // Fish
-  7: [130, 90, 60] // Fur
+const TIER_RANK = { basic: 1, industrial: 2, luxury: 3 } as const
+
+/**
+ * The resource a tile shows on the map when it holds two: a luxury beats an industrial resource,
+ * which beats a basic one; at equal tiers the ground resource wins (it is the rarer one). 0 if the
+ * tile holds nothing.
+ */
+export function dominantResource(surfaceType: number, groundType: number): number {
+  const surface = resourceDef(surfaceType)
+  const ground = resourceDef(groundType)
+  if (surface === undefined) return ground === undefined ? 0 : ground.id
+  if (ground === undefined) return surface.id
+  return TIER_RANK[surface.tier] > TIER_RANK[ground.tier] ? surface.id : ground.id
 }
 
-/** The resource overlay: the base map tinted where a resource is present, stronger when dense. */
+/** How much a focus dims the tiles that do not hold the focused resource. */
+const FOCUS_DIM = 0.55
+
+/**
+ * The resource overlay. Without a focus every tile that holds a resource is tinted with the colour of
+ * its dominant one, more strongly the more of it is left (a drawn-down deposit stays faintly visible).
+ * With a focus (a resource id) only tiles holding that resource, in either slot, are tinted, in its
+ * colour, and the rest of the map is dimmed: a heat map of one resource.
+ */
 export function resourceRgba(
   base: Uint8ClampedArray,
-  resourceType: Uint8Array,
-  resourceDensity: Uint8Array
+  resources: ResourceSlots,
+  focus = 0
 ): Uint8ClampedArray {
   const data = new Uint8ClampedArray(base)
-  for (let i = 0; i < resourceType.length; i += 1) {
-    const rt = resourceType[i] as number
-    if (rt === 0) continue
-    const tint = RESOURCE_TINTS[rt]
-    if (!tint) continue
-
-    const blend = Math.min(0.55, ((resourceDensity[i] as number) / 255) * 0.6 + 0.15)
+  const { surface, ground } = resources
+  const size = surface.type.length
+  for (let i = 0; i < size; i += 1) {
     const p = i * 4
+    let id: number
+    let left: number
+    if (focus !== 0) {
+      if (surface.type[i] === focus) {
+        id = focus
+        left = surface.stock[i] as number
+      } else if (ground.type[i] === focus) {
+        id = focus
+        left = ground.stock[i] as number
+      } else {
+        data[p] = Math.round((data[p] as number) * FOCUS_DIM)
+        data[p + 1] = Math.round((data[p + 1] as number) * FOCUS_DIM)
+        data[p + 2] = Math.round((data[p + 2] as number) * FOCUS_DIM)
+        continue
+      }
+    } else {
+      id = dominantResource(surface.type[i] as number, ground.type[i] as number)
+      if (id === 0) continue
+      left = (surface.type[i] === id ? surface.stock[i] : ground.stock[i]) as number
+    }
+    const tint = resourceDef(id)?.color
+    if (tint === undefined) continue
+    const blend = 0.18 + 0.42 * (left / 255)
     data[p] = Math.round((data[p] as number) * (1 - blend) + tint[0] * blend)
     data[p + 1] = Math.round((data[p + 1] as number) * (1 - blend) + tint[1] * blend)
     data[p + 2] = Math.round((data[p + 2] as number) * (1 - blend) + tint[2] * blend)

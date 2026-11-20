@@ -12,12 +12,12 @@
  * const config = resolveWorldConfig({ map: { width: 800, height: 600, islandMode: true } })
  * ```
  */
-import { BIOME_KEYS, type QuantileProfile } from '@sovereign/contracts'
+import { BIOME_KEYS, RESOURCE_CATALOG, type QuantileProfile } from '@sovereign/contracts'
 import type {
   BiomeConfig,
   BiomeNoiseConfig,
   HumidityConfig,
-  ResourceConfig,
+  ResourcePlacementSettings,
   RiverConfig,
   StrategicConfig,
   TemperatureConfig,
@@ -58,7 +58,8 @@ export interface WorldConfig {
   rivers: RiverConfig
   biomes: BiomeConfig
   strategic: StrategicConfig
-  resources: ResourceConfig
+  /** Where each resource is found, how rich it is and how it regrows. */
+  resources: ResourcePlacementSettings
   nations: NationsConfig
   /** In-game days per simulation tick. */
   timestep: number
@@ -430,27 +431,245 @@ export const defaultWorldConfig: WorldConfig = {
   /*  Resources                                                    */
   /* ------------------------------------------------------------ */
 
+  /* ------------------------------------------------------------ */
+  /*  Resource placement                                           */
+  /* ------------------------------------------------------------ */
+
   /**
-   * Tuning for the resource generation layer.
+   * Where each of the 22 resources is found. A rule's hard gates decide which tiles can hold it; its
+   * preferences and regional factor rank them; the top `share` get it (of the land, or for water
+   * resources of the water). Rarest resources claim tiles first. See docs/terrain.md.
    *
-   * Resources are derived from biome type, ore noise, elevation
-   * and river proximity.  Gold and iron use an independent simplex
-   * noise layer whose frequency is set by `oreScale`.
-   *
-   * @example Making gold rarer
-   * ```ts
-   * defaultWorldConfig.resources.goldRarity = 0.93
-   * ```
+   * The numbers are a starting design, fitted with `tests/probe/resource-quality.probe.ts`; they are
+   * provisional until the economy exists to say how much of what a nation needs.
    */
   resources: {
-    /** Ore noise frequency. Smaller = larger deposit clusters. @default 0.008 */
-    oreScale: 0.008,
-    /** Gold rarity threshold (0–1, higher = rarer). @default 0.88 */
-    goldRarity: 0.88,
-    /** Iron rarity threshold (0–1, higher = rarer). @default 0.72 */
-    ironRarity: 0.72,
-    /** Minimum density to register a resource (0–255). @default 30 */
-    minDensity: 30
+    features: { ridgeRadius: 16, ridgeScale: 0.015, slopeScale: 0.006 },
+    rules: {
+      // ---- surface, land: renewable ----
+      timber: {
+        share: 0.17,
+        biomes: {
+          boreal_forest: 1,
+          taiga: 0.9,
+          woodland: 1,
+          temperate_forest: 1,
+          tropical_forest: 1,
+          rainforest: 1,
+          swamp: 0.3,
+          mangrove: 0.4,
+          wetland: 0.2,
+          chaparral: 0.3
+        },
+        prefer: { wet: 0.5 },
+        regional: 0.3,
+        regionSize: 150
+      },
+      grain: {
+        share: 0.13,
+        biomes: {
+          grassland: 1,
+          steppe: 0.7,
+          woodland: 0.5,
+          savanna: 0.5,
+          temperate_forest: 0.35,
+          wetland: 0.4,
+          chaparral: 0.4
+        },
+        temperature: [0.25, 1],
+        prefer: { river: { within: 12, weight: 1.2 }, wet: 0.3, height: -0.5 },
+        regional: 0.35,
+        regionSize: 120
+      },
+      pasture: {
+        share: 0.08,
+        biomes: {
+          steppe: 1,
+          grassland: 0.9,
+          savanna: 1,
+          cold_steppe: 0.8,
+          highland: 0.6,
+          chaparral: 0.5,
+          woodland: 0.3
+        },
+        regional: 0.3,
+        regionSize: 140
+      },
+      horses: {
+        share: 0.025,
+        biomes: { steppe: 1, grassland: 0.8, cold_steppe: 0.7, savanna: 0.6 },
+        temperature: [0.2, 0.85],
+        regional: 0.7,
+        regionSize: 200
+      },
+      fur: {
+        share: 0.06,
+        biomes: { taiga: 1, boreal_forest: 1, tundra: 0.8, cold_steppe: 0.4, alpine: 0.3 },
+        temperature: [0, 0.45],
+        regional: 0.4,
+        regionSize: 160
+      },
+      cotton: {
+        share: 0.018,
+        biomes: {
+          savanna: 0.8,
+          chaparral: 0.8,
+          tropical_forest: 0.4,
+          grassland: 0.3,
+          temperate_forest: 0.2
+        },
+        temperature: [0.55, 1],
+        humidity: [0.35, 0.8],
+        prefer: { river: { within: 10, weight: 1.5 }, warm: 1 },
+        regional: 0.6,
+        regionSize: 160
+      },
+      spices: {
+        share: 0.012,
+        biomes: { tropical_forest: 1, rainforest: 1, savanna: 0.3, mangrove: 0.4 },
+        temperature: [0.65, 1],
+        humidity: [0.5, 1],
+        prefer: { coast: { within: 40, weight: 1 }, warm: 1 },
+        regional: 0.8,
+        regionSize: 140
+      },
+      wine: {
+        share: 0.01,
+        biomes: { chaparral: 1, woodland: 0.6, grassland: 0.4, temperate_forest: 0.4, steppe: 0.2 },
+        temperature: [0.45, 0.75],
+        humidity: [0.25, 0.6],
+        prefer: { slope: 1, coast: { within: 60, weight: 0.5 } },
+        regional: 0.7,
+        regionSize: 130
+      },
+      tea: {
+        share: 0.006,
+        biomes: { highland: 1, tropical_forest: 0.6, temperate_forest: 0.5, woodland: 0.4 },
+        temperature: [0.4, 0.8],
+        humidity: [0.55, 1],
+        prefer: { height: 1.5, slope: 0.5 },
+        regional: 0.8,
+        regionSize: 140
+      },
+      ivory: {
+        share: 0.004,
+        biomes: { savanna: 1, tropical_forest: 0.5, grassland: 0.3 },
+        temperature: [0.6, 1],
+        regional: 0.9,
+        regionSize: 250
+      },
+      // ---- ground: finite ----
+      stone: {
+        share: 0.07,
+        biomes: { mountain: 1, highland: 1, alpine: 1, badlands: 0.8 },
+        prefer: { height: 1.5, slope: 1 },
+        regional: 0.2,
+        regionSize: 150
+      },
+      iron: {
+        share: 0.03,
+        elevation: [0.45, 1],
+        prefer: { ridge: 2, height: 1 },
+        regional: 0.9,
+        regionSize: 160
+      },
+      copper: {
+        share: 0.014,
+        elevation: [0.45, 1],
+        prefer: { ridge: 1.5, slope: 0.5 },
+        regional: 0.95,
+        regionSize: 150
+      },
+      coal: {
+        share: 0.03,
+        elevation: [0.38, 0.7],
+        prefer: { basin: 2.5 },
+        regional: 0.9,
+        regionSize: 180
+      },
+      oil: {
+        share: 0.012,
+        elevation: [0.38, 0.65],
+        prefer: { basin: 2, coast: { within: 80, weight: 0.8 } },
+        regional: 0.95,
+        regionSize: 200,
+        offshore: { share: 0.01, coastDistance: [1, 60] }
+      },
+      gold: {
+        share: 0.0025,
+        elevation: [0.5, 1],
+        prefer: { ridge: 1.5, river: { within: 8, weight: 1.5 }, height: 1 },
+        regional: 1,
+        regionSize: 120
+      },
+      silver: {
+        share: 0.005,
+        elevation: [0.5, 1],
+        prefer: { ridge: 1.5, slope: 1, height: 1 },
+        regional: 1,
+        regionSize: 130
+      },
+      salt: {
+        share: 0.015,
+        biomes: {
+          desert: 1,
+          temperate_desert: 1,
+          badlands: 0.6,
+          cold_steppe: 0.3,
+          polar_desert: 0.5
+        },
+        prefer: { coast: { within: 50, weight: 1 } },
+        regional: 0.6,
+        regionSize: 150,
+        offshore: { share: 0.005, coastDistance: [1, 12] }
+      },
+      gems: {
+        share: 0.003,
+        elevation: [0.6, 1],
+        prefer: { ridge: 2, slope: 1 },
+        regional: 1,
+        regionSize: 110
+      },
+      // ---- surface, water: renewable ----
+      fish: {
+        share: 0.05,
+        coastDistance: [1, 60],
+        prefer: { coast: { within: 60, weight: 1.5 } },
+        regional: 0.5,
+        regionSize: 200
+      },
+      pearls: {
+        share: 0.004,
+        coastDistance: [1, 25],
+        temperature: [0.6, 1],
+        prefer: { coast: { within: 25, weight: 1 } },
+        regional: 0.9,
+        regionSize: 150
+      },
+      whales: {
+        share: 0.015,
+        coastDistance: [40, 255],
+        temperature: [0, 0.5],
+        regional: 0.8,
+        regionSize: 250
+      }
+    },
+    // units regrown every `period` ticks (a tick is a day). Provisional until the economy gives them weight.
+    regrowth: {
+      timber: { units: 1, period: 60 },
+      grain: { units: 2, period: 30 },
+      pasture: { units: 2, period: 30 },
+      horses: { units: 1, period: 120 },
+      fur: { units: 1, period: 60 },
+      cotton: { units: 2, period: 45 },
+      spices: { units: 1, period: 60 },
+      wine: { units: 1, period: 90 },
+      tea: { units: 1, period: 60 },
+      ivory: { units: 1, period: 365 },
+      fish: { units: 3, period: 15 },
+      pearls: { units: 1, period: 180 },
+      whales: { units: 1, period: 240 }
+    }
   },
 
   /* ------------------------------------------------------------ */
@@ -490,10 +709,13 @@ function merge<T extends object>(base: T, overrides: Partial<T> | undefined): T 
       if (value !== undefined) out[key] = value as T[keyof T]
     }
   }
-  // Arrays (profiles, the climate table) are copied, so a resolved config never shares them with
-  // the defaults or with the caller's overrides.
+  // Arrays and nested objects (profiles, the climate table, the resource rules) are copied, so a
+  // resolved config never shares them with the defaults or with the caller's overrides.
   for (const key of Object.keys(out) as Array<keyof T>) {
-    if (Array.isArray(out[key])) out[key] = JSON.parse(JSON.stringify(out[key])) as T[keyof T]
+    const value = out[key]
+    if (typeof value === 'object' && value !== null) {
+      out[key] = JSON.parse(JSON.stringify(value)) as T[keyof T]
+    }
   }
   return out
 }
@@ -587,6 +809,7 @@ export function validateWorldConfig(config: WorldConfig): string[] {
   validateProfile('temperature', config.temperature.profile, problems)
   validateProfile('humidity', config.humidity.profile, problems)
   validateBiomeTable(config.biomes, problems)
+  validateResourcePlacement(config.resources, problems)
   if (!(config.strategic.mountainPassRise > 0)) {
     problems.push('strategic.mountainPassRise must be greater than 0')
   }
@@ -666,6 +889,103 @@ function validateBiomeTable(biomes: BiomeConfig, problems: string[]): void {
       }
     })
   })
+}
+
+/** Problems with the resource placement rules and regrowth rates. */
+function validateResourcePlacement(settings: ResourcePlacementSettings, problems: string[]): void {
+  const at = 'resources'
+  const { features, rules, regrowth } = settings
+  if (!Number.isInteger(features.ridgeRadius) || features.ridgeRadius < 1) {
+    problems.push(`${at}.features.ridgeRadius must be an integer of at least 1`)
+  }
+  if (!(features.ridgeScale > 0)) problems.push(`${at}.features.ridgeScale must be greater than 0`)
+  if (!(features.slopeScale > 0)) problems.push(`${at}.features.slopeScale must be greater than 0`)
+
+  const defs = new Map(RESOURCE_CATALOG.map((d) => [d.key, d]))
+  const biomes = new Set<string>(BIOME_KEYS)
+  const checkRange = (
+    name: string,
+    range: readonly number[] | undefined,
+    nonNegative = false
+  ): void => {
+    if (range === undefined) return
+    if (range.length !== 2 || !(range[0] <= range[1]) || (nonNegative && range[0] < 0)) {
+      problems.push(
+        `${name} must be a [min, max] range with min <= max${nonNegative ? ' and min >= 0' : ''}`
+      )
+    }
+  }
+  const sums = { surfaceLand: 0, groundLand: 0, water: 0, groundWater: 0 }
+
+  for (const key of Object.keys(rules)) {
+    const rule = rules[key]
+    const name = `${at}.rules.${key}`
+    const def = defs.get(key)
+    if (def === undefined) {
+      problems.push(`${name} is not a resource`)
+      continue
+    }
+    if (!(rule.share >= 0 && rule.share <= 1)) problems.push(`${name}.share must be from 0 to 1`)
+    if (!(rule.regional >= 0 && rule.regional <= 1))
+      problems.push(`${name}.regional must be from 0 to 1`)
+    if (!(rule.regionSize > 0)) problems.push(`${name}.regionSize must be greater than 0`)
+    checkRange(`${name}.elevation`, rule.elevation)
+    checkRange(`${name}.temperature`, rule.temperature)
+    checkRange(`${name}.humidity`, rule.humidity)
+    checkRange(`${name}.coastDistance`, rule.coastDistance, true)
+    if (rule.biomes !== undefined) {
+      if (def.domain === 'water') problems.push(`${name}.biomes does not apply to a water resource`)
+      for (const biome of Object.keys(rule.biomes)) {
+        const weight = (rule.biomes as Record<string, number>)[biome]
+        if (!biomes.has(biome)) problems.push(`${name}.biomes.${biome} is not a biome`)
+        else if (!(weight >= 0 && weight <= 1))
+          problems.push(`${name}.biomes.${biome} must be from 0 to 1`)
+      }
+    }
+    for (const kind of ['river', 'coast'] as const) {
+      const pref = rule.prefer?.[kind]
+      if (pref !== undefined && !(pref.within > 0)) {
+        problems.push(`${name}.prefer.${kind}.within must be greater than 0`)
+      }
+    }
+    if (rule.offshore !== undefined) {
+      if (def.domain !== 'both') problems.push(`${name}.offshore applies only to oil and salt`)
+      if (!(rule.offshore.share >= 0 && rule.offshore.share <= 1)) {
+        problems.push(`${name}.offshore.share must be from 0 to 1`)
+      }
+      checkRange(`${name}.offshore.coastDistance`, rule.offshore.coastDistance, true)
+      checkRange(`${name}.offshore.elevation`, rule.offshore.elevation)
+      sums.groundWater += rule.offshore.share
+    }
+    if (def.domain === 'water') sums.water += rule.share
+    else if (def.layer === 'surface') sums.surfaceLand += rule.share
+    else sums.groundLand += rule.share
+  }
+  // one resource per slot, so the shares that compete for a slot cannot add up to more than exists
+  if (sums.surfaceLand > 1)
+    problems.push(
+      `${at}.rules: surface land shares add up to ${sums.surfaceLand}, more than the land`
+    )
+  if (sums.groundLand > 1)
+    problems.push(`${at}.rules: ground shares add up to ${sums.groundLand}, more than the land`)
+  if (sums.water > 1)
+    problems.push(`${at}.rules: water shares add up to ${sums.water}, more than the water`)
+  if (sums.groundWater > 1)
+    problems.push(`${at}.rules: offshore shares add up to ${sums.groundWater}, more than the water`)
+
+  for (const key of Object.keys(regrowth)) {
+    const rate = regrowth[key]
+    const name = `${at}.regrowth.${key}`
+    const def = defs.get(key)
+    if (def === undefined) problems.push(`${name} is not a resource`)
+    else if (!def.renewable) problems.push(`${name}: ${key} is finite and cannot regrow`)
+    if (!Number.isInteger(rate.units) || rate.units < 1 || rate.units > 255) {
+      problems.push(`${name}.units must be an integer from 1 to 255`)
+    }
+    if (!Number.isInteger(rate.period) || rate.period < 1 || rate.period > 65535) {
+      problems.push(`${name}.period must be an integer from 1 to 65535`)
+    }
+  }
 }
 
 /** Throws a `RangeError` listing every problem if `config` is invalid. */

@@ -12,9 +12,11 @@
  * bytes 8..11   header length N, uint32 big-endian
  * bytes 12..    header: N bytes of UTF-8 JSON (seed, tick, size, sea level, config, strategic
  *               points, nations with their tiles)
- * then          nine tile layers, each width*height long, in this order:
+ * then          thirteen tile layers, each width*height long, in this order:
  *               elevation, temperature, humidity (float32, little-endian),
- *               biome ids, river mask, river width, resource type, resource density,
+ *               biome ids, river mask, river width,
+ *               surface resource type, richness, stock,
+ *               ground resource type, richness, stock,
  *               ownership (one byte each)
  * ```
  *
@@ -26,17 +28,22 @@ import {
   type WorldConfig,
   type WorldConfigOverrides
 } from '@sovereign/config'
-import type { StrategicPoint, StrategicType, TerrainFields } from '@sovereign/contracts'
+import type {
+  ResourceSlots,
+  StrategicPoint,
+  StrategicType,
+  TerrainFields
+} from '@sovereign/contracts'
 import { Nation } from '../nations/Nation'
 import { World } from '../world/World'
 import { utf8Bytes, utf8Decode } from './utf8'
 
-export const SAVE_FORMAT_VERSION = 2
+export const SAVE_FORMAT_VERSION = 3
 
 const MAGIC = [0x53, 0x4f, 0x56, 0x57] // "SOVW"
 const PREAMBLE = 12
 const FLOAT_LAYERS = 3
-const BYTE_LAYERS = 6
+const BYTE_LAYERS = 10
 
 const GOVERNMENTS = [
   'monarchy',
@@ -138,8 +145,12 @@ export function encodeWorld(world: World): Uint8Array {
     t.biomeIds,
     t.riverMask,
     t.riverWidth,
-    t.resourceType,
-    t.resourceDensity,
+    t.resources.surface.type,
+    t.resources.surface.richness,
+    t.resources.surface.stock,
+    t.resources.ground.type,
+    t.resources.ground.richness,
+    t.resources.ground.stock,
     world.map.ownership
   ]) {
     out.set(layer, at)
@@ -362,8 +373,10 @@ function decode(bytes: Uint8Array): World {
   const biomeIds = byteLayer()
   const riverMask = byteLayer()
   const riverWidth = byteLayer()
-  const resourceType = byteLayer()
-  const resourceDensity = byteLayer()
+  const resources: ResourceSlots = {
+    surface: { type: byteLayer(), richness: byteLayer(), stock: byteLayer() },
+    ground: { type: byteLayer(), richness: byteLayer(), stock: byteLayer() }
+  }
   const ownership = byteLayer()
 
   const terrain: TerrainFields = {
@@ -376,8 +389,7 @@ function decode(bytes: Uint8Array): World {
     biomeIds,
     riverMask,
     riverWidth,
-    resourceType,
-    resourceDensity,
+    resources,
     strategicPoints
   }
   return World.restore({ seed, config, tick, terrain, nations, ownership })

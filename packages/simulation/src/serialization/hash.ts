@@ -5,7 +5,7 @@ import { utf8Bytes } from './utf8'
  * Any change to the field list, order or encoding of what a state hash covers bumps this number
  * and regenerates the golden hashes.
  */
-export const HASH_SCHEMA_VERSION = 1
+export const HASH_SCHEMA_VERSION = 2
 
 const TWO_POW_32 = 4_294_967_296
 

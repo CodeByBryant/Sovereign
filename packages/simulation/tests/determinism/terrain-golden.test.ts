@@ -6,6 +6,8 @@
 //
 // To regenerate, print `hashTerrain(generateTerrain(request))` for each scenario below.
 //
+// The pins were regenerated again when resources moved to two slots (placement rules, ADR 0005).
+//
 // History: the pins before the deterministic-engine swap (alea + simplex-noise + Math.pow) were
 // 1: c73f60d2..., 12345: 23986aef..., 'sovereign': 669f4deb..., island: 252d418c...,
 // land-ratio: d4b62979..., defaults: f79b843d... (all intentionally superseded).
@@ -15,31 +17,31 @@ import { hashTerrain } from '../support/fieldHash'
 import { smallTerrainRequest, smallTerrainRequestWithDefaults } from '../support/terrainRequest'
 
 const scenarios = [
-  { name: 'seed 1', request: smallTerrainRequest(1), hash: '8ebb487c1ad6d79e4759bde561569fb3' },
+  { name: 'seed 1', request: smallTerrainRequest(1), hash: '404b727a738885ca7960474334f0b3af' },
   {
     name: 'seed 12345',
     request: smallTerrainRequest(12345),
-    hash: '376c025b9a836a0631e1a0c27e748d31'
+    hash: 'f71418e78636f4286b85e31a75860c7d'
   },
   {
     name: 'text seed',
     request: smallTerrainRequest('sovereign'),
-    hash: '8a406d55f27577331e00b2222d17d4ab'
+    hash: 'e7ce60d8ed704906bd7ac47410eceff0'
   },
   {
     name: 'island mode',
     request: smallTerrainRequest(7, { islandMode: true }),
-    hash: 'e3d40f9174f46f9bbb447ee73fc837a3'
+    hash: '49a17d367ad1d57cd0ba0ff193cacf7d'
   },
   {
     name: 'optional config fields omitted (their defaults apply)',
     request: smallTerrainRequestWithDefaults(5),
-    hash: '80a81fa2e3a37ea7117a80e2b42a03f9'
+    hash: '9057b6a80e3db7ef82702e1b2b495493'
   },
   {
     name: 'land-ratio rescue (sea level lowered)',
     request: smallTerrainRequest(3, { minLandRatio: 0.7 }),
-    hash: '7a5d02357d3422ff91f99ccad3013d83'
+    hash: '9c8e17b2fef37ce666d6bb15c85228ab'
   }
 ]
 
@@ -51,6 +53,6 @@ describe('terrain goldens', () => {
   it('a text seed and the number it hashes to are the same world', async () => {
     const { normalizeSeed } = await import('../../src/random/seed')
     const asNumber = smallTerrainRequest(normalizeSeed('sovereign'))
-    expect(hashTerrain(generateTerrain(asNumber))).toBe('8a406d55f27577331e00b2222d17d4ab')
+    expect(hashTerrain(generateTerrain(asNumber))).toBe('e7ce60d8ed704906bd7ac47410eceff0')
   })
 })

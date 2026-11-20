@@ -13,7 +13,8 @@ const DB_NAME = 'sovereign'
 // 2: saves are now the engine's own format; version-1 records (a different layout) are dropped.
 // 3: engine save format 2 (the saved world config gained terrain profiles and a climate table);
 //    records written before it can no longer be loaded and are dropped.
-const DB_VERSION = 3
+// 4: engine save format 3 (every tile has two resource slots with richness and stock); older records are dropped.
+const DB_VERSION = 4
 const STORE_NAME = 'saves'
 
 /* ------------------------------------------------------------------ */
@@ -41,11 +42,11 @@ function openDB(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
     request.onupgradeneeded = (event) => {
       const db = request.result
-      // Versions before 3 stored formats the engine can no longer read. Drop those records rather
+      // Versions before 4 stored formats the engine can no longer read. Drop those records rather
       // than leave entries that cannot be loaded.
       if (
         event.oldVersion > 0 &&
-        event.oldVersion < 3 &&
+        event.oldVersion < 4 &&
         db.objectStoreNames.contains(STORE_NAME)
       ) {
         db.deleteObjectStore(STORE_NAME)
