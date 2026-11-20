@@ -72,7 +72,9 @@ A Gaussian draw is not provided yet; it will be added (Marsaglia polar, using th
 
 ## 4. Time
 
-Planned with the `World` API: a fixed timestep where `tick` increases by exactly 1 per step and `time = tick * deltaTime` is computed by multiplication, never accumulated. No wall-clock source is read anywhere in the engine (enforced by lint).
+`SimulationClock` holds a fixed `deltaTime` (the config `timestep`, in-game days per tick; 1 by default) and a `tick`. `tick` increases by exactly 1 per `World.step()`; `time = tick * deltaTime` is computed by **multiplication, never accumulated** (adding 0.1 ten times gives `0.9999999999999999`, while `10 * 0.1` is exactly `1`). A tick is a non-negative safe integer; advancing past `Number.MAX_SAFE_INTEGER` is an error. No wall-clock source is read anywhere in the engine (enforced by lint).
+
+`World.step()` is a flat list of system calls, and only `World` orders them; a system mutates only what it owns. The list is empty today: the clock is the only thing a step changes.
 
 ## 5. Iteration order
 
@@ -111,12 +113,14 @@ A state hash is a 32-character lowercase hex string (128 bits).
 
 ### 7.1 Byte encoding
 
-| Writer         | Bytes                                                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `writeUint8`   | 1 byte                                                                                                                          |
-| `writeUint32`  | 4 bytes, big-endian                                                                                                             |
-| `writeFloat64` | 8 bytes: exact IEEE-754 bits, **big-endian** (`DataView.setFloat64(o, x, false)`), -0 canonicalized to +0, throws if non-finite |
-| `writeString`  | `writeUint32(byteLength)` then the UTF-8 bytes                                                                                  |
+| Writer              | Bytes                                                                                                                                                 |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `writeUint8`        | 1 byte                                                                                                                                                |
+| `writeUint32`       | 4 bytes, big-endian                                                                                                                                   |
+| `writeFloat64`      | 8 bytes: exact IEEE-754 bits, **big-endian** (`DataView.setFloat64(o, x, false)`), -0 canonicalized to +0, throws if non-finite                       |
+| `writeString`       | `writeUint32(byteLength)` then the UTF-8 bytes                                                                                                        |
+| `writeUint8Array`   | `writeUint32(length)` then the bytes                                                                                                                  |
+| `writeFloat32Array` | `writeUint32(length)` then each value as 4 bytes of exact IEEE-754 float32 bits, **big-endian**; -0 is written as +0; throws if a value is non-finite |
 
 Never decimal strings, `JSON.stringify` or `toFixed`.
 
@@ -148,11 +152,20 @@ A state hash begins with the four ASCII bytes `SOVH`, then `writeUint32(HASH_SCH
 
 #### Version 1 (current)
 
-The header only. The set of hashed world fields is defined with the `World` API and recorded here when it lands.
+The first canonical layout of a world, written in this order (`World.stateHash()`), after the `SOVH` header and version:
+
+1. `writeUint32(seed)` (the normalized engine seed), `writeFloat64(tick)`, `writeFloat64(timestep)`, `writeUint32(width)`, `writeUint32(height)`, `writeFloat64(seaLevel)` (the effective sea level after the land-ratio rescue).
+2. The tile layers, each as one array writer (so each carries its length): `elevation`, `temperature`, `humidity` as `writeFloat32Array`; `biomeIds`, `riverMask`, `riverWidth`, `resourceType`, `resourceDensity` and `ownership` as `writeUint8Array`.
+3. Strategic points: `writeUint32(count)`, then for each `x` (uint32), `y` (uint32), `type` (string), `value` (float64).
+4. Nations: `writeUint32(count)`, then for each: `id` (string), `name` (string), the colour as three `writeUint8`, the flag `type` (string), `background` and `accent` (three float64 each), a `writeUint8` of 0 or 1 for whether there is a `detail` colour (and, if 1, its three float64), `government` (string), the personality (`aggression`, `expansionism`, `diplomacy`, `mercantilism`, `militarism`, float64 each, in that order), `capital` (uint32), `founded` (float64), the stats (`population`, `military`, `economy`, `diplomacy`, float64 each, in that order), then `writeUint32(tile count)` and each owned tile index as uint32 **in the order the tiles were claimed**.
+
+Fields are always written by name in this fixed order, never by enumerating an object. The configuration is not hashed on its own: what it produced is, and the timestep is.
 
 ## 8. Golden hashes
 
-Planned with the `World` API. Golden files will live in `packages/simulation/tests/golden/` and record `{ hashSchemaVersion, entries }`, each entry pinning a seed, a config, a tick count and the expected hash. A test first compares the golden's `hashSchemaVersion` with the current constant, so a layout change yields an explicit "bump the version and regenerate" message instead of an opaque mismatch. Regenerating goldens is a deliberate act in its own commit with the reason in the PR.
+Golden files live in `packages/simulation/tests/golden/` and record `{ hashSchemaVersion, entries }`, where each entry pins a seed, a config (as overrides), a tick count and the expected `stateHash()`. `tests/golden.test.ts` first compares the golden's `hashSchemaVersion` with `HASH_SCHEMA_VERSION`, so a layout change yields an explicit "bump the version and regenerate" message instead of an opaque mismatch, and each entry also has to pass `world.validate()`. Regenerating goldens is a deliberate act, in its own commit, with the reason in the PR.
+
+They are regression pins: the correctness of what is under them (RNG, noise, math, hashing) is established by the independent-reference tests. They were also verified to be identical, directly and after a save then load, on three engines: Node 22 (V8 12.4), Chromium 157 (V8 14) and QuickJS (WASM, not V8).
 
 ## 9. Test vectors
 
@@ -200,13 +213,17 @@ The seeds `305419896` (`0x12345678`), `3735928559` (`0xdeadbeef`) and `16711936`
 
 **Hash** (bytes exactly as written by the writers in 7.1; the header is `"SOVH"` then `writeUint32(1)`):
 
-| Input                                                                              | Output                             |
-| ---------------------------------------------------------------------------------- | ---------------------------------- |
-| no bytes                                                                           | `027ae52ecfc796215593990d4b41437c` |
-| header only                                                                        | `0fe9d992d6cf4eba7b27f691dba022c3` |
-| header, `writeUint32(7)`, `writeFloat64(-0)`, `writeFloat64(0.5)`, `writeUint8(1)` | `0cfff52cd59cd936ea6e87ef760fd062` |
-| same with `writeFloat64(+0)` instead of `-0` (proves canonicalization)             | `0cfff52cd59cd936ea6e87ef760fd062` |
-| header, `writeString("héllo ✓ 🌍")`                                                | `1ee750036f11b9738e0e26b0a664f383` |
+| Input                                                                                                              | Output                             |
+| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| no bytes                                                                                                           | `027ae52ecfc796215593990d4b41437c` |
+| header only                                                                                                        | `0fe9d992d6cf4eba7b27f691dba022c3` |
+| header, `writeUint32(7)`, `writeFloat64(-0)`, `writeFloat64(0.5)`, `writeUint8(1)`                                 | `0cfff52cd59cd936ea6e87ef760fd062` |
+| same with `writeFloat64(+0)` instead of `-0` (proves canonicalization)                                             | `0cfff52cd59cd936ea6e87ef760fd062` |
+| header, `writeString("héllo ✓ 🌍")`                                                                                | `1ee750036f11b9738e0e26b0a664f383` |
+| header, `writeUint8Array([0, 1, 2, 255, 128])`                                                                     | `78258c595e2fc900605bfba5bb578380` |
+| header, `writeUint8Array([])`                                                                                      | `49bb8cc6d6dea402d80e77656ee6c88e` |
+| header, `writeFloat32Array([0.5, -0, 1/3, 3.4028234663852886e38, 1.401298464324817e-45, -2.5])` (1/3 as a float32) | `1ed937ce85b5796f5b83169ca59446ad` |
+| header, `writeUint8Array([0, 1, 2, 255, 128])`, `writeFloat32Array([1.5, -0.25])`                                  | `56f8fce016eab77aac599e0ca7558b39` |
 
 **Deterministic math accuracy.** `ln`, `exp` and `pow` are tested against the platform functions: within `2.3e-16` relative (about one ulp) for `ln` over `1e-300..1e300` and for `exp` over `-700..700`, and within `1e-14` relative for `pow` where `|y * ln x| <= 30`. The platform functions are only an oracle in tests, which are exempt from the lint bans.
 
@@ -220,4 +237,4 @@ The seeds `305419896` (`0x12345678`), `3735928559` (`0xdeadbeef`) and `16711936`
 | No `alea` / `simplex-noise` in the engine; every stream is used     | `tests/no-legacy-rng.test.ts`, `tests/stream-usage.test.ts`                       |
 | Noise, RNG and math match independent references, bit for bit       | `tests/simplex.test.ts`, `tests/streams.test.ts`, `tests/transcendental*.test.ts` |
 | Stream list, hash version and this document stay in sync            | `tests/stream-usage.test.ts`                                                      |
-| Bit-exact reproducibility of whole worlds                           | Golden hashes (planned with the `World` API)                                      |
+| Bit-exact reproducibility of whole worlds, and saves round-tripping | Golden hashes (`tests/golden.test.ts`), `tests/save.test.ts`, `World.validate()`  |

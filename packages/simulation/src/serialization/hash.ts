@@ -61,6 +61,31 @@ export class ByteHasher {
     for (const byte of bytes) this.writeByte(byte)
   }
 
+  /** A uint32 length, then the bytes. */
+  writeUint8Array(values: Uint8Array): void {
+    this.writeUint32(values.length)
+    for (let i = 0; i < values.length; i += 1) this.writeByte(values[i] as number)
+  }
+
+  /**
+   * A uint32 length, then each value as 4 bytes of exact IEEE-754 float32 bits, big-endian; -0 is
+   * written as +0 and a non-finite value is an error. (The values are float32 already: widening to
+   * float64 would change nothing but waste time.)
+   */
+  writeFloat32Array(values: Float32Array): void {
+    this.writeUint32(values.length)
+    const scratch = this.scratch
+    for (let i = 0; i < values.length; i += 1) {
+      const v = values[i] as number
+      if (!Number.isFinite(v)) throw new RangeError('cannot hash a non-finite number')
+      scratch.setFloat32(0, v === 0 ? 0 : v, false)
+      this.writeByte(scratch.getUint8(0))
+      this.writeByte(scratch.getUint8(1))
+      this.writeByte(scratch.getUint8(2))
+      this.writeByte(scratch.getUint8(3))
+    }
+  }
+
   /** The 32-character lowercase hex digest of everything written so far. Does not consume state. */
   digest(): string {
     let h1 = this.h1

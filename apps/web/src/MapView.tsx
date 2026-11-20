@@ -6,7 +6,7 @@
  * Wired to zustand GameStore for view mode, FPS and world data.
  */
 import React, { useEffect, useRef, useCallback } from 'react'
-import { defaultConfig, type TerrainConfig } from '@sovereign/config'
+import { defaultWorldConfig as world, type TerrainConfig } from '@sovereign/config'
 import type { StrategicPoint } from '@sovereign/contracts'
 import { Camera, Renderer } from '@sovereign/renderer'
 import { WorldMap, spawnNations, type Nation } from '@sovereign/simulation'
@@ -140,8 +140,8 @@ const MapView: React.FC = () => {
     canvas.addEventListener('click', onClick)
 
     /* ------------- Spawn terrain worker ------------- */
-    const { tileSize, chunkSize, ...mapConfig } = defaultConfig.terrain.map
-    const terrainConfig: TerrainConfig = { ...mapConfig, ...defaultConfig.terrain.elevation }
+    const { tileSize, chunkSize } = viewConfig.map
+    const terrainConfig: TerrainConfig = { ...world.map, ...world.elevation }
 
     const worker = new TerrainWorker()
 
@@ -151,14 +151,14 @@ const MapView: React.FC = () => {
       type: 'generate',
       seed: useSeed,
       terrain: terrainConfig,
-      temperature: defaultConfig.terrain.temperature,
-      humidity: defaultConfig.terrain.humidity,
-      biomeNoise: defaultConfig.terrain.biomeNoise,
-      rivers: defaultConfig.terrain.rivers,
-      biomes: defaultConfig.terrain.biomes,
-      strategic: defaultConfig.terrain.strategic,
-      resources: defaultConfig.terrain.resources,
-      minLandRatio: defaultConfig.terrain.map.minLandRatio
+      temperature: world.temperature,
+      humidity: world.humidity,
+      biomeNoise: world.biomeNoise,
+      rivers: world.rivers,
+      biomes: world.biomes,
+      strategic: world.strategic,
+      resources: world.resources,
+      minLandRatio: world.map.minLandRatio
     }
 
     worker.postMessage(request)
@@ -258,13 +258,13 @@ const MapView: React.FC = () => {
       })
 
       // --- Nation spawning ---
-      const nationsConfig = defaultConfig.terrain.nations
+      const nationsConfig = world.nations
       const terrainForSpawn: TerrainConfig = {
         width,
         height,
         seaLevel: data.seaLevel,
-        islandMode: defaultConfig.terrain.map.islandMode,
-        ...defaultConfig.terrain.elevation
+        islandMode: world.map.islandMode,
+        ...world.elevation
       }
       const { nations, ownerMap } = spawnNations(
         worldMap.elevation,
@@ -296,8 +296,8 @@ const MapView: React.FC = () => {
 
       // --- Build political overlay ImageData ---
       const politicalData = new Uint8ClampedArray(biomeMap.data)
-      const alpha = nationsConfig.territoryAlpha
-      const darken = nationsConfig.borderDarken
+      const alpha = viewConfig.political.territoryAlpha
+      const darken = viewConfig.political.borderDarken
 
       // Pre-compute border set for each nation
       const borderSet = new Set<number>()

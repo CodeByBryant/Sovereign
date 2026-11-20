@@ -1,30 +1,18 @@
 /**
  * @module persistence
- * @description Save / load game state via IndexedDB.
- *
- * Serialises the WorldMap typed arrays + game metadata into a single
- * binary blob with a small JSON header.  IndexedDB is used because it
- * handles large binary payloads efficiently (unlike localStorage).
- *
- * Save format:
- *   [4-byte header length (LE)] [JSON header] [binary payload]
- *
- * The JSON header contains seed, width, height, seaLevel, strategicPoints,
- * and the lengths of each typed array in the binary payload.
+ * @description Saving and loading worlds in IndexedDB. The bytes themselves are produced and read
+ * by the engine (`encodeWorld` / `decodeWorld`, a pure format); this module only stores them.
  */
-import type { StrategicPoint } from '@sovereign/contracts'
-import { WorldMap, type WorldMapData } from '@sovereign/simulation'
+import { SaveFormatError, decodeWorld, encodeWorld, type World } from '@sovereign/simulation'
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
 const DB_NAME = 'sovereign'
-const DB_VERSION = 1
+// 2: saves are now the engine's own format; version-1 records (a different layout) are dropped.
+const DB_VERSION = 2
 const STORE_NAME = 'saves'
-// 2: world generation moved to the deterministic engine (own noise, named streams); the same seed
-// now produces a different world, so version-1 saves are rejected rather than mismatched.
-const SAVE_FORMAT_VERSION = 2
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -33,26 +21,13 @@ const SAVE_FORMAT_VERSION = 2
 export interface SaveMetadata {
   id: string
   name: string
-  seed: number | string
+  /** The engine seed (a uint32). */
+  seed: number
+  /** The simulation tick the world was saved at. */
+  tick: number
   createdAt: number
+  /** Engine save-format version the bytes were written with. */
   formatVersion: number
-}
-
-interface SaveHeader extends SaveMetadata {
-  width: number
-  height: number
-  seaLevel: number
-  strategicPoints: StrategicPoint[]
-  layers: {
-    elevation: number
-    temperature: number
-    humidity: number
-    biomeIds: number
-    riverMask: number
-    resourceType: number
-    resourceDensity: number
-    ownership: number
-  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -62,8 +37,17 @@ interface SaveHeader extends SaveMetadata {
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result
+      // Version 1 stored a different, incompatible binary format. Drop those records rather than
+      // leave entries that cannot be loaded.
+      if (
+        event.oldVersion > 0 &&
+        event.oldVersion < 2 &&
+        db.objectStoreNames.contains(STORE_NAME)
+      ) {
+        db.deleteObjectStore(STORE_NAME)
+      }
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'id' })
       }
@@ -121,155 +105,38 @@ function idbDelete(db: IDBDatabase, id: string): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Serialise                                                          */
-/* ------------------------------------------------------------------ */
-
-function serialise(
-  worldMap: WorldMap,
-  seed: number | string,
-  strategicPoints: StrategicPoint[],
-  name: string
-): { blob: ArrayBuffer; meta: SaveMetadata } {
-  const id = `save-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  const now = Date.now()
-
-  const header: SaveHeader = {
-    id,
-    name,
-    seed,
-    createdAt: now,
-    formatVersion: SAVE_FORMAT_VERSION,
-    width: worldMap.width,
-    height: worldMap.height,
-    seaLevel: worldMap.seaLevel,
-    strategicPoints,
-    layers: {
-      elevation: worldMap.elevation.byteLength,
-      temperature: worldMap.temperature.byteLength,
-      humidity: worldMap.humidity.byteLength,
-      biomeIds: worldMap.biomeIds.byteLength,
-      riverMask: worldMap.riverMask.byteLength,
-      resourceType: worldMap.resourceType.byteLength,
-      resourceDensity: worldMap.resourceDensity.byteLength,
-      ownership: worldMap.ownership.byteLength
-    }
-  }
-
-  const headerJson = new TextEncoder().encode(JSON.stringify(header))
-  const headerLen = headerJson.byteLength
-
-  // Calculate total binary payload size
-  const payloadSize = Object.values(header.layers).reduce((sum, len) => sum + len, 0)
-  const totalSize = 4 + headerLen + payloadSize
-
-  const buffer = new ArrayBuffer(totalSize)
-  const view = new DataView(buffer)
-
-  // Write header length (4 bytes LE)
-  view.setUint32(0, headerLen, true)
-
-  // Write JSON header
-  new Uint8Array(buffer, 4, headerLen).set(headerJson)
-
-  // Write typed array layers sequentially
-  let offset = 4 + headerLen
-  const layers: ArrayBufferLike[] = [
-    worldMap.elevation.buffer,
-    worldMap.temperature.buffer,
-    worldMap.humidity.buffer,
-    worldMap.biomeIds.buffer,
-    worldMap.riverMask.buffer,
-    worldMap.resourceType.buffer,
-    worldMap.resourceDensity.buffer,
-    worldMap.ownership.buffer
-  ]
-
-  for (const layerBuf of layers) {
-    new Uint8Array(buffer, offset, layerBuf.byteLength).set(new Uint8Array(layerBuf))
-    offset += layerBuf.byteLength
-  }
-
-  const meta: SaveMetadata = { id, name, seed, createdAt: now, formatVersion: SAVE_FORMAT_VERSION }
-  return { blob: buffer, meta }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Deserialise                                                        */
-/* ------------------------------------------------------------------ */
-
-function deserialise(buffer: ArrayBuffer): {
-  worldMap: WorldMap
-  seed: number | string
-  strategicPoints: StrategicPoint[]
-  meta: SaveMetadata
-} {
-  const view = new DataView(buffer)
-  const headerLen = view.getUint32(0, true)
-  const headerJson = new TextDecoder().decode(new Uint8Array(buffer, 4, headerLen))
-  const header: SaveHeader = JSON.parse(headerJson)
-
-  if (header.formatVersion !== SAVE_FORMAT_VERSION) {
-    throw new Error(`Unsupported save format version: ${header.formatVersion}`)
-  }
-
-  let offset = 4 + headerLen
-  const readLayer = (byteLength: number): ArrayBuffer => {
-    const slice = buffer.slice(offset, offset + byteLength)
-    offset += byteLength
-    return slice
-  }
-
-  const data: WorldMapData = {
-    width: header.width,
-    height: header.height,
-    seaLevel: header.seaLevel,
-    elevation: new Float32Array(readLayer(header.layers.elevation)),
-    temperature: new Float32Array(readLayer(header.layers.temperature)),
-    humidity: new Float32Array(readLayer(header.layers.humidity)),
-    biomeIds: new Uint8Array(readLayer(header.layers.biomeIds)),
-    riverMask: new Uint8Array(readLayer(header.layers.riverMask)),
-    resourceType: new Uint8Array(readLayer(header.layers.resourceType)),
-    resourceDensity: new Uint8Array(readLayer(header.layers.resourceDensity)),
-    ownership: new Uint8Array(readLayer(header.layers.ownership))
-  }
-
-  return {
-    worldMap: new WorldMap(data),
-    seed: header.seed,
-    strategicPoints: header.strategicPoints,
-    meta: {
-      id: header.id,
-      name: header.name,
-      seed: header.seed,
-      createdAt: header.createdAt,
-      formatVersion: header.formatVersion
-    }
-  }
-}
-
-/* ------------------------------------------------------------------ */
 /*  Public API                                                         */
 /* ------------------------------------------------------------------ */
 
 /**
- * Save the current game state to IndexedDB.
+ * Save a world to IndexedDB.
  *
- * @param worldMap  The world to persist.
- * @param seed      World generation seed.
- * @param strategicPoints  Strategic points from terrain gen.
- * @param name      Human-readable save name.
+ * @param world  The world to persist.
+ * @param name   Human-readable save name.
  * @returns  The save metadata (id, timestamp, etc.).
  */
-export async function saveGame(
-  worldMap: WorldMap,
-  seed: number | string,
-  strategicPoints: StrategicPoint[],
-  name = 'Autosave'
-): Promise<SaveMetadata> {
-  const { blob, meta } = serialise(worldMap, seed, strategicPoints, name)
+export async function saveGame(world: World, name = 'Autosave'): Promise<SaveMetadata> {
+  const bytes = encodeWorld(world)
+  const now = Date.now()
+  const meta: SaveMetadata = {
+    id: `save-${now}-${Math.random().toString(36).slice(2, 8)}`,
+    name,
+    seed: world.seed,
+    tick: world.clock.tick,
+    createdAt: now,
+    formatVersion: new DataView(bytes.buffer, bytes.byteOffset).getUint32(4, false)
+  }
+  // Store exactly these bytes (not a view onto a larger buffer).
+  const blob = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer
   const db = await openDB()
-  await idbPut(db, { id: meta.id, blob, meta })
-  db.close()
+  try {
+    await idbPut(db, { id: meta.id, blob, meta })
+  } finally {
+    db.close()
+  }
   return meta
 }
 
@@ -277,36 +144,41 @@ export async function saveGame(
  * Load a saved game from IndexedDB.
  *
  * @param id  The save ID to load.
- * @returns  Reconstructed WorldMap + metadata.
+ * @throws  `Error` if there is no such save, `SaveFormatError` if the stored bytes are not a
+ *          readable save.
  */
-export async function loadGame(id: string): Promise<{
-  worldMap: WorldMap
-  seed: number | string
-  strategicPoints: StrategicPoint[]
-  meta: SaveMetadata
-}> {
+export async function loadGame(id: string): Promise<{ world: World; meta: SaveMetadata }> {
   const db = await openDB()
-  const record = await idbGet(db, id)
-  db.close()
+  let record
+  try {
+    record = await idbGet(db, id)
+  } finally {
+    db.close()
+  }
   if (!record) throw new Error(`Save not found: ${id}`)
-  return deserialise(record.blob)
+  return { world: decodeWorld(new Uint8Array(record.blob)), meta: record.meta }
 }
 
-/**
- * List all save metadata (sorted newest first).
- */
+/** List all save metadata (sorted newest first). */
 export async function listSaves(): Promise<SaveMetadata[]> {
   const db = await openDB()
-  const metas = await idbGetAllKeys(db)
-  db.close()
+  let metas: SaveMetadata[]
+  try {
+    metas = await idbGetAllKeys(db)
+  } finally {
+    db.close()
+  }
   return metas.sort((a, b) => b.createdAt - a.createdAt)
 }
 
-/**
- * Delete a saved game.
- */
+/** Delete a saved game. */
 export async function deleteSave(id: string): Promise<void> {
   const db = await openDB()
-  await idbDelete(db, id)
-  db.close()
+  try {
+    await idbDelete(db, id)
+  } finally {
+    db.close()
+  }
 }
+
+export { SaveFormatError }

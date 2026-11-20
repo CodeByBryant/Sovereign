@@ -81,6 +81,76 @@ describe('ByteHasher', () => {
   })
 })
 
+describe('bulk array writers', () => {
+  // Reference vectors: independent implementation, header \"SOVH\" + version 1 then the array.
+  it('writeFloat32Array: a uint32 length, then each value as 4 big-endian IEEE-754 bytes', () => {
+    const h = stateHasher()
+    h.writeFloat32Array(
+      Float32Array.of(
+        0.5,
+        -0,
+        0.3333333432674408,
+        3.4028234663852886e38,
+        1.401298464324817e-45,
+        -2.5
+      )
+    )
+    expect(h.digest()).toBe('1ed937ce85b5796f5b83169ca59446ad')
+  })
+
+  it('writeFloat32Array canonicalizes -0 to +0, like writeFloat64', () => {
+    const a = stateHasher()
+    a.writeFloat32Array(Float32Array.of(-0, 1))
+    const b = stateHasher()
+    b.writeFloat32Array(Float32Array.of(0, 1))
+    expect(a.digest()).toBe(b.digest())
+  })
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    'writeFloat32Array refuses the non-finite value %s',
+    (value) => {
+      expect(() => new ByteHasher().writeFloat32Array(Float32Array.of(1, value))).toThrow(
+        RangeError
+      )
+    }
+  )
+
+  it('writeUint8Array: a uint32 length, then the bytes', () => {
+    const h = stateHasher()
+    h.writeUint8Array(Uint8Array.of(0, 1, 2, 255, 128))
+    expect(h.digest()).toBe('78258c595e2fc900605bfba5bb578380')
+    const empty = stateHasher()
+    empty.writeUint8Array(new Uint8Array(0))
+    expect(empty.digest()).toBe('49bb8cc6d6dea402d80e77656ee6c88e')
+  })
+
+  it('writes arrays one after another, each self-delimiting', () => {
+    const h = stateHasher()
+    h.writeUint8Array(Uint8Array.of(0, 1, 2, 255, 128))
+    h.writeFloat32Array(Float32Array.of(1.5, -0.25))
+    expect(h.digest()).toBe('56f8fce016eab77aac599e0ca7558b39')
+  })
+
+  it('cannot confuse where one array ends and the next begins', () => {
+    const a = new ByteHasher()
+    a.writeUint8Array(Uint8Array.of(1, 2))
+    a.writeUint8Array(Uint8Array.of(3))
+    const b = new ByteHasher()
+    b.writeUint8Array(Uint8Array.of(1))
+    b.writeUint8Array(Uint8Array.of(2, 3))
+    expect(a.digest()).not.toBe(b.digest())
+  })
+
+  it('hashes a 4-million-element layer quickly enough to be used on a full map', () => {
+    const layer = new Float32Array(4_000_000).fill(0.25)
+    const started = Date.now()
+    const h = new ByteHasher()
+    h.writeFloat32Array(layer)
+    h.digest()
+    expect(Date.now() - started).toBeLessThan(5_000)
+  })
+})
+
 describe('stateHasher', () => {
   it('starts with the versioned header: "SOVH" then the schema version as a uint32', () => {
     expect(stateHasher().digest()).toBe('0fe9d992d6cf4eba7b27f691dba022c3')

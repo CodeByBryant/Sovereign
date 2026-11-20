@@ -1,4 +1,4 @@
-import { defaultConfig } from '@sovereign/config'
+import { defaultWorldConfig } from '@sovereign/config'
 import type {
   BiomeConfig,
   BiomeNoiseConfig,
@@ -42,7 +42,7 @@ export function smallTerrainRequest(
 ): TerrainRequestShape {
   const { width = 160, height = 96, islandMode = false } = options
   const k = 12
-  const t = defaultConfig.terrain
+  const t = defaultWorldConfig
   return {
     seed,
     terrain: {
