@@ -46,7 +46,7 @@ Installing downloads the Electron binary. To skip it when you only work on the e
 Each package keeps its tests in `tests/`, mirroring `src/`, with shared helpers in `tests/support/`.
 
 - **Fast suite** (`vitest.config.ts`): everything except `tests/determinism/`. Seconds.
-- **Determinism suite** (`vitest.determinism.config.ts`): a biome-coverage guard (three 1000 x 1000 worlds must contain all 26 biomes, the pinned ocean and every biome within a wide band of its target), golden world hashes (`tests/determinism/golden/world-hashes.json`), a resource-coverage guard (all 22 resources present, exact shares, metals on ridges, coal and oil in basins, patches not speckle), terrain goldens, a depletion golden and bit-exact `ln`/`exp`/`pow` goldens. CI runs it on Linux and Windows. Regenerating a golden is a deliberate act, in its own commit, with the reason in the pull request ([simulation/determinism.md](simulation/determinism.md), section 8).
+- **Determinism suite** (`vitest.determinism.config.ts`): a biome-coverage guard (three 1000 x 1000 worlds must contain all 26 biomes, the pinned ocean and every biome within a wide band of its target), golden world hashes (`tests/determinism/golden/world-hashes.json`), a resource-coverage guard (all 22 resources present, exact shares, metals on ridges, coal and oil in basins, patches not speckle), a routes-and-nations guard (points on routes, no type swamping the rest, stats that follow the land), terrain goldens, a depletion golden and bit-exact `ln`/`exp`/`pow` goldens. CI runs it on Linux and Windows. Regenerating a golden is a deliberate act, in its own commit, with the reason in the pull request ([simulation/determinism.md](simulation/determinism.md), section 8).
 - **Probe** (`vitest.probe.config.ts`, `tests/probe/*.probe.ts`): measurements, not tests; never part of a suite.
 - **Tool tests** (`tools/*.test.mjs`, `node:test`): the dependency-rule checker, the CI-scope decision, the Pages artifact check and the determinism shard list.
 - **Browser e2e** (`apps/web/e2e`): drives the dev server in Chromium, once as a desktop with a mouse and once as a phone with touch. They read the camera from `data-camera-*` attributes on the map shell rather than comparing screenshots, which are not stable on software GL.
@@ -77,8 +77,8 @@ A measured answer, not a guess (`pnpm probe`, Node 22, one machine, no GPU):
 
 | Map         | create | hash   | save             | load   |
 | ----------- | ------ | ------ | ---------------- | ------ |
-| 1024 x 1024 | 1.9 s  | 198 ms | 60 ms (23.1 MB)  | 46 ms  |
-| 2000 x 2000 | 6.5 s  | 730 ms | 121 ms (88.1 MB) | 148 ms |
+| 1024 x 1024 | 1.8 s  | 191 ms | 58 ms (23.2 MB)  | 43 ms  |
+| 2000 x 2000 | 6.5 s  | 755 ms | 136 ms (88.3 MB) | 159 ms |
 
 A world is built once, in a worker. Nothing here justifies native or WASM compute; that stays deferred until a probe shows a real bottleneck ([ADR 0001](decisions/0001-separate-simulation-engine.md)). When the tick loop exists, add a tick probe next to this one and budget each phase with it.
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ByteHasher, HASH_SCHEMA_VERSION, stateHasher } from '../src/serialization/hash'
 
 describe('HASH_SCHEMA_VERSION', () => {
-  it('is 3: a route network, hubs, and what a nation\'s land is like', () => {
+  it("is 3: a route network, hubs, and what a nation's land is like", () => {
     expect(HASH_SCHEMA_VERSION).toBe(3)
   })
 })

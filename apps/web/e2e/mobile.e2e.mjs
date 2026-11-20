@@ -251,6 +251,9 @@ async function runOrientation(browser, url, name, viewport, nation) {
   for (let i = 0; i < 6; i += 1) await page.tap(zoomInButton, { timeout: 5_000 })
   await centerOn(page, nation, fingerDrag, viewport, 1)
   await settle()
+  // The drags above end in a tap, which fills the tile inspector; in landscape that sheet covers the middle of
+  // the screen, where the capital is, so hide it for the tap that must reach the map and bring it back after.
+  await page.keyboard.press('i')
   await page.touchscreen.tap(w / 2, h / 2)
   await page.waitForTimeout(500)
   if (process.env.E2E_SHOTS) {
@@ -286,6 +289,7 @@ async function runOrientation(browser, url, name, viewport, nation) {
     if (await page.$('.nation-panel')) fail('the nation panel did not close')
   }
 
+  await page.keyboard.press('i')
   // a phone has no hover: a tap on the map must fill the tile inspector
   await page.touchscreen.tap(cx, cy)
   await page.waitForTimeout(400)
@@ -294,6 +298,13 @@ async function runOrientation(browser, url, name, viewport, nation) {
   )
   if (!/position/i.test(inspectorText))
     fail(`tapping a tile did not fill the inspector: "${inspectorText.slice(0, 60)}"`)
+
+  // A nation now starts with a large territory, so the tap above may have opened its panel again; the legend
+  // and the nation panel are one sheet at a time, so close it before looking at the legend.
+  if (await page.$('.nation-panel')) {
+    await page.tap('.nation-panel__close', { timeout: 5_000 })
+    await page.waitForTimeout(300)
+  }
 
   // ---- resources: the legend is a strip under the top controls, and focusing a resource works ----
   await page
