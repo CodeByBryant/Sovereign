@@ -1,21 +1,18 @@
 import js from '@eslint/js'
-import tsConfigPkg from '@electron-toolkit/eslint-config-ts'
-import prettierConfig from '@electron-toolkit/eslint-config-prettier'
+import tseslint from 'typescript-eslint'
+import prettier from 'eslint-config-prettier'
+import reactHooks from 'eslint-plugin-react-hooks'
 
-const { configs: tsConfigs } = tsConfigPkg
-
-export default [
+export default tseslint.config(
   {
-    ignores: [
-      'out/**',
-      'dist/**',
-      'node_modules/**',
-      'build/**',
-      'vite.config.ts',
-      'electron.vite.config.ts'
-    ]
+    ignores: ['**/dist/**', '**/node_modules/**', '**/release/**', '.claude/**', '.dev/**']
   },
   js.configs.recommended,
-  ...tsConfigs.recommended,
-  prettierConfig
-]
+  ...tseslint.configs.recommended,
+  {
+    files: ['**/*.tsx'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: reactHooks.configs.recommended.rules
+  },
+  prettier
+)

@@ -1,0 +1,25 @@
+# Packaging config for the desktop shell.
+# TODO(R5): wire `files` / `extraResources` to the built @sovereign/web output and add build scripts.
+appId: com.codebybryant.sovereign
+productName: Sovereign
+directories:
+  output: release
+win:
+  target: nsis
+  executableName: sovereign
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  createDesktopShortcut: always
+mac:
+  category: public.app-category.simulation-games
+  target: dmg
+  notarize: false
+dmg:
+  artifactName: ${name}-${version}.${ext}
+linux:
+  target: AppImage
+  category: Game
+appImage:
+  artifactName: ${name}-${version}.${ext}
+npmRebuild: false

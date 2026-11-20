@@ -1,0 +1,19 @@
+{
+  "name": "@sovereign/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sovereign desktop shell (Electron). Loads the @sovereign/web build.",
+  "author": "CodeByBryant",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  }
+}
