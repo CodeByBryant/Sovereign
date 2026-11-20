@@ -119,6 +119,10 @@ interface Pass {
   water: boolean
   share: number
   coastDistance: Range | undefined
+  /** The hard limits of this pass: a land or fishery pass uses the rule's, an offshore one its own. */
+  elevation: Range | undefined
+  temperature: Range | undefined
+  humidity: Range | undefined
 }
 
 function checkRange(name: string, range: Range | undefined): void {
@@ -166,6 +170,7 @@ function validate(input: PlacementInput): void {
         throw new RangeError(`${key}.offshore.share must be from 0 to 1`)
       }
       checkRange(`${key}.offshore.coastDistance`, rule.offshore.coastDistance)
+      checkRange(`${key}.offshore.elevation`, rule.offshore.elevation)
     }
   }
 }
@@ -229,10 +234,28 @@ export function placeResources(input: PlacementInput): ResourceSlots {
     const rule = rules[def.key]
     if (rule === undefined) continue
     if (def.domain === 'land' || def.domain === 'both') {
-      passes.push({ def, rule, water: false, share: rule.share, coastDistance: rule.coastDistance })
+      passes.push({
+        def,
+        rule,
+        water: false,
+        share: rule.share,
+        coastDistance: rule.coastDistance,
+        elevation: rule.elevation,
+        temperature: rule.temperature,
+        humidity: rule.humidity
+      })
     }
     if (def.domain === 'water') {
-      passes.push({ def, rule, water: true, share: rule.share, coastDistance: rule.coastDistance })
+      passes.push({
+        def,
+        rule,
+        water: true,
+        share: rule.share,
+        coastDistance: rule.coastDistance,
+        elevation: rule.elevation,
+        temperature: rule.temperature,
+        humidity: rule.humidity
+      })
     }
     if (def.domain === 'both' && rule.offshore !== undefined) {
       passes.push({
@@ -240,7 +263,10 @@ export function placeResources(input: PlacementInput): ResourceSlots {
         rule,
         water: true,
         share: rule.offshore.share,
-        coastDistance: rule.offshore.coastDistance
+        coastDistance: rule.offshore.coastDistance,
+        elevation: rule.offshore.elevation,
+        temperature: undefined,
+        humidity: undefined
       })
     }
   }
@@ -272,12 +298,12 @@ export function placeResources(input: PlacementInput): ResourceSlots {
     // ---- score every tile that passes the gates ----
     // The rule's limits and weights are read once, not per tile.
     const tiles = pass.water ? seaTiles : landTiles
-    const eLo = rule.elevation?.[0] ?? -Infinity
-    const eHi = rule.elevation?.[1] ?? Infinity
-    const tLo = rule.temperature?.[0] ?? -Infinity
-    const tHi = rule.temperature?.[1] ?? Infinity
-    const hLo = rule.humidity?.[0] ?? -Infinity
-    const hHi = rule.humidity?.[1] ?? Infinity
+    const eLo = pass.elevation?.[0] ?? -Infinity
+    const eHi = pass.elevation?.[1] ?? Infinity
+    const tLo = pass.temperature?.[0] ?? -Infinity
+    const tHi = pass.temperature?.[1] ?? Infinity
+    const hLo = pass.humidity?.[0] ?? -Infinity
+    const hHi = pass.humidity?.[1] ?? Infinity
     const cLo = pass.coastDistance?.[0] ?? -Infinity
     const cHi = pass.coastDistance?.[1] ?? Infinity
     const coastField = pass.water ? toLand : toSea

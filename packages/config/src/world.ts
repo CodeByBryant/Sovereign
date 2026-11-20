@@ -444,7 +444,7 @@ export const defaultWorldConfig: WorldConfig = {
    * provisional until the economy exists to say how much of what a nation needs.
    */
   resources: {
-    features: { ridgeRadius: 8, ridgeScale: 0.04, slopeScale: 0.02 },
+    features: { ridgeRadius: 16, ridgeScale: 0.015, slopeScale: 0.006 },
     rules: {
       // ---- surface, land: renewable ----
       timber: {
@@ -954,6 +954,7 @@ function validateResourcePlacement(settings: ResourcePlacementSettings, problems
         problems.push(`${name}.offshore.share must be from 0 to 1`)
       }
       checkRange(`${name}.offshore.coastDistance`, rule.offshore.coastDistance, true)
+      checkRange(`${name}.offshore.elevation`, rule.offshore.elevation)
       sums.groundWater += rule.offshore.share
     }
     if (def.domain === 'water') sums.water += rule.share

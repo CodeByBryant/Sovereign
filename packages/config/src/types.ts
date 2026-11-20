@@ -235,8 +235,12 @@ export interface ResourceRule {
   regional: number
   /** The size of those regions, in tiles. */
   regionSize: number
-  /** Oil and salt: the share of the **water** tiles within the coast distance range that also hold it, under the sea. */
-  offshore?: { share: number; coastDistance?: Range }
+  /**
+   * Oil and salt: the share of the **water** tiles within the coast distance range (and, if given, the
+   * elevation range: how deep it can lie) that also hold it, under the sea. The rule's own elevation,
+   * temperature and humidity limits are for the land and do not apply here.
+   */
+  offshore?: { share: number; coastDistance?: Range; elevation?: Range }
 }
 
 /** Settings shared by every rule when features are derived from the terrain. */

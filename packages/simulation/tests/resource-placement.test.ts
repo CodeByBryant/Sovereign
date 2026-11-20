@@ -330,6 +330,54 @@ describe('placeResources: water', () => {
     expect(atSea.every((i) => xOf(i) >= 4)).toBe(true)
   })
 
+  it("does not apply a land rule's elevation, temperature and humidity gates to its offshore deposits", () => {
+    const input = build({
+      oil: rule({
+        share: 0.1,
+        elevation: [SEA + 0.01, 1],
+        temperature: [0.9, 1],
+        humidity: [0.9, 1],
+        offshore: { share: 0.2, coastDistance: [1, 12] }
+      })
+    })
+    const found = tilesOf(placeResources(input).ground, ResourceType.Oil)
+    const atSea = found.filter((i) => input.elevation[i] <= SEA)
+    expect(atSea).toHaveLength(Math.round(0.2 * waterCount(input)))
+  })
+
+  it('applies the offshore rule its own elevation range (the depth it can lie at)', () => {
+    // the sea gets deeper to the west: elevation 0.05 at x = 0 up to 0.34 at x = 15
+    const depth = { elevation: (x: number) => (x < 16 ? 0.05 + x * 0.0193 : 0.5) }
+    const input = build(
+      {
+        oil: rule({
+          share: 0.1,
+          offshore: { share: 0.5, coastDistance: [1, 15], elevation: [SEA - 0.1, SEA] }
+        })
+      },
+      depth
+    )
+    const atSea = tilesOf(placeResources(input).ground, ResourceType.Oil).filter(
+      (i) => input.elevation[i] <= SEA
+    )
+    expect(atSea.length).toBeGreaterThan(0)
+    for (const i of atSea) {
+      expect(input.elevation[i]).toBeGreaterThanOrEqual(SEA - 0.1)
+      expect(input.elevation[i]).toBeLessThanOrEqual(SEA)
+    }
+    const unrestricted = tilesOf(
+      placeResources(
+        build(
+          { oil: rule({ share: 0.1, offshore: { share: 0.5, coastDistance: [1, 15] } }) },
+          depth
+        )
+      ).ground,
+      ResourceType.Oil
+    ).filter((i) => input.elevation[i] <= SEA)
+    // the depth range really excluded candidates: without it, deeper tiles are taken too
+    expect(Math.min(...unrestricted.map((i) => input.elevation[i]))).toBeLessThan(SEA - 0.1)
+  })
+
   it('keeps a land-only resource off the water even if its gates would allow it', () => {
     const slots = placeResources(build({ iron: rule({ share: 1 }) }))
     for (const i of tilesOf(slots.ground, ResourceType.Iron))
@@ -439,6 +487,11 @@ describe('placeResources: regions, determinism and input checks', () => {
     expect(() => placeResources(build({ iron: rule({ share: -0.1 }) }))).toThrow(RangeError)
     expect(() => placeResources(build({ iron: rule({ regionSize: 0 }) }))).toThrow(RangeError)
     expect(() => placeResources(build({ iron: rule({ regional: 1.5 }) }))).toThrow(RangeError)
+  })
+
+  it('rejects an offshore elevation range that runs backwards', () => {
+    const backwards = rule({ offshore: { share: 0.1, elevation: [0.5, 0.2] } })
+    expect(() => placeResources(build({ oil: backwards }))).toThrow(RangeError)
   })
 
   it('rejects fields whose length does not match the map', () => {

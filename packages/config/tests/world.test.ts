@@ -417,6 +417,10 @@ describe('resource placement rules (resources)', () => {
       (c: WorldConfig) => (c.resources.rules.fish.biomes = { ocean: 1 })
     ],
     [
+      'an offshore elevation range that runs backwards',
+      (c: WorldConfig) => (c.resources.rules.oil.offshore = { share: 0.01, elevation: [0.9, 0.1] })
+    ],
+    [
       'an offshore deposit on a land-only resource',
       (c: WorldConfig) => (c.resources.rules.iron.offshore = { share: 0.01 })
     ],
