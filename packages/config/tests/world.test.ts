@@ -378,19 +378,12 @@ describe('resource placement rules (resources)', () => {
   it.each([
     [
       'an unknown resource',
-      (c: WorldConfig) =>
-        (c.resources.rules.unicorn = { ...c.resources.rules.iron })
+      (c: WorldConfig) => (c.resources.rules.unicorn = { ...c.resources.rules.iron })
     ],
     ['a negative share', (c: WorldConfig) => (c.resources.rules.iron.share = -0.1)],
     ['a share above 1', (c: WorldConfig) => (c.resources.rules.iron.share = 1.1)],
-    [
-      'a regional factor above 1',
-      (c: WorldConfig) => (c.resources.rules.iron.regional = 1.2)
-    ],
-    [
-      'a negative regional factor',
-      (c: WorldConfig) => (c.resources.rules.iron.regional = -0.1)
-    ],
+    ['a regional factor above 1', (c: WorldConfig) => (c.resources.rules.iron.regional = 1.2)],
+    ['a negative regional factor', (c: WorldConfig) => (c.resources.rules.iron.regional = -0.1)],
     ['a region size of 0', (c: WorldConfig) => (c.resources.rules.iron.regionSize = 0)],
     [
       'a range with min above max',
@@ -430,8 +423,7 @@ describe('resource placement rules (resources)', () => {
     ],
     [
       'a river preference with no reach',
-      (c: WorldConfig) =>
-        (c.resources.rules.grain.prefer = { river: { within: 0, weight: 1 } })
+      (c: WorldConfig) => (c.resources.rules.grain.prefer = { river: { within: 0, weight: 1 } })
     ],
     [
       'regrowth for a finite resource',
@@ -444,15 +436,9 @@ describe('resource placement rules (resources)', () => {
     ['regrowth of 0 units', (c: WorldConfig) => (c.resources.regrowth.grain.units = 0)],
     ['regrowth of 256 units', (c: WorldConfig) => (c.resources.regrowth.grain.units = 256)],
     ['a regrowth period of 0', (c: WorldConfig) => (c.resources.regrowth.grain.period = 0)],
-    [
-      'a fractional regrowth period',
-      (c: WorldConfig) => (c.resources.regrowth.grain.period = 2.5)
-    ],
+    ['a fractional regrowth period', (c: WorldConfig) => (c.resources.regrowth.grain.period = 2.5)],
     ['a ridge radius of 0', (c: WorldConfig) => (c.resources.features.ridgeRadius = 0)],
-    [
-      'a fractional ridge radius',
-      (c: WorldConfig) => (c.resources.features.ridgeRadius = 2.5)
-    ],
+    ['a fractional ridge radius', (c: WorldConfig) => (c.resources.features.ridgeRadius = 2.5)],
     ['a ridge scale of 0', (c: WorldConfig) => (c.resources.features.ridgeScale = 0)],
     ['a slope scale of 0', (c: WorldConfig) => (c.resources.features.slopeScale = 0)],
     [
@@ -503,8 +489,6 @@ describe('resource placement rules (resources)', () => {
     }
     const resolved = resolveWorldConfig({ resources: { rules } })
     expect(resolved.resources.rules.iron.share).toBe(0.5)
-    expect(resolved.resources.regrowth).toEqual(
-      defaultWorldConfig.resources.regrowth
-    )
+    expect(resolved.resources.regrowth).toEqual(defaultWorldConfig.resources.regrowth)
   })
 })

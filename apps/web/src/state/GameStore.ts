@@ -22,6 +22,8 @@ export interface GameState {
   phase: GamePhase
   /** Active map view layer. */
   view: ViewMode
+  /** The resource the resource overlay is focused on (a catalogue id), or 0 for all of them. */
+  resourceFocus: number
   /** Whether the tile inspector tooltip is enabled. */
   inspectorEnabled: boolean
   /** The world seed for the current game. */
@@ -40,6 +42,7 @@ export interface GameState {
   // ---- Actions ----
   setPhase: (phase: GamePhase) => void
   setView: (view: ViewMode) => void
+  setResourceFocus: (id: number) => void
   toggleInspector: () => void
   setSeed: (seed: number | string) => void
   setWorldMap: (world: WorldMap) => void
@@ -58,6 +61,7 @@ export interface GameState {
 export const useGameStore = create<GameState>((set) => ({
   phase: 'title',
   view: 'biome',
+  resourceFocus: 0,
   inspectorEnabled: true,
   seed: null,
   worldMap: null,
@@ -68,6 +72,7 @@ export const useGameStore = create<GameState>((set) => ({
 
   setPhase: (phase) => set({ phase }),
   setView: (view) => set({ view }),
+  setResourceFocus: (id) => set({ resourceFocus: id }),
   toggleInspector: () => set((s) => ({ inspectorEnabled: !s.inspectorEnabled })),
   setSeed: (seed) => set({ seed }),
   setWorldMap: (world) => set({ worldMap: world }),
@@ -79,6 +84,7 @@ export const useGameStore = create<GameState>((set) => ({
     set({
       phase: 'title',
       view: 'biome',
+      resourceFocus: 0,
       seed: null,
       worldMap: null,
       strategicPoints: [],

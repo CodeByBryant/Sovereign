@@ -53,4 +53,3 @@ export interface TileInfo {
   /** Owning nation ID, or -1 if unclaimed. */
   ownerId: number
 }
-

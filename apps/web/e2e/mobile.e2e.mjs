@@ -2,7 +2,8 @@
 // 844 x 390 (landscape). Checks that the layout fits (no horizontal scroll, the toolbar and the
 // panels inside the screen and clear of each other, tap targets big enough) and that touch works:
 // a one-finger drag pans, a two-finger pinch zooms, the toolbar's + and - zoom, a tap on a nation opens its
-// panel as a sheet that fits, and a tap on the map fills the tile inspector (a phone has no hover).
+// panel as a sheet that fits, a tap on the map fills the tile inspector (a phone has no hover), and the
+// resource view shows a legend strip that fits and lets a tap focus one resource.
 //
 //   pnpm --filter @sovereign/web e2e:mobile
 //
@@ -293,6 +294,86 @@ async function runOrientation(browser, url, name, viewport, nation) {
   )
   if (!/position/i.test(inspectorText))
     fail(`tapping a tile did not fill the inspector: "${inspectorText.slice(0, 60)}"`)
+
+  // ---- resources: the legend is a strip under the top controls, and focusing a resource works ----
+  await page
+    .tap('.toolbar-btn[title="Resource (R)"]', { timeout: 5_000 })
+    .catch((error) =>
+      fail(`the resource view cannot be chosen: ${String(error.message).split('\n')[0]}`)
+    )
+  await page.waitForTimeout(400)
+  const resourceLayout = await page.evaluate(() => {
+    const r = (el) => (el ? el.getBoundingClientRect().toJSON() : null)
+    const visible = (el) => el !== null && getComputedStyle(el).display !== 'none'
+    const legend = document.querySelector('.resource-legend')
+    const inspector = document.querySelector('.inspector')
+    return {
+      legend: legend ? r(legend) : null,
+      chips: legend
+        ? [...legend.querySelectorAll('button')].map((b) => ({
+            id: b.dataset.resourceId,
+            // a chip scrolled out of a horizontal strip is still a real target: measure height only
+            height: b.getBoundingClientRect().height
+          }))
+        : [],
+      toolbar: r(document.querySelector('.canvas-shell__toolbar')),
+      toggle: r(document.querySelector('.canvas-shell__toggle')),
+      inspector: visible(inspector) ? r(inspector) : null,
+      scrollWidth: document.documentElement.scrollWidth,
+      view: document.querySelector('.canvas-shell')?.dataset.view
+    }
+  })
+  if (resourceLayout.view !== 'resource') fail('choosing the resource view did not switch to it')
+  if (!resourceLayout.legend) {
+    fail('the resource view shows no legend')
+  } else {
+    if (!inside(resourceLayout.legend))
+      fail(`the legend is not inside the screen: ${JSON.stringify(resourceLayout.legend)}`)
+    for (const [label, other] of [
+      ['toolbar', resourceLayout.toolbar],
+      ['toolbar toggle', resourceLayout.toggle],
+      ['tile inspector', resourceLayout.inspector]
+    ]) {
+      if (other && overlap(resourceLayout.legend, other)) fail(`the legend covers the ${label}`)
+    }
+    if (resourceLayout.chips.length !== 23) {
+      fail(
+        `expected 22 resources and an "all" button in the legend, found ${resourceLayout.chips.length}`
+      )
+    }
+    for (const chip of resourceLayout.chips) {
+      if (chip.height < MIN_TAP_TARGET)
+        fail(`a legend button is too short to tap: ${chip.id} ${Math.round(chip.height)}`)
+    }
+  }
+  if (resourceLayout.scrollWidth > w)
+    fail(`the legend makes the page scroll sideways (${resourceLayout.scrollWidth} > ${w})`)
+
+  const focusOf = () => page.$eval('.canvas-shell', (el) => el.dataset.resourceFocus)
+  // Iron is id 3; the chip may be scrolled out of the strip, so scroll it into view and tap it
+  await page.$eval('.resource-legend [data-resource-id="3"]', (el) =>
+    el.scrollIntoView({ inline: 'center' })
+  )
+  await page
+    .tap('.resource-legend [data-resource-id="3"]', { timeout: 5_000 })
+    .catch((error) => fail(`a resource cannot be focused: ${String(error.message).split('\n')[0]}`))
+  await page.waitForTimeout(600)
+  if ((await focusOf()) !== '3') fail(`tapping Iron did not focus it (focus is ${await focusOf()})`)
+  const pressed = await page.$$eval('.resource-legend [aria-pressed="true"]', (els) =>
+    els.map((el) => el.dataset.resourceId)
+  )
+  if (pressed.join() !== '3') fail(`only Iron should look pressed, found: ${pressed.join()}`)
+  if (process.env.E2E_SHOTS) {
+    await page.screenshot({
+      path: `${process.env.E2E_SHOTS}/mobile-${name.split(' ')[0]}-resource.png`
+    })
+  }
+  await page.$eval('.resource-legend [data-resource-id="all"]', (el) =>
+    el.scrollIntoView({ inline: 'center' })
+  )
+  await page.tap('.resource-legend [data-resource-id="all"]', { timeout: 5_000 })
+  await page.waitForTimeout(400)
+  if ((await focusOf()) !== '0') fail('"All resources" did not clear the focus')
 
   await context.close()
   return problems

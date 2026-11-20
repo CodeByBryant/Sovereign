@@ -43,7 +43,7 @@ Sovereign is heading toward a deep grand-strategy simulation: individual rulers,
 | `R` | Resource    | Biome plus resource deposits       |
 | `P` | Political   | Territory colours and borders      |
 
-Click a nation's territory for its panel; the tile inspector (`I`) describes whatever is under the cursor.
+Click a nation's territory for its panel; the tile inspector (`I`) describes whatever is under the cursor, including what each of its two resource slots holds and how much is left. In the resource view a legend lists all 22 resources by tier; pick one to see only where it is (a heat map), or "All resources" to see each tile's dominant one.
 
 ### Determinism is the point
 

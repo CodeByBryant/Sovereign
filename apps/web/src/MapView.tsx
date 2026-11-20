@@ -6,11 +6,11 @@
  * Wired to zustand GameStore for view mode, FPS and world data.
  */
 import React, { useEffect, useRef, useCallback } from 'react'
-import type { NationSnapshot, StrategicPoint } from '@sovereign/contracts'
-import { Camera, LAYER_NAMES } from '@sovereign/renderer'
+import type { NationSnapshot, ResourceSlots, StrategicPoint } from '@sovereign/contracts'
+import { Camera, LAYER_NAMES, resourceRgba } from '@sovereign/renderer'
 import { MapRenderer } from '@sovereign/renderer/pixi'
 import { WorldMap } from '@sovereign/simulation'
-import { TileInspector, NationPanel, type InspectorData } from '@sovereign/ui'
+import { TileInspector, NationPanel, ResourceLegend, type InspectorData } from '@sovereign/ui'
 import { FrameLoop } from './host/FrameLoop'
 import { SimulationHost } from './host/SimulationHost'
 import { GestureTracker, type GestureEvent } from './input/GestureTracker'
@@ -59,6 +59,9 @@ const MapView: React.FC = () => {
   const cameraRef = useRef<Camera | null>(null)
   const mapSizeRef = useRef({ width: 0, height: 0, tileSize: 1 })
   const biomeIdsRef = useRef<Uint8Array | null>(null)
+  // what the resource overlay is drawn from, so a change of focus can redraw it
+  const baseLayerRef = useRef<Uint8ClampedArray | null>(null)
+  const resourcesRef = useRef<ResourceSlots | null>(null)
   const nationsRef = useRef<NationSnapshot[]>([])
   const strategicPointsRef = useRef<StrategicPoint[]>([])
   const strategicGridRef = useRef<Map<number, StrategicPoint>>(new Map())
@@ -70,6 +73,8 @@ const MapView: React.FC = () => {
   const inspectorEnabled = useGameStore((s) => s.inspectorEnabled)
   const selectedNation = useGameStore((s) => s.selectedNation)
   const setView = useGameStore((s) => s.setView)
+  const resourceFocus = useGameStore((s) => s.resourceFocus)
+  const setResourceFocus = useGameStore((s) => s.setResourceFocus)
   const setFps = useGameStore((s) => s.setFps)
   const setPhase = useGameStore((s) => s.setPhase)
   const setWorldMap = useGameStore((s) => s.setWorldMap)
@@ -287,6 +292,8 @@ const MapView: React.FC = () => {
 
           mapSizeRef.current = { width, height, tileSize }
           biomeIdsRef.current = ready.fields.biomeIds
+          baseLayerRef.current = ready.layers.biome
+          resourcesRef.current = ready.fields.resources
           strategicPointsRef.current = ready.strategicPoints
           nationsRef.current = ready.snapshot.nations
 
@@ -394,6 +401,16 @@ const MapView: React.FC = () => {
     return () => document.removeEventListener('fullscreenchange', handler)
   }, [])
 
+  // A change of focus redraws the resource overlay: one resource as a heat map, or all of them.
+  useEffect(() => {
+    const renderer = rendererRef.current
+    const base = baseLayerRef.current
+    const resources = resourcesRef.current
+    if (!renderer || !base || !resources) return
+    const { width, height } = mapSizeRef.current
+    renderer.setLayer('resource', resourceRgba(base, resources, resourceFocus), width, height)
+  }, [resourceFocus])
+
   /** Zoom about the middle of the screen: the toolbar's + / - buttons, for devices with no wheel. */
   const zoomBy = useCallback(
     (factor: number) => {
@@ -424,7 +441,12 @@ const MapView: React.FC = () => {
   /*  Render                                                           */
   /* ---------------------------------------------------------------- */
   return (
-    <section className="canvas-shell" ref={shellRef}>
+    <section
+      className="canvas-shell"
+      ref={shellRef}
+      data-view={view}
+      data-resource-focus={resourceFocus}
+    >
       <div ref={hostRef} className="canvas-shell__host" />
 
       <div className="canvas-shell__hud">
@@ -505,6 +527,8 @@ const MapView: React.FC = () => {
           )}
         </div>
       )}
+
+      {view === 'resource' && <ResourceLegend focus={resourceFocus} onFocus={setResourceFocus} />}
 
       {inspectorEnabled && <TileInspector data={inspectorData} />}
 
