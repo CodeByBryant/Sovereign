@@ -11,7 +11,7 @@
 // PROBE_SEEDS=1,2,3 picks the seeds and PROBE_SIDE=512 shrinks the maps (default: ten fixed seeds at
 // the real 2000 x 2000). Nothing is asserted; the report is the output.
 import { defaultWorldConfig } from '@sovereign/config'
-import { BIOME_KEYS, ResourceType, type BiomeKey } from '@sovereign/contracts'
+import { BIOME_KEYS, RESOURCE_CATALOG, ResourceType, type BiomeKey } from '@sovereign/contracts'
 import { performance } from 'node:perf_hooks'
 import { it } from 'vitest'
 import { determineBiome } from '../../src/terrain/biomes'
@@ -51,10 +51,11 @@ function countWorld(seed: number): WorldCount {
   const water = BIOME_KEYS.reduce((n, key, id) => n + (WATER.has(key) ? counts[id] : 0), 0)
   const t = world.terrain
   let riverTiles = 0
-  const resources = new Array<number>(8).fill(0)
+  const resources = new Array<number>(RESOURCE_CATALOG.length + 1).fill(0)
   for (let i = 0; i < ids.length; i += 1) {
     if (t.riverMask[i] !== 0) riverTiles += 1
-    if (t.resourceType[i] !== 0) resources[t.resourceType[i]] += 1
+    if (t.resources.surface.type[i] !== 0) resources[t.resources.surface.type[i]] += 1
+    if (t.resources.ground.type[i] !== 0) resources[t.resources.ground.type[i]] += 1
   }
   const strategic: Record<string, number> = {}
   for (const point of t.strategicPoints) strategic[point.type] = (strategic[point.type] ?? 0) + 1

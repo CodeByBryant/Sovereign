@@ -18,6 +18,7 @@ import {
   type LayerName,
   type PoliticalStyle
 } from '@sovereign/renderer'
+import type { ResourceSlot } from '@sovereign/contracts'
 import type { World } from '@sovereign/simulation'
 import type { WorldFields, WorldReady } from './protocol'
 
@@ -25,6 +26,14 @@ export interface Built {
   message: WorldReady
   /** The buffers to hand to `postMessage` as its transfer list. */
   transfer: ArrayBuffer[]
+}
+
+function copySlot(slot: ResourceSlot): ResourceSlot {
+  return { type: slot.type.slice(), richness: slot.richness.slice(), stock: slot.stock.slice() }
+}
+
+function slotArrays(slot: ResourceSlot): Uint8Array[] {
+  return [slot.type, slot.richness, slot.stock]
 }
 
 export function buildReady(world: World, style: PoliticalStyle): Built {
@@ -38,7 +47,7 @@ export function buildReady(world: World, style: PoliticalStyle): Built {
     humidity: humidityRgba(t.humidity),
     biome,
     strategic: strategicRgba(biome, width, height, t.strategicPoints),
-    resource: resourceRgba(biome, t.resourceType, t.resourceDensity),
+    resource: resourceRgba(biome, t.resources),
     political: politicalRgba(
       biome,
       world.map.ownership,
@@ -55,14 +64,20 @@ export function buildReady(world: World, style: PoliticalStyle): Built {
     humidity: t.humidity.slice(),
     biomeIds: t.biomeIds.slice(),
     riverMask: t.riverMask.slice(),
-    resourceType: t.resourceType.slice(),
-    resourceDensity: t.resourceDensity.slice(),
+    resources: {
+      surface: copySlot(t.resources.surface),
+      ground: copySlot(t.resources.ground)
+    },
     ownership: world.map.ownership.slice()
   }
 
-  const transfer = [...Object.values(layers), ...Object.values(fields)].map(
-    (array) => array.buffer as ArrayBuffer
-  )
+  const { resources, ...flat } = fields
+  const transfer = [
+    ...Object.values(layers),
+    ...Object.values(flat),
+    ...slotArrays(resources.surface),
+    ...slotArrays(resources.ground)
+  ].map((array) => array.buffer as ArrayBuffer)
   return {
     message: {
       type: 'ready',

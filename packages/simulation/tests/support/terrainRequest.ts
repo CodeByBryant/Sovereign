@@ -1,9 +1,10 @@
 import { defaultWorldConfig } from '@sovereign/config'
+import { smallResources } from './worldOptions'
 import type {
   BiomeConfig,
   BiomeNoiseConfig,
   HumidityConfig,
-  ResourceConfig,
+  ResourcePlacementConfig,
   RiverConfig,
   StrategicConfig,
   TemperatureConfig,
@@ -20,7 +21,7 @@ export interface TerrainRequestShape {
   rivers: RiverConfig
   biomes: BiomeConfig
   strategic: StrategicConfig
-  resources: ResourceConfig
+  resources: ResourcePlacementConfig
   minLandRatio?: number
 }
 
@@ -66,7 +67,7 @@ export function smallTerrainRequest(
     },
     biomes: { ...t.biomes },
     strategic: { ...t.strategic },
-    resources: { ...t.resources, oreScale: t.resources.oreScale * k },
+    resources: smallResources(k),
     minLandRatio: options.minLandRatio ?? t.map.minLandRatio
   }
 }

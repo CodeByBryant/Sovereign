@@ -24,9 +24,9 @@ const side = Number.parseInt(process.env.PROBE_SIDE ?? '', 10)
 /** A landmass is at least this many tiles (about 0.5% of a 2000 x 2000 map). */
 const MIN_LAND = 20_000
 
-/** The resource type layers of a world: one array per slot (today there is one). */
+/** The resource type layers of a world: one array per slot. */
 function typeLayers(t: TerrainFields): Uint8Array[] {
-  return [t.resourceType]
+  return [t.resources.surface.type, t.resources.ground.type]
 }
 
 interface WorldStats {

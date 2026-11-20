@@ -10,7 +10,9 @@ import {
   temperatureRgba
 } from '@sovereign/renderer'
 import { World } from '@sovereign/simulation'
+import type { ResourceSlot } from '@sovereign/contracts'
 import { buildReady } from '../src/host/readyMessage'
+import type { WorldFields } from '../src/host/protocol'
 
 const STYLE = { alpha: 0.45, darken: 0.35 }
 
@@ -22,8 +24,26 @@ const SMALL: WorldConfigOverrides = {
   humidity: { scale: 0.048 },
   biomeNoise: { scale: 0.072 },
   rivers: { primaryScale: 0.0108, secondaryScale: 0.048, warpStrength: 3 },
-  resources: { oreScale: 0.096 },
   nations: { count: 5, minSpacing: 12 }
+}
+
+const slotBuffers = (slot: ResourceSlot): ArrayBufferLike[] => [
+  slot.type.buffer,
+  slot.richness.buffer,
+  slot.stock.buffer
+]
+
+/** Every typed array in the fields message, the resource slots flattened. */
+function fieldArrays(fields: WorldFields): Array<Float32Array | Uint8Array> {
+  const { resources, ...flat } = fields
+  return [
+    ...Object.values(flat),
+    ...[resources.surface, resources.ground].flatMap((slot) => [
+      slot.type,
+      slot.richness,
+      slot.stock
+    ])
+  ]
 }
 
 const make = (): World => World.create({ seed: 21, config: SMALL })
@@ -76,9 +96,7 @@ describe('buildReady', () => {
     expect(message.layers.strategic).toEqual(
       strategicRgba(biome, width, height, tf.strategicPoints)
     )
-    expect(message.layers.resource).toEqual(
-      resourceRgba(biome, tf.resourceType, tf.resourceDensity)
-    )
+    expect(message.layers.resource).toEqual(resourceRgba(biome, tf.resources))
   })
 
   it("copies the strategic points rather than sharing the engine's objects", () => {
@@ -93,8 +111,11 @@ describe('buildReady', () => {
     expect(f.humidity).toEqual(world.terrain.humidity)
     expect(f.biomeIds).toEqual(world.terrain.biomeIds)
     expect(f.riverMask).toEqual(world.terrain.riverMask)
-    expect(f.resourceType).toEqual(world.terrain.resourceType)
-    expect(f.resourceDensity).toEqual(world.terrain.resourceDensity)
+    for (const layer of ['surface', 'ground'] as const) {
+      expect(f.resources[layer].type).toEqual(world.terrain.resources[layer].type)
+      expect(f.resources[layer].richness).toEqual(world.terrain.resources[layer].richness)
+      expect(f.resources[layer].stock).toEqual(world.terrain.resources[layer].stock)
+    }
     expect(f.ownership).toEqual(world.map.ownership)
   })
 
@@ -105,15 +126,15 @@ describe('buildReady', () => {
       world.terrain.humidity.buffer,
       world.terrain.biomeIds.buffer,
       world.terrain.riverMask.buffer,
-      world.terrain.resourceType.buffer,
-      world.terrain.resourceDensity.buffer,
+      ...slotBuffers(world.terrain.resources.surface),
+      ...slotBuffers(world.terrain.resources.ground),
       world.map.ownership.buffer
     ])
-    for (const array of Object.values(message.fields)) expect(own.has(array.buffer)).toBe(false)
+    for (const array of fieldArrays(message.fields)) expect(own.has(array.buffer)).toBe(false)
   })
 
   it('lists every buffer to transfer exactly once, and nothing else', () => {
-    const buffers = [...Object.values(message.layers), ...Object.values(message.fields)].map(
+    const buffers = [...Object.values(message.layers), ...fieldArrays(message.fields)].map(
       (a) => a.buffer
     )
     expect(transfer.length).toBe(buffers.length)

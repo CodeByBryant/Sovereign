@@ -22,8 +22,8 @@ export interface TerrainFields {
   riverMask: Uint8Array
   /** River width per tile, for drawing. */
   riverWidth: Uint8Array
-  resourceType: Uint8Array
-  resourceDensity: Uint8Array
+  /** The two resource slots of every tile: surface and ground. */
+  resources: ResourceSlots
   strategicPoints: StrategicPoint[]
 }
 

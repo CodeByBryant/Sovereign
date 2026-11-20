@@ -1,4 +1,4 @@
-import type { StrategicPoint } from '@sovereign/contracts'
+import type { ResourceSlots, StrategicPoint } from '@sovereign/contracts'
 
 /** A deterministic, RNG-free set of fields that exercises every colour branch and every edge. */
 export interface SyntheticFields {
@@ -10,10 +10,13 @@ export interface SyntheticFields {
   humidity: Float32Array
   biomeIds: Uint8Array
   riverWidth: Uint8Array
-  resourceType: Uint8Array
-  resourceDensity: Uint8Array
+  resources: ResourceSlots
   strategicPoints: StrategicPoint[]
 }
+
+/** The catalogue ids that live in each slot (a copy of the catalogue's layers, so a test fixture needs no engine). */
+const SURFACE_IDS = [1, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 21, 22]
+const GROUND_IDS = [2, 3, 4, 15, 16, 17, 18, 19, 20]
 
 export function syntheticFields(width = 64, height = 40): SyntheticFields {
   const n = width * height
@@ -22,8 +25,12 @@ export function syntheticFields(width = 64, height = 40): SyntheticFields {
   const humidity = new Float32Array(n)
   const biomeIds = new Uint8Array(n)
   const riverWidth = new Uint8Array(n)
-  const resourceType = new Uint8Array(n)
-  const resourceDensity = new Uint8Array(n)
+  const slot = (): ResourceSlots['surface'] => ({
+    type: new Uint8Array(n),
+    richness: new Uint8Array(n),
+    stock: new Uint8Array(n)
+  })
+  const resources: ResourceSlots = { surface: slot(), ground: slot() }
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const i = y * width + x
@@ -32,8 +39,18 @@ export function syntheticFields(width = 64, height = 40): SyntheticFields {
       humidity[i] = ((x * 11 + y * 2) % 103) / 102
       biomeIds[i] = (x + 3 * y) % 26
       riverWidth[i] = (x * y) % 11 === 0 && x % 2 === 0 ? 1 + ((x + y) % 4) : 0
-      resourceType[i] = (x * 5 + y * 3) % 8
-      resourceDensity[i] = (x * 11 + y * 17) % 256
+      const surface = (x * 5 + y * 3) % 17
+      const ground = (x * 7 + y * 2) % 14
+      if (surface < SURFACE_IDS.length) {
+        resources.surface.type[i] = SURFACE_IDS[surface] as number
+        resources.surface.richness[i] = 1 + ((x * 11 + y * 17) % 255)
+        resources.surface.stock[i] = (resources.surface.richness[i] as number) >> (x % 3)
+      }
+      if (ground < GROUND_IDS.length) {
+        resources.ground.type[i] = GROUND_IDS[ground] as number
+        resources.ground.richness[i] = 1 + ((x * 13 + y * 5) % 255)
+        resources.ground.stock[i] = resources.ground.richness[i] as number
+      }
     }
   }
   // Includes points on the corners and edges so marker clipping is exercised.
@@ -53,8 +70,7 @@ export function syntheticFields(width = 64, height = 40): SyntheticFields {
     humidity,
     biomeIds,
     riverWidth,
-    resourceType,
-    resourceDensity,
+    resources,
     strategicPoints
   }
 }

@@ -268,7 +268,161 @@ describe('snapshot()', () => {
   })
 })
 
+describe('resources in the world', () => {
+  /** The first tile whose slot holds something, with at least `min` stock. */
+  function tileWith(world: World, layer: 'surface' | 'ground', min = 1): number {
+    const slot = world.terrain.resources[layer]
+    for (let i = 0; i < slot.type.length; i += 1) {
+      if (slot.type[i] !== 0 && (slot.stock[i] as number) >= min) return i
+    }
+    throw new Error(`no ${layer} resource with stock ${min}`)
+  }
+
+  it('places resources in both slots, and the map shares the arrays', () => {
+    const world = make(7)
+    expect(world.map.resources).toBe(world.terrain.resources)
+    expect(tileWith(world, 'surface')).toBeGreaterThanOrEqual(0)
+    expect(tileWith(world, 'ground')).toBeGreaterThanOrEqual(0)
+  })
+
+  it('describes a tile by what its slots hold, surface first', () => {
+    const world = make(7)
+    const i = tileWith(world, 'ground')
+    const x = i % world.map.width
+    const y = (i - x) / world.map.width
+    const listed = world.map.at(x, y)?.resources ?? []
+    const ground = listed.find((r) => r.layer === 'ground')
+    expect(ground?.type).toBe(world.terrain.resources.ground.type[i])
+    expect(ground?.richness).toBe(world.terrain.resources.ground.richness[i])
+    expect(ground?.stock).toBe(world.terrain.resources.ground.stock[i])
+    const layers = listed.map((r) => r.layer)
+    expect(layers).toEqual(
+      [...layers].sort((a, b) => (a === 'surface' ? -1 : b === 'surface' ? 1 : 0))
+    )
+  })
+
+  it('lists no resources on a tile that has none', () => {
+    const world = make(7)
+    const size = world.map.size
+    let empty = -1
+    for (let i = 0; i < size; i += 1) {
+      if (
+        world.terrain.resources.surface.type[i] === 0 &&
+        world.terrain.resources.ground.type[i] === 0
+      ) {
+        empty = i
+        break
+      }
+    }
+    expect(empty).toBeGreaterThanOrEqual(0)
+    const x = empty % world.map.width
+    expect(world.map.at(x, (empty - x) / world.map.width)?.resources).toEqual([])
+  })
+
+  it('extractResource takes what is asked, never more than the stock, and returns what it took', () => {
+    const world = make(7)
+    const i = tileWith(world, 'ground', 2)
+    const before = world.terrain.resources.ground.stock[i] as number
+    expect(world.extractResource('ground', i, 1)).toBe(1)
+    expect(world.terrain.resources.ground.stock[i]).toBe(before - 1)
+    expect(world.extractResource('ground', i, 255)).toBe(before - 1)
+    expect(world.terrain.resources.ground.stock[i]).toBe(0)
+    expect(world.extractResource('ground', i, 5)).toBe(0)
+    expect(world.terrain.resources.ground.richness[i]).toBeGreaterThan(0)
+  })
+
+  it('regrows a drawn-down renewable resource during step(), up to its richness, but never a mineral', () => {
+    const world = make(7)
+    const s = tileWith(world, 'surface', 1)
+    const g = tileWith(world, 'ground', 1)
+    const richness = world.terrain.resources.surface.richness[s] as number
+    world.extractResource('surface', s, 255)
+    world.extractResource('ground', g, 255)
+    world.run(2000)
+    const regrown = world.terrain.resources.surface.stock[s] as number
+    expect(regrown).toBeGreaterThan(0)
+    expect(regrown).toBeLessThanOrEqual(richness)
+    expect(world.terrain.resources.ground.stock[g]).toBe(0)
+  })
+
+  it('regrows identically in two worlds with the same history (and differently with another)', () => {
+    const play = (take: number): string => {
+      const world = make(7)
+      world.extractResource('surface', tileWith(world, 'surface'), take)
+      world.run(200)
+      return world.stateHash()
+    }
+    expect(play(3)).toBe(play(3))
+    expect(play(3)).not.toBe(play(4))
+  })
+
+  it('keeps regrowing after a save is restored', () => {
+    const world = make(7)
+    const s = tileWith(world, 'surface')
+    world.extractResource('surface', s, 255)
+    const copy = World.restore({
+      seed: world.seed,
+      config: world.config,
+      tick: world.clock.tick,
+      terrain: structuredClone(world.terrain),
+      nations: world.nations as never,
+      ownership: world.map.ownership.slice()
+    })
+    world.run(500)
+    copy.run(500)
+    expect(copy.stateHash()).toBe(world.stateHash())
+    expect(copy.terrain.resources.surface.stock[s]).toBeGreaterThan(0)
+  })
+})
+
 describe('validate()', () => {
+  it('reports a resource type that is not in the catalogue', () => {
+    const world = make(7)
+    world.terrain.resources.surface.type[3] = 99
+    expect(world.validate().join('\n')).toMatch(/resource type/)
+  })
+
+  it('reports a stock above the richness', () => {
+    const world = make(7)
+    const i = world.terrain.resources.ground.type.findIndex((t) => t !== 0)
+    world.terrain.resources.ground.stock[i] =
+      (world.terrain.resources.ground.richness[i] as number) + 1
+    world.terrain.resources.ground.richness[i] = Math.min(
+      254,
+      world.terrain.resources.ground.richness[i] as number
+    )
+    world.terrain.resources.ground.stock[i] =
+      (world.terrain.resources.ground.richness[i] as number) + 1
+    expect(world.validate().join('\n')).toMatch(/stock/)
+  })
+
+  it('reports a slot holding a resource of the other layer', () => {
+    const world = make(7)
+    const i = world.terrain.resources.surface.type.findIndex((t) => t !== 0)
+    world.terrain.resources.ground.type[i] = world.terrain.resources.surface.type[i] as number
+    world.terrain.resources.ground.richness[i] = 10
+    world.terrain.resources.ground.stock[i] = 10
+    expect(world.validate().join('\n')).toMatch(/ground/)
+  })
+
+  it('reports an empty slot that still has richness or stock, and a filled one with no richness', () => {
+    const empty = make(7)
+    const e = empty.terrain.resources.surface.type.findIndex((t) => t === 0)
+    empty.terrain.resources.surface.stock[e] = 1
+    expect(empty.validate().join('\n')).toMatch(/surface/)
+    const hollow = make(7)
+    const f = hollow.terrain.resources.surface.type.findIndex((t) => t !== 0)
+    hollow.terrain.resources.surface.richness[f] = 0
+    hollow.terrain.resources.surface.stock[f] = 0
+    expect(hollow.validate().join('\n')).toMatch(/surface/)
+  })
+
+  it('reports a slot array of the wrong length', () => {
+    const world = make(7)
+    world.terrain.resources.ground.stock = new Uint8Array(5)
+    expect(world.validate().join('\n')).toMatch(/ground stock/)
+  })
+
   it('finds nothing wrong with a fresh world, or one that has been run', () => {
     const world = make(7)
     expect(world.validate()).toEqual([])
@@ -404,11 +558,12 @@ describe('what the state hash covers', () => {
       (w: World) => (w.terrain.riverMask[40] = 1 - (w.terrain.riverMask[40] as number))
     ],
     ['a river width', (w: World) => (w.terrain.riverWidth[2] = 9)],
-    [
-      'a resource type',
-      (w: World) => (w.terrain.resourceType[8] = 7 - (w.terrain.resourceType[8] as number))
-    ],
-    ['a resource density', (w: World) => (w.terrain.resourceDensity[1] = 200)],
+    ['a surface resource type', (w: World) => (w.terrain.resources.surface.type[8] ^= 1)],
+    ['a surface richness', (w: World) => (w.terrain.resources.surface.richness[1] ^= 1)],
+    ['a surface stock', (w: World) => (w.terrain.resources.surface.stock[2] ^= 1)],
+    ['a ground resource type', (w: World) => (w.terrain.resources.ground.type[3] ^= 1)],
+    ['a ground richness', (w: World) => (w.terrain.resources.ground.richness[4] ^= 1)],
+    ['a ground stock', (w: World) => (w.terrain.resources.ground.stock[5] ^= 1)],
     [
       'the sea level',
       (w: World) =>

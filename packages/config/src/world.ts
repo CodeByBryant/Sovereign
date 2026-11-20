@@ -17,7 +17,6 @@ import type {
   BiomeConfig,
   BiomeNoiseConfig,
   HumidityConfig,
-  ResourceConfig,
   ResourcePlacementSettings,
   RiverConfig,
   StrategicConfig,
@@ -59,9 +58,8 @@ export interface WorldConfig {
   rivers: RiverConfig
   biomes: BiomeConfig
   strategic: StrategicConfig
-  resources: ResourceConfig
-  /** Where each resource is found, how rich it is and how it regrows (replaces `resources`). */
-  resourcePlacement: ResourcePlacementSettings
+  /** Where each resource is found, how rich it is and how it regrows. */
+  resources: ResourcePlacementSettings
   nations: NationsConfig
   /** In-game days per simulation tick. */
   timestep: number
@@ -433,29 +431,6 @@ export const defaultWorldConfig: WorldConfig = {
   /*  Resources                                                    */
   /* ------------------------------------------------------------ */
 
-  /**
-   * Tuning for the resource generation layer.
-   *
-   * Resources are derived from biome type, ore noise, elevation
-   * and river proximity.  Gold and iron use an independent simplex
-   * noise layer whose frequency is set by `oreScale`.
-   *
-   * @example Making gold rarer
-   * ```ts
-   * defaultWorldConfig.resources.goldRarity = 0.93
-   * ```
-   */
-  resources: {
-    /** Ore noise frequency. Smaller = larger deposit clusters. @default 0.008 */
-    oreScale: 0.008,
-    /** Gold rarity threshold (0–1, higher = rarer). @default 0.88 */
-    goldRarity: 0.88,
-    /** Iron rarity threshold (0–1, higher = rarer). @default 0.72 */
-    ironRarity: 0.72,
-    /** Minimum density to register a resource (0–255). @default 30 */
-    minDensity: 30
-  },
-
   /* ------------------------------------------------------------ */
   /*  Resource placement                                           */
   /* ------------------------------------------------------------ */
@@ -468,7 +443,7 @@ export const defaultWorldConfig: WorldConfig = {
    * The numbers are a starting design, fitted with `tests/probe/resource-quality.probe.ts`; they are
    * provisional until the economy exists to say how much of what a nation needs.
    */
-  resourcePlacement: {
+  resources: {
     features: { ridgeRadius: 8, ridgeScale: 0.04, slopeScale: 0.02 },
     rules: {
       // ---- surface, land: renewable ----
@@ -761,7 +736,6 @@ export function resolveWorldConfig(overrides: WorldConfigOverrides = {}): WorldC
     biomes: merge(d.biomes, overrides.biomes),
     strategic: merge(d.strategic, overrides.strategic),
     resources: merge(d.resources, overrides.resources),
-    resourcePlacement: merge(d.resourcePlacement, overrides.resourcePlacement),
     nations: merge(d.nations, overrides.nations),
     timestep: overrides.timestep ?? d.timestep
   }
@@ -835,7 +809,7 @@ export function validateWorldConfig(config: WorldConfig): string[] {
   validateProfile('temperature', config.temperature.profile, problems)
   validateProfile('humidity', config.humidity.profile, problems)
   validateBiomeTable(config.biomes, problems)
-  validateResourcePlacement(config.resourcePlacement, problems)
+  validateResourcePlacement(config.resources, problems)
   if (!(config.strategic.mountainPassRise > 0)) {
     problems.push('strategic.mountainPassRise must be greater than 0')
   }
@@ -919,7 +893,7 @@ function validateBiomeTable(biomes: BiomeConfig, problems: string[]): void {
 
 /** Problems with the resource placement rules and regrowth rates. */
 function validateResourcePlacement(settings: ResourcePlacementSettings, problems: string[]): void {
-  const at = 'resourcePlacement'
+  const at = 'resources'
   const { features, rules, regrowth } = settings
   if (!Number.isInteger(features.ridgeRadius) || features.ridgeRadius < 1) {
     problems.push(`${at}.features.ridgeRadius must be an integer of at least 1`)

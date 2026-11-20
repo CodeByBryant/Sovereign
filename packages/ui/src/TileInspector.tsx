@@ -50,12 +50,14 @@ const TileInspector: React.FC<Props> = ({ data }) => {
         {tile.isRiver && <Row label="River" value="Yes" accent />}
         {tile.nearShore && !tile.isWater && <Row label="Coastal" value="Yes" />}
 
-        {tile.resource !== 0 && (
-          <>
-            <Row label="Resource" value={tile.resourceLabel} accent />
-            <Row label="Density" value={`${Math.round((tile.resourceDensity / 255) * 100)}%`} />
-          </>
-        )}
+        {tile.resources.map((resource) => (
+          <Row
+            key={resource.layer}
+            label={resource.layer === 'surface' ? 'Surface' : 'Ground'}
+            value={`${resource.label}, ${Math.round((resource.stock / resource.richness) * 100)}% left`}
+            accent
+          />
+        ))}
 
         {strategic && (
           <Row

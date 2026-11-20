@@ -5,7 +5,7 @@
  * The underlying storage is struct-of-arrays (compact typed arrays).
  * `TileInfo` is a readonly view returned by `WorldMap.at(x, y)`.
  */
-import { ResourceType } from './resources'
+import type { ResourceLayer, ResourceType } from './resources'
 import type { BiomeKey } from './biomes'
 
 /**
@@ -13,6 +13,18 @@ import type { BiomeKey } from './biomes'
  * typed-array layers. This is NOT stored per-tile — it's built on
  * demand by `WorldMap.at()` to avoid 4M object allocations.
  */
+/** One resource on a tile, as the UI and the economy see it. */
+export interface TileResource {
+  type: ResourceType
+  key: string
+  label: string
+  layer: ResourceLayer
+  /** The potential the deposit began with (1 to 255). */
+  richness: number
+  /** What is left (0 to `richness`). */
+  stock: number
+}
+
 export interface TileInfo {
   /** Tile grid X coordinate. */
   x: number
@@ -36,14 +48,9 @@ export interface TileInfo {
   isWater: boolean
   /** Whether any of the 4 cardinal neighbours is water. */
   nearShore: boolean
-  /** Primary resource type present on this tile. */
-  resource: ResourceType
-  /** Resource density 0–255 (0 = absent). */
-  resourceDensity: number
-  /** Resource display label. */
-  resourceLabel: string
+  /** What the tile holds: its surface resource, then its ground resource (up to two). */
+  resources: TileResource[]
   /** Owning nation ID, or -1 if unclaimed. */
   ownerId: number
 }
 
-export { ResourceType }

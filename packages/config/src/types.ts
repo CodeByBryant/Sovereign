@@ -188,17 +188,6 @@ export interface RiverConfig {
   noiseLacunarity?: number
 }
 
-export interface ResourceConfig {
-  /** Ore noise frequency. @default 0.008 */
-  oreScale: number
-  /** Gold rarity threshold (0–1, higher = rarer). @default 0.88 */
-  goldRarity: number
-  /** Iron rarity threshold (0–1, higher = rarer). @default 0.72 */
-  ironRarity: number
-  /** Minimum density to register a resource (0–255). @default 30 */
-  minDensity: number
-}
-
 /* ------------------------------------------------------------------ */
 /*  Resource placement                                                 */
 /* ------------------------------------------------------------------ */

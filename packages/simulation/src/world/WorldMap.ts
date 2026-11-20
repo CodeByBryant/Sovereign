@@ -10,12 +10,12 @@
  * ```ts
  * const world = new WorldMap(data)
  * const tile = world.at(500, 300)
- * console.log(tile.biome, tile.resource, tile.nearShore)
+ * console.log(tile.biome, tile.resources, tile.nearShore)
  * ```
  */
 import { BIOME_KEYS, type BiomeKey } from '@sovereign/contracts'
-import { ResourceType, resourceDef } from '@sovereign/contracts'
-import type { TileInfo } from '@sovereign/contracts'
+import { resourceDef } from '@sovereign/contracts'
+import type { ResourceSlot, ResourceSlots, TileInfo, TileResource } from '@sovereign/contracts'
 
 /** Raw layer data transferred from the terrain worker. */
 export interface WorldMapData {
@@ -27,8 +27,8 @@ export interface WorldMapData {
   humidity: Float32Array
   biomeIds: Uint8Array
   riverMask: Uint8Array
-  resourceType: Uint8Array
-  resourceDensity: Uint8Array
+  /** The two resource slots of every tile (shared with the world's terrain, so extraction shows). */
+  resources: ResourceSlots
   /** Per-tile owner nation ID. 255 = unclaimed. */
   ownership: Uint8Array
 }
@@ -52,8 +52,7 @@ export class WorldMap {
   readonly humidity: Float32Array
   readonly biomeIds: Uint8Array
   readonly riverMask: Uint8Array
-  readonly resourceType: Uint8Array
-  readonly resourceDensity: Uint8Array
+  readonly resources: ResourceSlots
   readonly ownership: Uint8Array
 
   constructor(data: WorldMapData) {
@@ -66,8 +65,7 @@ export class WorldMap {
     this.humidity = data.humidity
     this.biomeIds = data.biomeIds
     this.riverMask = data.riverMask
-    this.resourceType = data.resourceType
-    this.resourceDensity = data.resourceDensity
+    this.resources = data.resources
     this.ownership = data.ownership
   }
 
@@ -94,7 +92,6 @@ export class WorldMap {
     const elev = this.elevation[i]
     const isWater = elev <= this.seaLevel
     const biomeId = this.biomeIds[i]
-    const resType = this.resourceType[i] as ResourceType
     const ownRaw = this.ownership[i]
 
     // Compute nearShore: any cardinal neighbour is water?
@@ -119,10 +116,28 @@ export class WorldMap {
       isRiver: this.riverMask[i] === 1,
       isWater,
       nearShore,
-      resource: resType,
-      resourceDensity: this.resourceDensity[i],
-      resourceLabel: resourceDef(resType)?.label ?? 'None',
+      resources: this.resourcesAt(i),
       ownerId: ownRaw === 255 ? -1 : ownRaw
     }
+  }
+
+  /** What the tile at flat index `i` holds: its surface resource, then its ground resource. */
+  private resourcesAt(i: number): TileResource[] {
+    const found: TileResource[] = []
+    const add = (slot: ResourceSlot): void => {
+      const def = resourceDef(slot.type[i] as number)
+      if (def === undefined) return
+      found.push({
+        type: def.id,
+        key: def.key,
+        label: def.label,
+        layer: def.layer,
+        richness: slot.richness[i] as number,
+        stock: slot.stock[i] as number
+      })
+    }
+    add(this.resources.surface)
+    add(this.resources.ground)
+    return found
   }
 }

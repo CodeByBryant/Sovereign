@@ -38,8 +38,6 @@ describe('the fixed list of random streams', () => {
       'riverWarpY',
       'riverWidth',
       'geology',
-      'ore',
-      'resourceDensity',
       'spawn',
       'names',
       'colors',

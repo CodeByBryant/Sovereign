@@ -27,8 +27,11 @@ export function hashTerrain(t: HashableTerrain): string {
   writeBytes(h, 'biomeIds', t.biomeIds)
   writeBytes(h, 'riverMask', t.riverMask)
   writeBytes(h, 'riverWidth', t.riverWidth)
-  writeBytes(h, 'resourceType', t.resourceType)
-  writeBytes(h, 'resourceDensity', t.resourceDensity)
+  for (const slot of ['surface', 'ground'] as const) {
+    writeBytes(h, `${slot}Type`, t.resources[slot].type)
+    writeBytes(h, `${slot}Richness`, t.resources[slot].richness)
+    writeBytes(h, `${slot}Stock`, t.resources[slot].stock)
+  }
   h.writeString('strategic')
   h.writeUint32(t.strategicPoints.length)
   for (const p of t.strategicPoints) {

@@ -4,7 +4,7 @@
  * structured-cloneable; the big buffers travel as transferables.
  */
 import type { WorldConfigOverrides } from '@sovereign/config'
-import type { StrategicPoint, WorldSnapshot } from '@sovereign/contracts'
+import type { ResourceSlots, StrategicPoint, WorldSnapshot } from '@sovereign/contracts'
 import type { LayerName } from '@sovereign/renderer'
 
 export type WorldRequest =
@@ -17,8 +17,8 @@ export interface WorldFields {
   humidity: Float32Array
   biomeIds: Uint8Array
   riverMask: Uint8Array
-  resourceType: Uint8Array
-  resourceDensity: Uint8Array
+  /** The two resource slots (type, richness and stock) as copies. */
+  resources: ResourceSlots
   /** One byte per tile: the owning nation's index, or 255. */
   ownership: Uint8Array
 }
