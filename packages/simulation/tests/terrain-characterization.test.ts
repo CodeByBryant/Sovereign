@@ -1,9 +1,9 @@
-// Pins what the terrain generator produced BEFORE it was refactored into a headless pipeline
-// (see tests/support/legacyPipeline.ts). The refactor commit must leave these hashes unchanged.
-// The randomness swap that follows is the only change allowed to move them.
+// Pins what the terrain generator produced BEFORE it was refactored into a headless pipeline.
+// The refactor must leave these hashes unchanged; only the randomness swap that follows may move
+// them (and it replaces this file with new goldens).
 import { describe, expect, it } from 'vitest'
 import { hashTerrain } from './support/fieldHash'
-import { legacyPipeline } from './support/legacyPipeline'
+import { generateTerrain } from '../src/terrain/pipeline'
 import { smallTerrainRequest, smallTerrainRequestWithDefaults } from './support/terrainRequest'
 
 const scenarios = [
@@ -37,6 +37,6 @@ const scenarios = [
 
 describe('terrain characterization (pre-refactor behaviour)', () => {
   it.each(scenarios)('$name', ({ request, hash }) => {
-    expect(hashTerrain(legacyPipeline(request))).toBe(hash)
+    expect(hashTerrain(generateTerrain(request))).toBe(hash)
   })
 })

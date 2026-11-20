@@ -29,6 +29,7 @@ export interface SmallWorldOptions {
   height?: number
   islandMode?: boolean
   minLandRatio?: number
+  seaLevel?: number
 }
 
 /**
@@ -47,7 +48,7 @@ export function smallTerrainRequest(
     terrain: {
       width,
       height,
-      seaLevel: t.map.seaLevel,
+      seaLevel: options.seaLevel ?? t.map.seaLevel,
       islandMode,
       ...t.elevation,
       scale: t.elevation.scale * k,

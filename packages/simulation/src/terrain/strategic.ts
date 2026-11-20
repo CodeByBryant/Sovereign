@@ -14,11 +14,9 @@
  * @example
  * ```ts
  * const data = detectStrategicPoints(elev, riverMask, terrain, biomes, cfg)
- * const overlay = buildStrategicOverlay(biomeImg, data.points, w, h)
  * ```
  */
 import type { StrategicPoint } from '@sovereign/contracts'
-import { STRATEGIC_META } from '@sovereign/contracts'
 import type { BiomeConfig, StrategicConfig, TerrainConfig } from '@sovereign/config'
 
 /* ------------------------------------------------------------------ */
@@ -433,74 +431,4 @@ function findPeninsulas(
     out.push({ x, y, type: 'peninsula', value })
     valueMap[idx] = Math.max(valueMap[idx], value)
   }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Render strategic overlay                                           */
-/* ------------------------------------------------------------------ */
-
-export function buildStrategicOverlay(
-  baseImageData: ImageData,
-  points: StrategicPoint[]
-): ImageData {
-  // Clone the base biome map
-  const overlay = new ImageData(
-    new Uint8ClampedArray(baseImageData.data),
-    baseImageData.width,
-    baseImageData.height
-  )
-  const data = overlay.data
-  const w = overlay.width
-  const h = overlay.height
-
-  // Dim the base map slightly so markers pop
-  for (let i = 0; i < data.length; i += 4) {
-    data[i] = Math.round(data[i] * 0.75)
-    data[i + 1] = Math.round(data[i + 1] * 0.75)
-    data[i + 2] = Math.round(data[i + 2] * 0.75)
-  }
-
-  for (const pt of points) {
-    const color = STRATEGIC_META[pt.type].color
-    // Diamond marker whose size scales with strategic value
-    const markerR = Math.max(2, Math.round(pt.value / 2.5))
-
-    for (let dy = -markerR; dy <= markerR; dy += 1) {
-      for (let dx = -markerR; dx <= markerR; dx += 1) {
-        if (Math.abs(dx) + Math.abs(dy) > markerR) continue // diamond shape
-        const px = pt.x + dx
-        const py = pt.y + dy
-        if (px < 0 || py < 0 || px >= w || py >= h) continue
-
-        const idx = (py * w + px) * 4
-        const edgeDist = Math.abs(dx) + Math.abs(dy)
-        const innerT = 1 - edgeDist / (markerR + 1)
-
-        // Bright core, faded edges
-        const alpha = innerT * 0.9 + 0.1
-        data[idx] = Math.round(data[idx] * (1 - alpha) + color[0] * alpha)
-        data[idx + 1] = Math.round(data[idx + 1] * (1 - alpha) + color[1] * alpha)
-        data[idx + 2] = Math.round(data[idx + 2] * (1 - alpha) + color[2] * alpha)
-      }
-    }
-
-    // White outline ring
-    const outlineR = markerR + 1
-    for (let dy = -outlineR; dy <= outlineR; dy += 1) {
-      for (let dx = -outlineR; dx <= outlineR; dx += 1) {
-        const dist = Math.abs(dx) + Math.abs(dy)
-        if (dist !== outlineR) continue
-        const px = pt.x + dx
-        const py = pt.y + dy
-        if (px < 0 || py < 0 || px >= w || py >= h) continue
-        const idx = (py * w + px) * 4
-        const blend = 0.6
-        data[idx] = Math.round(data[idx] * (1 - blend) + 255 * blend)
-        data[idx + 1] = Math.round(data[idx + 1] * (1 - blend) + 255 * blend)
-        data[idx + 2] = Math.round(data[idx + 2] * (1 - blend) + 255 * blend)
-      }
-    }
-  }
-
-  return overlay
 }

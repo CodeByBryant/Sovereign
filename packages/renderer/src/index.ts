@@ -5,3 +5,4 @@
  */
 export * from './Camera'
 export * from './Renderer'
+export * from './palettes'

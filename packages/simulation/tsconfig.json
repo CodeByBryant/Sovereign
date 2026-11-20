@@ -1,9 +1,4 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    // TEMPORARY (removed in R2): the terrain pipeline still builds ImageData and runs as a Web
-    // Worker, so it needs DOM types. The engine must end up headless: ES2022 only, no DOM.
-    "lib": ["ES2022", "DOM"]
-  },
   "include": ["src"]
 }

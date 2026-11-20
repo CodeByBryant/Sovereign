@@ -15,7 +15,7 @@
  * ```
  */
 
-import { BIOME_INDEX, getBiomeColor, type BiomeKey } from '@sovereign/contracts'
+import { BIOME_INDEX, type BiomeKey } from '@sovereign/contracts'
 import type { BiomeConfig } from '@sovereign/config'
 
 /* ------------------------------------------------------------------ */
@@ -98,27 +98,19 @@ export const determineBiome = (
 /* ------------------------------------------------------------------ */
 
 /**
- * Build a full biome map (ImageData + id array) from the terrain fields.
+ * Classify every tile into a biome id (an index into `BIOME_KEYS`).
  *
- * Iterates every tile, classifies it with {@link determineBiome}, writes
- * the palette colour into `imageData` and the numeric biome id into
- * `biomeIds`.
- *
- * @returns An object with `imageData` (RGBA) and `biomeIds` (Uint8Array).
+ * @returns One byte per tile, `y * width + x`.
  */
-export const buildBiomeMap = (
+export const classifyBiomes = (
   elevation: Float32Array,
   temperature: Float32Array,
   humidity: Float32Array,
   variation: Float32Array,
-  width: number,
-  height: number,
   seaLevel: number,
   config: BiomeConfig
-): { imageData: ImageData; biomeIds: Uint8Array } => {
-  const imageData = new ImageData(width, height)
-  const biomeIds = new Uint8Array(width * height)
-
+): Uint8Array => {
+  const biomeIds = new Uint8Array(elevation.length)
   for (let i = 0; i < biomeIds.length; i += 1) {
     const biome = determineBiome(
       elevation[i],
@@ -128,17 +120,9 @@ export const buildBiomeMap = (
       seaLevel,
       config
     )
-    const color = getBiomeColor(biome)
-    const index = i * 4
-
     biomeIds[i] = BIOME_INDEX[biome]
-    imageData.data[index] = color[0]
-    imageData.data[index + 1] = color[1]
-    imageData.data[index + 2] = color[2]
-    imageData.data[index + 3] = 255
   }
-
-  return { imageData, biomeIds }
+  return biomeIds
 }
 
 /* ------------------------------------------------------------------ */

@@ -4,7 +4,7 @@
  *
  * Produces four independent Float32Array fields — elevation, temperature,
  * humidity and biome-noise variation — and can render each into an
- * {@link ImageData} for display.
+ * for the renderer to display.
  *
  * Noise is seeded with domain-prefixed strings so every layer is
  * deterministically reproducible from a single seed.
@@ -108,28 +108,6 @@ export class TerrainGenerator {
     return elevations
   }
 
-  /**
-   * Render an elevation array to greyscale {@link ImageData}.
-   * Sea pixels are black; land is linearly mapped 0–255.
-   */
-  generateElevationMap(elevation: Float32Array, config: TerrainConfig): ImageData {
-    const { width, height, seaLevel } = config
-    const imageData = new ImageData(width, height)
-
-    for (let i = 0; i < elevation.length; i += 1) {
-      const value = elevation[i]
-      const normalized = value <= seaLevel ? 0 : (value - seaLevel) / (1 - seaLevel)
-      const shade = Math.round(normalized * 255)
-      const index = i * 4
-      imageData.data[index] = shade
-      imageData.data[index + 1] = shade
-      imageData.data[index + 2] = shade
-      imageData.data[index + 3] = 255
-    }
-
-    return imageData
-  }
-
   /* ---------------------------------------------------------------- */
   /*  Temperature                                                      */
   /* ---------------------------------------------------------------- */
@@ -173,25 +151,6 @@ export class TerrainGenerator {
     return temperatures
   }
 
-  /**
-   * Render temperature to a blue→red gradient {@link ImageData}.
-   */
-  generateTemperatureMap(temperature: Float32Array, terrain: TerrainConfig): ImageData {
-    const { width, height } = terrain
-    const imageData = new ImageData(width, height)
-
-    for (let i = 0; i < temperature.length; i += 1) {
-      const color = this.lerpColor([35, 78, 150], [210, 62, 52], temperature[i])
-      const pixel = i * 4
-      imageData.data[pixel] = color[0]
-      imageData.data[pixel + 1] = color[1]
-      imageData.data[pixel + 2] = color[2]
-      imageData.data[pixel + 3] = 255
-    }
-
-    return imageData
-  }
-
   /* ---------------------------------------------------------------- */
   /*  Humidity                                                         */
   /* ---------------------------------------------------------------- */
@@ -229,25 +188,6 @@ export class TerrainGenerator {
     }
 
     return humidity
-  }
-
-  /**
-   * Render humidity to a brown→blue gradient {@link ImageData}.
-   */
-  generateHumidityMap(humidity: Float32Array, terrain: TerrainConfig): ImageData {
-    const { width, height } = terrain
-    const imageData = new ImageData(width, height)
-
-    for (let i = 0; i < humidity.length; i += 1) {
-      const color = this.lerpColor([120, 89, 52], [44, 118, 182], humidity[i])
-      const pixel = i * 4
-      imageData.data[pixel] = color[0]
-      imageData.data[pixel + 1] = color[1]
-      imageData.data[pixel + 2] = color[2]
-      imageData.data[pixel + 3] = 255
-    }
-
-    return imageData
   }
 
   /* ---------------------------------------------------------------- */
@@ -393,17 +333,6 @@ export class TerrainGenerator {
   }
 
   /** Linearly interpolate between two RGB colour tuples. */
-  private lerpColor(
-    start: [number, number, number],
-    end: [number, number, number],
-    t: number
-  ): [number, number, number] {
-    return [
-      Math.round(start[0] + (end[0] - start[0]) * t),
-      Math.round(start[1] + (end[1] - start[1]) * t),
-      Math.round(start[2] + (end[2] - start[2]) * t)
-    ]
-  }
 
   /** Clamp a number to the [0, 1] range. */
   private clamp01(value: number): number {

@@ -11,7 +11,6 @@
  * ```ts
  * const rivers = new RiverGenerator(seed)
  * const data = rivers.generate(elevation, humidity, terrain, config)
- * rivers.applyToImage(biomeImageData, data.riverWidth)
  * ```
  */
 import { createNoise2D } from 'simplex-noise'
@@ -149,77 +148,6 @@ export class RiverGenerator {
     const boostedHumidity = this.applyHumidityBoost(humidity, riverMask, terrain, config)
 
     return { riverMask, riverWidth, humidity: boostedHumidity }
-  }
-
-  /* ---------------------------------------------------------------- */
-  /*  Render rivers onto ImageData                                     */
-  /* ---------------------------------------------------------------- */
-
-  applyToImage(imageData: ImageData, riverWidth: Uint8Array): void {
-    const { width, height } = imageData
-    const data = imageData.data
-
-    // Deep river colour + shallow edge colour
-    const deepColor: [number, number, number] = [28, 80, 180]
-    const shallowColor: [number, number, number] = [52, 118, 210]
-    const bankColor: [number, number, number] = [164, 148, 110]
-
-    // Pre-build a stamped set so we don't double-blend pixels
-    const painted = new Uint8Array(width * height)
-
-    for (let y = 0; y < height; y += 1) {
-      for (let x = 0; x < width; x += 1) {
-        const index = y * width + x
-        const w = riverWidth[index]
-        if (w === 0) continue
-
-        const coreR = Math.max(1, Math.floor(w / 2))
-        const bankR = coreR + 1
-
-        // Bank ring (thin sandy edge)
-        for (let oy = -bankR; oy <= bankR; oy += 1) {
-          for (let ox = -bankR; ox <= bankR; ox += 1) {
-            const dist = Math.abs(ox) + Math.abs(oy) // manhattan for blocky feel
-            if (dist > bankR || dist <= coreR) continue
-            const nx = x + ox
-            const ny = y + oy
-            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
-            const ni = ny * width + nx
-            if (painted[ni] >= 2) continue // don't paint bank over water
-            if (painted[ni] === 1) continue // already banked
-            painted[ni] = 1
-            const p = ni * 4
-            const blend = 0.3
-            data[p] = Math.round(data[p] * (1 - blend) + bankColor[0] * blend)
-            data[p + 1] = Math.round(data[p + 1] * (1 - blend) + bankColor[1] * blend)
-            data[p + 2] = Math.round(data[p + 2] * (1 - blend) + bankColor[2] * blend)
-          }
-        }
-
-        // Core water
-        for (let oy = -coreR; oy <= coreR; oy += 1) {
-          for (let ox = -coreR; ox <= coreR; ox += 1) {
-            const dist = Math.abs(ox) + Math.abs(oy)
-            if (dist > coreR) continue
-            const nx = x + ox
-            const ny = y + oy
-            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
-            const ni = ny * width + nx
-            if (painted[ni] === 2) continue // already painted as water
-            painted[ni] = 2 // mark as water
-            const p = ni * 4
-            // centre pixels -> deep, edge pixels -> shallow
-            const edgeT = dist / Math.max(1, coreR)
-            const r = Math.round(deepColor[0] * (1 - edgeT) + shallowColor[0] * edgeT)
-            const g = Math.round(deepColor[1] * (1 - edgeT) + shallowColor[1] * edgeT)
-            const b = Math.round(deepColor[2] * (1 - edgeT) + shallowColor[2] * edgeT)
-            data[p] = r
-            data[p + 1] = g
-            data[p + 2] = b
-          }
-        }
-      }
-    }
   }
 
   /* ---------------------------------------------------------------- */

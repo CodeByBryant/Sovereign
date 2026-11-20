@@ -10,11 +10,8 @@ import { defaultConfig, type TerrainConfig } from '@sovereign/config'
 import type { StrategicPoint } from '@sovereign/contracts'
 import { Camera, Renderer } from '@sovereign/renderer'
 import { WorldMap, spawnNations, type Nation } from '@sovereign/simulation'
-import type {
-  TerrainWorkerRequest,
-  TerrainWorkerResponse
-} from '@sovereign/simulation/terrain.worker'
-import TerrainWorker from '@sovereign/simulation/terrain.worker?worker'
+import type { TerrainWorkerRequest, TerrainWorkerResponse } from './host/terrain.worker'
+import TerrainWorker from './host/terrain.worker?worker'
 import { TileInspector, NationPanel, type InspectorData } from '@sovereign/ui'
 import { FrameLoop } from './host/FrameLoop'
 import { randomSeed } from './seed'

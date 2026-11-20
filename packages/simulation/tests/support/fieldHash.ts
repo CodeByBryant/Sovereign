@@ -1,21 +1,7 @@
-import type { StrategicPoint } from '@sovereign/contracts'
+import type { TerrainFields } from '@sovereign/contracts'
 import { ByteHasher } from '../../src/serialization/hash'
 
-/** The fields a terrain run produces (the shape of both the old worker and the new pipeline). */
-export interface HashableTerrain {
-  width: number
-  height: number
-  seaLevel: number
-  elevation: Float32Array
-  temperature: Float32Array
-  humidity: Float32Array
-  biomeIds: Uint8Array
-  riverMask: Uint8Array
-  riverWidth: Uint8Array
-  resourceType: Uint8Array
-  resourceDensity: Uint8Array
-  strategicPoints: readonly StrategicPoint[]
-}
+export type HashableTerrain = TerrainFields
 
 function writeFloats(h: ByteHasher, label: string, values: Float32Array): void {
   h.writeString(label)
