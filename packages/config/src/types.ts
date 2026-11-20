@@ -63,6 +63,10 @@ export interface StrategicConfig {
   riverCrossingRadius: number
   /** Radius to search for mountain pass saddle points. */
   mountainPassRadius: number
+  /** How much higher the ground around a pass must be than the pass itself (elevation, 0 to 1). */
+  mountainPassRise: number
+  /** Fraction of the sampled ground around a pass that must be higher by `mountainPassRise`. */
+  mountainPassMinRatio: number
   /** Max water width to qualify as a strait. */
   straitMaxWidth: number
   /** Min land-to-water ratio in scan area to count as peninsula. */
@@ -105,8 +109,6 @@ export interface TerrainConfig extends NoiseLayerConfig {
   oceanScale: number
   /** Subtractive strength of ocean layer. */
   oceanStrength: number
-  /** Elevation redistribution power curve (>1 flattens lowlands, steepens highlands). @default 1.4 */
-  redistributionPower?: number
   /**
    * Rank-to-elevation profile: after the raw field is built, every tile is ranked and given the
    * elevation this profile assigns to its rank. It is what pins the ocean amount and how much land

@@ -74,7 +74,6 @@ export function smallTerrainRequest(
 /** Like {@link smallTerrainRequest} but with every optional field left out, so defaults apply. */
 export function smallTerrainRequestWithDefaults(seed: string | number): TerrainRequestShape {
   const full = smallTerrainRequest(seed)
-  const { redistributionPower: _power, ...terrain } = full.terrain
   const { continentalStrength: _continental, ...temperature } = full.temperature
   const {
     warpStrength: _warp,
@@ -83,6 +82,6 @@ export function smallTerrainRequestWithDefaults(seed: string | number): TerrainR
     noiseLacunarity: _lac,
     ...rivers
   } = full.rivers
-  void [_power, _continental, _warp, _oct, _per, _lac]
-  return { ...full, terrain, temperature, rivers }
+  void [_continental, _warp, _oct, _per, _lac]
+  return { ...full, temperature, rivers }
 }

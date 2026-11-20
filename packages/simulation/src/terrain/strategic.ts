@@ -198,7 +198,7 @@ function findMountainPasses(
           const ny = y + dy
           if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
           totalSampled += 1
-          if (elevation[ny * width + nx] > elev + 0.03) {
+          if (elevation[ny * width + nx] > elev + config.mountainPassRise) {
             higherCount += 1
           }
         }
@@ -207,7 +207,7 @@ function findMountainPasses(
       if (totalSampled === 0) continue
       const ratio = higherCount / totalSampled
       // Need most of surrounding area to be higher
-      if (ratio < 0.55) continue
+      if (ratio < config.mountainPassMinRatio) continue
 
       const score = ratio * (elev / biomeConfig.mountainElevation)
 

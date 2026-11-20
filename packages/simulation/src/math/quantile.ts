@@ -101,3 +101,27 @@ export function remapByProfile(
   }
   return out
 }
+
+/**
+ * Linearly rescale a field so its lowest value becomes 0 and its highest exactly 1 (a field of
+ * equal values becomes all zeros). It is monotone, so ranks and ties are unchanged: it only moves
+ * a field whose values lie outside [0, 1] into the range `remapByProfile` reads. Returns a new
+ * array.
+ *
+ * @throws RangeError on a non-finite value.
+ */
+export function scaleToUnit(values: Float32Array): Float32Array {
+  let min = Infinity
+  let max = -Infinity
+  for (let i = 0; i < values.length; i += 1) {
+    const v = values[i]
+    if (!Number.isFinite(v)) throw new RangeError('field values must be finite')
+    if (v < min) min = v
+    if (v > max) max = v
+  }
+  const out = new Float32Array(values.length)
+  const range = max - min
+  if (!(range > 0)) return out
+  for (let i = 0; i < values.length; i += 1) out[i] = (values[i] - min) / range
+  return out
+}

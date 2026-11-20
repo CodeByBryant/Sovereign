@@ -143,8 +143,6 @@ export const defaultWorldConfig: WorldConfig = {
     oceanScale: 0.00012,
     /** Subtraction strength for ocean basins (0–1). @default 0.3 */
     oceanStrength: 0.3,
-    /** Power curve for elevation redistribution (>1 flattens lowlands). @default 1.4 */
-    redistributionPower: 1.4,
     /**
      * Rank-to-elevation profile (quantile of ALL tiles, elevation). Pins the ocean: 19% of tiles are
      * deep ocean (below 0.55 x sea level), water is 74.5% of tiles (sea level 0.37), the next 3% is
@@ -197,14 +195,16 @@ export const defaultWorldConfig: WorldConfig = {
     /** Continentality: how much inland tiles amplify temp extremes (0–1). @default 0.3 */
     continentalStrength: 0.3,
     /**
-     * Rank-to-temperature profile, ranked over land tiles. Spreads land across the classifier's
-     * bands: about 20% polar (below 0.2), 20% cool (to 0.4), 36% temperate (to 0.7), 24% tropical.
+     * Rank-to-temperature profile, ranked over land tiles. Fitted (tests/probe/fit-climate.probe.ts)
+     * so the inland lowland divides among the climate bands as intended: about 15% polar (below
+     * 0.2), 17% cool (to 0.4), 40% temperate (to 0.7) and 28% tropical. It ranks all land, and
+     * the elevated tiles, which are cold, fall in the first two bands.
      */
     profile: [
       [0, 0.03],
-      [0.2, 0.2],
-      [0.4, 0.4],
-      [0.76, 0.7],
+      [0.197, 0.2],
+      [0.3604, 0.4],
+      [0.7291, 0.7],
       [1, 0.97]
     ]
   },
@@ -264,10 +264,10 @@ export const defaultWorldConfig: WorldConfig = {
     primaryScale: 0.0009,
     /** Tributary noise frequency. @default 0.004 */
     secondaryScale: 0.004,
-    /** Width of the primary zero-crossing band (bigger = more river). @default 0.032 */
-    primaryThreshold: 0.032,
-    /** Width of the tributary zero-crossing band. @default 0.02 */
-    secondaryThreshold: 0.02,
+    /** Width of the primary zero-crossing band (bigger = more river). @default 0.023 */
+    primaryThreshold: 0.023,
+    /** Width of the tributary zero-crossing band. @default 0.0144 */
+    secondaryThreshold: 0.0144,
     /** Max rendered pixel width of primary rivers. @default 4 */
     primaryWidth: 4,
     /** Max rendered pixel width of tributaries. @default 2 */
@@ -307,6 +307,10 @@ export const defaultWorldConfig: WorldConfig = {
     riverCrossingRadius: 5,
     /** Saddle-point search radius for mountain passes. @default 8 */
     mountainPassRadius: 8,
+    /** Elevation by which the ground around a pass must rise above it. @default 0.02 */
+    mountainPassRise: 0.02,
+    /** Share of the surrounding samples that must rise by that much. @default 0.35 */
+    mountainPassMinRatio: 0.35,
     /** Max water gap to qualify as a strait (tiles). @default 12 */
     straitMaxWidth: 12,
     /** Min water-to-total ratio in scan circle for peninsula. @default 0.6 */
@@ -372,7 +376,8 @@ export const defaultWorldConfig: WorldConfig = {
     /** Elevation above sea level within which a row's `lowlandBiome` applies. @default 0.05 */
     lowlandBand: 0.05,
     /**
-     * The land climate table, below the highland elevation gates: the first band whose
+     * The land climate table, fitted (tests/probe/fit-climate.probe.ts) so each biome covers its
+     * target share of land. Below the highland elevation gates: the first band whose
      * `maxTemperature` is above the tile's temperature, then the first row whose `maxHumidity`
      * is above its humidity. The last band and the last row of each band catch the rest.
      */
@@ -380,41 +385,41 @@ export const defaultWorldConfig: WorldConfig = {
       {
         maxTemperature: 0.2,
         rows: [
-          { maxHumidity: 0.25, biome: 'polar_desert' },
-          { maxHumidity: 0.55, biome: 'tundra' },
-          { maxHumidity: 0.8, biome: 'taiga' },
+          { maxHumidity: 0.142, biome: 'polar_desert' },
+          { maxHumidity: 0.54, biome: 'tundra' },
+          { maxHumidity: 0.89, biome: 'taiga' },
           { maxHumidity: 1, biome: 'glacier' }
         ]
       },
       {
         maxTemperature: 0.4,
         rows: [
-          { maxHumidity: 0.2, biome: 'cold_steppe' },
-          { maxHumidity: 0.45, biome: 'taiga' },
-          { maxHumidity: 0.7, biome: 'boreal_forest' },
+          { maxHumidity: 0.291, biome: 'cold_steppe' },
+          { maxHumidity: 0.477, biome: 'taiga' },
+          { maxHumidity: 0.9, biome: 'boreal_forest' },
           { maxHumidity: 1, biome: 'swamp' }
         ]
       },
       {
         maxTemperature: 0.7,
         rows: [
-          { maxHumidity: 0.18, biome: 'temperate_desert' },
-          { maxHumidity: 0.32, biome: 'steppe' },
-          { maxHumidity: 0.5, biome: 'grassland' },
-          { maxHumidity: 0.68, biome: 'woodland' },
-          { maxHumidity: 0.82, biome: 'temperate_forest' },
+          { maxHumidity: 0.2, biome: 'temperate_desert' },
+          { maxHumidity: 0.353, biome: 'steppe' },
+          { maxHumidity: 0.549, biome: 'grassland' },
+          { maxHumidity: 0.72, biome: 'woodland' },
+          { maxHumidity: 0.927, biome: 'temperate_forest' },
           { maxHumidity: 1, biome: 'wetland', lowlandBiome: 'swamp' }
         ]
       },
       {
         maxTemperature: 1,
         rows: [
-          { maxHumidity: 0.18, biome: 'desert' },
-          { maxHumidity: 0.3, biome: 'badlands' },
-          { maxHumidity: 0.45, biome: 'savanna' },
-          { maxHumidity: 0.6, biome: 'chaparral' },
-          { maxHumidity: 0.78, biome: 'tropical_forest' },
-          { maxHumidity: 0.9, biome: 'rainforest' },
+          { maxHumidity: 0.443, biome: 'desert' },
+          { maxHumidity: 0.526, biome: 'badlands' },
+          { maxHumidity: 0.679, biome: 'savanna' },
+          { maxHumidity: 0.766, biome: 'chaparral' },
+          { maxHumidity: 0.883, biome: 'tropical_forest' },
+          { maxHumidity: 0.999, biome: 'rainforest' },
           { maxHumidity: 1, biome: 'mangrove' }
         ]
       }
@@ -582,6 +587,12 @@ export function validateWorldConfig(config: WorldConfig): string[] {
   validateProfile('temperature', config.temperature.profile, problems)
   validateProfile('humidity', config.humidity.profile, problems)
   validateBiomeTable(config.biomes, problems)
+  if (!(config.strategic.mountainPassRise > 0)) {
+    problems.push('strategic.mountainPassRise must be greater than 0')
+  }
+  if (!(config.strategic.mountainPassMinRatio > 0 && config.strategic.mountainPassMinRatio <= 1)) {
+    problems.push('strategic.mountainPassMinRatio must be greater than 0 and at most 1')
+  }
 
   return problems
 }

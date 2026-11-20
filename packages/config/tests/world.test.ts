@@ -128,7 +128,10 @@ describe('validateWorldConfig', () => {
     ['a zero persistence', (c: WorldConfig) => (c.humidity.persistence = 0)],
     ['a lacunarity below 1', (c: WorldConfig) => (c.temperature.lacunarity = 0.9)],
     ['a fractional octave count', (c: WorldConfig) => (c.humidity.octaves = 2.5)],
-    ['a non-positive noise scale', (c: WorldConfig) => (c.biomeNoise.scale = 0)]
+    ['a non-positive noise scale', (c: WorldConfig) => (c.biomeNoise.scale = 0)],
+    ['a zero pass rise', (c: WorldConfig) => (c.strategic.mountainPassRise = 0)],
+    ['a zero pass ratio', (c: WorldConfig) => (c.strategic.mountainPassMinRatio = 0)],
+    ['a pass ratio above 1', (c: WorldConfig) => (c.strategic.mountainPassMinRatio = 1.01)]
   ])('rejects %s', (_label, edit) => {
     expect(bad(edit).length).toBeGreaterThan(0)
   })
@@ -225,6 +228,10 @@ describe('terrain distribution profiles', () => {
     expect(at(profile, landTop(0.14))).toBeCloseTo(b.highlandElevation, 2)
     expect(at(profile, landTop(0.075))).toBeCloseTo(b.alpineElevation, 2)
     expect(at(profile, landTop(0.04))).toBeCloseTo(b.mountainElevation, 2)
+  })
+
+  it('no longer carries the power-curve knob the remap replaced', () => {
+    expect('redistributionPower' in defaultWorldConfig.elevation).toBe(false)
   })
 
   const bad = (edit: (c: WorldConfig) => void): string[] => {

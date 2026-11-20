@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { fnv1a32 } from '../src/random/streams'
-import { HISTOGRAM_BINS, remapByProfile, type QuantileProfile } from '../src/math/quantile'
+import {
+  HISTOGRAM_BINS,
+  remapByProfile,
+  scaleToUnit,
+  type QuantileProfile
+} from '../src/math/quantile'
 
 // Expected values come from an independent reference written from the spec in Python
 // (ref_quantile.py), not from this implementation: see docs/simulation/determinism.md.
@@ -245,5 +250,50 @@ describe('remapByProfile: rejects what it cannot use', () => {
       ] // values go backwards
     ]
     for (const profile of bad) expect(() => remapByProfile(SMALL, profile)).toThrow(RangeError)
+  })
+})
+
+describe('scaleToUnit', () => {
+  it('maps the lowest value to 0 and the highest to exactly 1, linearly between', () => {
+    expect(Array.from(scaleToUnit(Float32Array.of(2, 4, 6)))).toEqual([0, 0.5, 1])
+    expect(Array.from(scaleToUnit(Float32Array.of(-1, 1, 0, 0.5)))).toEqual([0, 1, 0.5, 0.75])
+  })
+
+  it('handles a field that is entirely negative, or entirely above 1', () => {
+    expect(Array.from(scaleToUnit(Float32Array.of(-3, -2, -1)))).toEqual([0, 0.5, 1])
+    expect(Array.from(scaleToUnit(Float32Array.of(10, 12, 14)))).toEqual([0, 0.5, 1])
+  })
+
+  it('accepts values outside [0, 1], which is what it is for', () => {
+    expect(Array.from(scaleToUnit(Float32Array.of(-3, 5, 1)))).toEqual([0, 1, 0.5])
+  })
+
+  it('keeps the order and the ties of its input, so ranks are unchanged', () => {
+    const values = bell(21, 5000).map((v) => v * 7 - 3)
+    const out = scaleToUnit(values)
+    for (let i = 1; i < values.length; i += 1) {
+      expect(Math.sign(out[i] - out[i - 1])).toBe(Math.sign(values[i] - values[i - 1]))
+    }
+  })
+
+  it('turns a field of equal values into zeros rather than dividing by zero', () => {
+    expect(Array.from(scaleToUnit(new Float32Array(4).fill(0.3)))).toEqual([0, 0, 0, 0])
+  })
+
+  it('returns an empty field for an empty field, as a new array', () => {
+    const empty = new Float32Array(0)
+    expect(scaleToUnit(empty)).not.toBe(empty)
+    expect(scaleToUnit(empty).length).toBe(0)
+  })
+
+  it('rejects a non-finite value rather than repairing it', () => {
+    expect(() => scaleToUnit(Float32Array.of(0, Number.NaN))).toThrow(RangeError)
+    expect(() => scaleToUnit(Float32Array.of(Number.NEGATIVE_INFINITY, 1))).toThrow(RangeError)
+  })
+
+  it('does not change its input', () => {
+    const values = Float32Array.of(3, -2, 9)
+    scaleToUnit(values)
+    expect(Array.from(values)).toEqual([3, -2, 9])
   })
 })
