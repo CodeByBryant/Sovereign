@@ -18,6 +18,7 @@ import type {
   BiomeNoiseConfig,
   HumidityConfig,
   ResourcePlacementSettings,
+  RoutesConfig,
   RiverConfig,
   StrategicConfig,
   TemperatureConfig,
@@ -58,6 +59,8 @@ export interface WorldConfig {
   rivers: RiverConfig
   biomes: BiomeConfig
   strategic: StrategicConfig
+  /** Where routes between settlements go (the cheapest paths over the terrain). */
+  routes: RoutesConfig
   /** Where each resource is found, how rich it is and how it regrows. */
   resources: ResourcePlacementSettings
   nations: NationsConfig
@@ -318,6 +321,57 @@ export const defaultWorldConfig: WorldConfig = {
     peninsulaMinRatio: 0.6,
     /** Scan radius for peninsula detection (tiles). @default 10 */
     peninsulaRadius: 10
+  },
+
+  /* ------------------------------------------------------------ */
+  /*  Routes                                                       */
+  /* ------------------------------------------------------------ */
+
+  /**
+   * The route network: hubs (the best places to live, at least `hubSpacing` apart) are joined by the
+   * cheapest paths over the terrain. Strategic points are where those paths have to go: over a pass,
+   * through a ford, along a land neck, across a strait. See docs/terrain.md.
+   */
+  routes: {
+    cell: 4,
+    hubSpacing: 60,
+    hubMinScore: 0.3,
+    cost: {
+      base: 1,
+      slope: 6,
+      height: 2,
+      river: 3,
+      sea: 5,
+      seaReach: 12,
+      biomes: {
+        deep_ocean: 0,
+        ocean: 0,
+        shore: 0.2,
+        polar_desert: 1,
+        glacier: 2.5,
+        tundra: 0.5,
+        alpine: 1.5,
+        boreal_forest: 0.4,
+        taiga: 0.5,
+        cold_steppe: 0.2,
+        temperate_desert: 0.6,
+        steppe: 0,
+        grassland: 0,
+        woodland: 0.2,
+        temperate_forest: 0.4,
+        chaparral: 0.2,
+        swamp: 2,
+        desert: 1,
+        badlands: 0.8,
+        savanna: 0.1,
+        tropical_forest: 0.8,
+        rainforest: 1.2,
+        wetland: 1.5,
+        mangrove: 2,
+        highland: 0.6,
+        mountain: 3
+      }
+    }
   },
 
   /* ------------------------------------------------------------ */
@@ -735,6 +789,7 @@ export function resolveWorldConfig(overrides: WorldConfigOverrides = {}): WorldC
     rivers: merge(d.rivers, overrides.rivers),
     biomes: merge(d.biomes, overrides.biomes),
     strategic: merge(d.strategic, overrides.strategic),
+    routes: merge(d.routes, overrides.routes),
     resources: merge(d.resources, overrides.resources),
     nations: merge(d.nations, overrides.nations),
     timestep: overrides.timestep ?? d.timestep
@@ -810,6 +865,7 @@ export function validateWorldConfig(config: WorldConfig): string[] {
   validateProfile('humidity', config.humidity.profile, problems)
   validateBiomeTable(config.biomes, problems)
   validateResourcePlacement(config.resources, problems)
+  validateRoutes(config.routes, problems)
   if (!(config.strategic.mountainPassRise > 0)) {
     problems.push('strategic.mountainPassRise must be greater than 0')
   }
@@ -818,6 +874,31 @@ export function validateWorldConfig(config: WorldConfig): string[] {
   }
 
   return problems
+}
+
+/** Problems with the route settings. */
+function validateRoutes(routes: RoutesConfig, problems: string[]): void {
+  const at = 'routes'
+  if (!isInteger(routes.cell) || routes.cell < 1) {
+    problems.push(`${at}.cell must be a whole number of at least 1`)
+  }
+  if (!(routes.hubSpacing >= routes.cell)) {
+    problems.push(`${at}.hubSpacing must be at least one cell (${at}.cell)`)
+  }
+  if (!(routes.hubMinScore >= 0 && routes.hubMinScore <= 1)) {
+    problems.push(`${at}.hubMinScore must be from 0 to 1`)
+  }
+  const { cost } = routes
+  if (!(cost.base > 0)) problems.push(`${at}.cost.base must be greater than 0`)
+  if (!(cost.sea > 0)) problems.push(`${at}.cost.sea must be greater than 0`)
+  for (const name of ['slope', 'height', 'river', 'seaReach'] as const) {
+    if (!(cost[name] >= 0)) problems.push(`${at}.cost.${name} must be 0 or more`)
+  }
+  for (const key of BIOME_KEYS) {
+    if (!(cost.biomes[key] >= 0)) {
+      problems.push(`${at}.cost.biomes.${key} must be 0 or more`)
+    }
+  }
 }
 
 /** Problems with a quantile profile: a monotone map from quantile 0 to 1, with values in [0, 1]. */

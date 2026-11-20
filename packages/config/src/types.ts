@@ -272,3 +272,39 @@ export interface ResourcePlacementSettings extends ResourcePlacementConfig {
   /** Regrowth by catalogue key, for every renewable resource (the surface ones). Ground resources are finite. */
   regrowth: Record<string, ResourceRegrowth>
 }
+
+/* ------------------------------------------------------------------ */
+/*  Routes                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What it costs to cross the ground, per step of one cell. The cheapest path between two places is a
+ * route, so these numbers decide where roads, passes, fords and sea lanes go.
+ */
+export interface RouteCostConfig {
+  /** The cost of one step over flat, open ground. Everything else is added to it. */
+  base: number
+  /** Extra cost of a steep cell: this much for a cell as steep as `resources.features.slopeScale`. */
+  slope: number
+  /** Extra cost of high ground: this much at the highest peak, scaled from the highland line. */
+  height: number
+  /** Extra cost of a river cell, per unit of river width (so a ford is found where a river is narrow). */
+  river: number
+  /** The cost of one step by boat in coastal water (open water costs more than the land it replaces). */
+  sea: number
+  /** How far from land (in cells) a boat will go; water farther out is not part of any route. */
+  seaReach: number
+  /** Extra cost by biome (added to `base`): swamps, deserts and mountains are slow, grassland is not. */
+  biomes: Record<BiomeKey, number>
+}
+
+/** Where routes between settlements are drawn from, and how they are found. */
+export interface RoutesConfig {
+  /** Side of one route cell, in tiles: routes are found on this coarser grid. */
+  cell: number
+  /** The least distance (tiles) between two hubs, the places routes join. */
+  hubSpacing: number
+  /** The lowest site score (0 to 1) a place needs to be a hub. */
+  hubMinScore: number
+  cost: RouteCostConfig
+}

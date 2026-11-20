@@ -492,3 +492,66 @@ describe('resource placement rules (resources)', () => {
     expect(resolved.resources.regrowth).toEqual(defaultWorldConfig.resources.regrowth)
   })
 })
+
+describe('route settings (routes)', () => {
+  const routes = defaultWorldConfig.routes
+  const bad = (edit: (c: WorldConfig) => void): string[] => {
+    const c = clone()
+    edit(c)
+    return validateWorldConfig(c)
+  }
+
+  it('has a movement cost for every biome, none below 0', () => {
+    for (const key of BIOME_KEYS) {
+      expect(routes.cost.biomes[key], key).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('makes the hard ground cost more than the easy ground', () => {
+    const c = routes.cost.biomes
+    expect(c.mountain).toBeGreaterThan(c.highland)
+    expect(c.highland).toBeGreaterThan(c.grassland)
+    expect(c.swamp).toBeGreaterThan(c.grassland)
+    expect(c.desert).toBeGreaterThan(c.steppe)
+  })
+
+  it('is valid as shipped', () => {
+    expect(validateWorldConfig(defaultWorldConfig)).toEqual([])
+  })
+
+  it.each([
+    ['a cell of 0', (c: WorldConfig) => (c.routes.cell = 0)],
+    ['a fractional cell', (c: WorldConfig) => (c.routes.cell = 2.5)],
+    ['a hub spacing of 0', (c: WorldConfig) => (c.routes.hubSpacing = 0)],
+    ['a hub spacing below the cell', (c: WorldConfig) => (c.routes.hubSpacing = 3)],
+    ['a hub score above 1', (c: WorldConfig) => (c.routes.hubMinScore = 1.2)],
+    ['a hub score below 0', (c: WorldConfig) => (c.routes.hubMinScore = -0.1)],
+    ['a base cost of 0', (c: WorldConfig) => (c.routes.cost.base = 0)],
+    ['a negative slope cost', (c: WorldConfig) => (c.routes.cost.slope = -1)],
+    ['a negative river cost', (c: WorldConfig) => (c.routes.cost.river = -1)],
+    ['a sea cost of 0', (c: WorldConfig) => (c.routes.cost.sea = 0)],
+    ['a negative sea reach', (c: WorldConfig) => (c.routes.cost.seaReach = -1)],
+    ['a negative biome cost', (c: WorldConfig) => (c.routes.cost.biomes.swamp = -0.5)]
+  ])('rejects %s', (_label, edit) => {
+    const problems = bad(edit)
+    expect(problems.length).toBeGreaterThan(0)
+    expect(problems.join('\n')).toMatch(/routes/)
+  })
+
+  it('merges a partial override into the defaults, including one biome cost', () => {
+    const resolved = resolveWorldConfig({ routes: { hubSpacing: 90 } })
+    expect(resolved.routes.hubSpacing).toBe(90)
+    expect(resolved.routes.cell).toBe(routes.cell)
+    const tuned = resolveWorldConfig({
+      routes: { cost: { ...routes.cost, biomes: { ...routes.cost.biomes, swamp: 9 } } }
+    })
+    expect(tuned.routes.cost.biomes.swamp).toBe(9)
+    expect(tuned.routes.cost.biomes.grassland).toBe(routes.cost.biomes.grassland)
+  })
+
+  it('does not share its objects with the defaults', () => {
+    const resolved = resolveWorldConfig()
+    resolved.routes.cost.biomes.mountain = 99
+    expect(defaultWorldConfig.routes.cost.biomes.mountain).not.toBe(99)
+  })
+})
