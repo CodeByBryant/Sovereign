@@ -7,8 +7,8 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { WorldConfigOverrides } from '@sovereign/config'
-import { HASH_SCHEMA_VERSION } from '../src/serialization/hash'
-import { World } from '../src/world/World'
+import { HASH_SCHEMA_VERSION } from '../../src/serialization/hash'
+import { World } from '../../src/world/World'
 
 interface GoldenEntry {
   readonly name: string

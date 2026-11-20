@@ -39,6 +39,10 @@ jobs:
       - name: Build web version
         run: pnpm --filter @sovereign/web build
 
+      # Every URL must be relative (the site is served under /Sovereign/) and point at a file in the build.
+      - name: Check the artifact
+        run: node tools/check-pages-artifact.mjs apps/web/dist
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 

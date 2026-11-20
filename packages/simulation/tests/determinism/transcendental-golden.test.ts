@@ -6,7 +6,7 @@
 // 400,000 inputs gives three DIFFERENT hashes on those engines (40258951, 54d3a72d, 70e4d925),
 // which is exactly why the engine has its own pow.
 import { describe, expect, it } from 'vitest'
-import { exp, ln, pow } from '../src/math/transcendental'
+import { exp, ln, pow } from '../../src/math/transcendental'
 
 const view = new DataView(new ArrayBuffer(8))
 

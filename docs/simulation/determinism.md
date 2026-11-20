@@ -163,7 +163,7 @@ Fields are always written by name in this fixed order, never by enumerating an o
 
 ## 8. Golden hashes
 
-Golden files live in `packages/simulation/tests/golden/` and record `{ hashSchemaVersion, entries }`, where each entry pins a seed, a config (as overrides), a tick count and the expected `stateHash()`. `tests/golden.test.ts` first compares the golden's `hashSchemaVersion` with `HASH_SCHEMA_VERSION`, so a layout change yields an explicit "bump the version and regenerate" message instead of an opaque mismatch, and each entry also has to pass `world.validate()`. Regenerating goldens is a deliberate act, in its own commit, with the reason in the PR.
+Golden files live in `packages/simulation/tests/determinism/golden/` and record `{ hashSchemaVersion, entries }`, where each entry pins a seed, a config (as overrides), a tick count and the expected `stateHash()`. `tests/determinism/golden.test.ts` first compares the golden's `hashSchemaVersion` with `HASH_SCHEMA_VERSION`, so a layout change yields an explicit "bump the version and regenerate" message instead of an opaque mismatch, and each entry also has to pass `world.validate()`. Regenerating goldens is a deliberate act, in its own commit, with the reason in the PR.
 
 They are regression pins: the correctness of what is under them (RNG, noise, math, hashing) is established by the independent-reference tests. They were also verified to be identical, directly and after a save then load, on three engines: Node 22 (V8 12.4), Chromium 157 (V8 14) and QuickJS (WASM, not V8).
 
@@ -229,12 +229,12 @@ The seeds `305419896` (`0x12345678`), `3735928559` (`0xdeadbeef`) and `16711936`
 
 ## 10. Enforcement summary
 
-| Rule                                                                | Enforced by                                                                       |
-| ------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| No platform transcendentals, `Math.random`, wall clock, `**`        | ESLint, `packages/simulation/src` (tested in `tests/lint-rules.test.ts`)          |
-| No `for...in`, `Object.keys/values/entries`, comparator-less `sort` | ESLint, `packages/simulation/src`                                                 |
-| No browser, React, Pixi or Electron in the engine                   | ESLint (`no-restricted-globals`, `no-restricted-imports`)                         |
-| No `alea` / `simplex-noise` in the engine; every stream is used     | `tests/no-legacy-rng.test.ts`, `tests/stream-usage.test.ts`                       |
-| Noise, RNG and math match independent references, bit for bit       | `tests/simplex.test.ts`, `tests/streams.test.ts`, `tests/transcendental*.test.ts` |
-| Stream list, hash version and this document stay in sync            | `tests/stream-usage.test.ts`                                                      |
-| Bit-exact reproducibility of whole worlds, and saves round-tripping | Golden hashes (`tests/golden.test.ts`), `tests/save.test.ts`, `World.validate()`  |
+| Rule                                                                | Enforced by                                                                                  |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| No platform transcendentals, `Math.random`, wall clock, `**`        | ESLint, `packages/simulation/src` (tested in `tests/lint-rules.test.ts`)                     |
+| No `for...in`, `Object.keys/values/entries`, comparator-less `sort` | ESLint, `packages/simulation/src`                                                            |
+| No browser, React, Pixi or Electron in the engine                   | ESLint (`no-restricted-globals`, `no-restricted-imports`)                                    |
+| No `alea` / `simplex-noise` in the engine; every stream is used     | `tests/no-legacy-rng.test.ts`, `tests/stream-usage.test.ts`                                  |
+| Noise, RNG and math match independent references, bit for bit       | `tests/simplex.test.ts`, `tests/streams.test.ts`, `tests/transcendental*.test.ts`            |
+| Stream list, hash version and this document stay in sync            | `tests/stream-usage.test.ts`                                                                 |
+| Bit-exact reproducibility of whole worlds, and saves round-tripping | Golden hashes (`tests/determinism/golden.test.ts`), `tests/save.test.ts`, `World.validate()` |

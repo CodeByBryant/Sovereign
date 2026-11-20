@@ -23,12 +23,16 @@
     "desktop": "pnpm --filter @sovereign/desktop start",
     "sim": "pnpm --filter @sovereign/simulator-cli start --",
     "build": "pnpm -r build",
-    "test": "pnpm -r test",
+    "test": "pnpm test:tools && pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint",
+    "lint": "pnpm lint:deps && pnpm -r lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "pnpm typecheck && pnpm lint && pnpm test"
+    "check": "pnpm typecheck && pnpm lint && pnpm test",
+    "lint:deps": "node tools/check-dependency-rules.mjs",
+    "test:tools": "node --test \"tools/**/*.test.mjs\"",
+    "test:determinism": "pnpm --filter @sovereign/simulation test:determinism",
+    "probe": "pnpm --filter @sovereign/simulation probe"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

@@ -10,9 +10,9 @@
 // 1: c73f60d2..., 12345: 23986aef..., 'sovereign': 669f4deb..., island: 252d418c...,
 // land-ratio: d4b62979..., defaults: f79b843d... (all intentionally superseded).
 import { describe, expect, it } from 'vitest'
-import { generateTerrain } from '../src/terrain/pipeline'
-import { hashTerrain } from './support/fieldHash'
-import { smallTerrainRequest, smallTerrainRequestWithDefaults } from './support/terrainRequest'
+import { generateTerrain } from '../../src/terrain/pipeline'
+import { hashTerrain } from '../support/fieldHash'
+import { smallTerrainRequest, smallTerrainRequestWithDefaults } from '../support/terrainRequest'
 
 const scenarios = [
   { name: 'seed 1', request: smallTerrainRequest(1), hash: '031aadf4e2913a2bf2b60355b708686c' },
@@ -49,7 +49,7 @@ describe('terrain goldens', () => {
   })
 
   it('a text seed and the number it hashes to are the same world', async () => {
-    const { normalizeSeed } = await import('../src/random/seed')
+    const { normalizeSeed } = await import('../../src/random/seed')
     const asNumber = smallTerrainRequest(normalizeSeed('sovereign'))
     expect(hashTerrain(generateTerrain(asNumber))).toBe('239746a1811120330b53dfedc613b581')
   })
