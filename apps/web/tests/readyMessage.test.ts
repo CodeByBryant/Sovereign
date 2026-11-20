@@ -94,7 +94,7 @@ describe('buildReady', () => {
     expect(message.layers.temperature).toEqual(temperatureRgba(tf.temperature))
     expect(message.layers.humidity).toEqual(humidityRgba(tf.humidity))
     expect(message.layers.strategic).toEqual(
-      strategicRgba(biome, width, height, tf.strategicPoints)
+      strategicRgba(biome, width, height, tf.strategicPoints, tf.routes)
     )
     expect(message.layers.resource).toEqual(resourceRgba(biome, tf.resources))
   })
