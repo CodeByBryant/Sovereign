@@ -69,6 +69,75 @@ const MapView: React.FC = () => {
   const [inspectorData, setInspectorData] = React.useState<InspectorData | null>(null)
 
   /* ---------------------------------------------------------------- */
+  /*  Tile lookup helpers                                              */
+  /* ---------------------------------------------------------------- */
+  const getTileAt = useCallback((screenX: number, screenY: number, renderer: MapRenderer) => {
+    const tile = renderer.screenToTile(screenX, screenY)
+    if (!tile) return null
+    const worldMap = useGameStore.getState().worldMap
+    return worldMap ? worldMap.at(tile.x, tile.y) : null
+  }, [])
+
+  const buildInspectorData = useCallback(
+    (screenX: number, screenY: number, renderer: MapRenderer): InspectorData | null => {
+      const tile = getTileAt(screenX, screenY, renderer)
+      if (!tile) return null
+      // Strategic point near tile
+      const SCELL = 8
+      const sgridW = Math.ceil(mapSizeRef.current.width / SCELL)
+      const cellKey = Math.floor(tile.y / SCELL) * sgridW + Math.floor(tile.x / SCELL)
+      let sp: StrategicPoint | null = null
+      outer: for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const candidate = strategicGridRef.current.get(cellKey + dy * sgridW + dx)
+          if (candidate && Math.abs(candidate.x - tile.x) + Math.abs(candidate.y - tile.y) <= 4) {
+            sp = candidate
+            break outer
+          }
+        }
+      }
+      // Nation ownership
+      const nation =
+        tile.ownerId >= 0 && tile.ownerId < nationsRef.current.length
+          ? nationsRef.current[tile.ownerId]
+          : null
+      return { tile, strategic: sp, nation }
+    },
+    [getTileAt]
+  )
+
+  /* ---------------------------------------------------------------- */
+  /*  Hover handler                                                    */
+  /* ---------------------------------------------------------------- */
+  const handleHover = useCallback(
+    (e: PointerEvent, canvas: HTMLCanvasElement, renderer: MapRenderer) => {
+      if (!inspectorEnabled) {
+        setInspectorData(null)
+        return
+      }
+      const rect = canvas.getBoundingClientRect()
+      setInspectorData(buildInspectorData(e.clientX - rect.left, e.clientY - rect.top, renderer))
+    },
+    [inspectorEnabled, buildInspectorData]
+  )
+
+  /* ---------------------------------------------------------------- */
+  /*  Click handler (nation selection)                                 */
+  /* ---------------------------------------------------------------- */
+  const handleClick = useCallback(
+    (e: MouseEvent, canvas: HTMLCanvasElement, renderer: MapRenderer) => {
+      const rect = canvas.getBoundingClientRect()
+      const tile = getTileAt(e.clientX - rect.left, e.clientY - rect.top, renderer)
+      if (tile && tile.ownerId >= 0 && tile.ownerId < nationsRef.current.length) {
+        selectNation(tile.ownerId)
+      } else {
+        selectNation(-1)
+      }
+    },
+    [getTileAt, selectNation]
+  )
+
+  /* ---------------------------------------------------------------- */
   /*  Canvas / Camera / Renderer bootstrap                             */
   /* ---------------------------------------------------------------- */
   useEffect(() => {
@@ -226,75 +295,6 @@ const MapView: React.FC = () => {
   }, [])
 
   /* ---------------------------------------------------------------- */
-  /*  Tile lookup helpers                                              */
-  /* ---------------------------------------------------------------- */
-  const getTileAt = useCallback((screenX: number, screenY: number, renderer: MapRenderer) => {
-    const tile = renderer.screenToTile(screenX, screenY)
-    if (!tile) return null
-    const worldMap = useGameStore.getState().worldMap
-    return worldMap ? worldMap.at(tile.x, tile.y) : null
-  }, [])
-
-  const buildInspectorData = useCallback(
-    (screenX: number, screenY: number, renderer: MapRenderer): InspectorData | null => {
-      const tile = getTileAt(screenX, screenY, renderer)
-      if (!tile) return null
-      // Strategic point near tile
-      const SCELL = 8
-      const sgridW = Math.ceil(mapSizeRef.current.width / SCELL)
-      const cellKey = Math.floor(tile.y / SCELL) * sgridW + Math.floor(tile.x / SCELL)
-      let sp: StrategicPoint | null = null
-      outer: for (let dy = -1; dy <= 1; dy += 1) {
-        for (let dx = -1; dx <= 1; dx += 1) {
-          const candidate = strategicGridRef.current.get(cellKey + dy * sgridW + dx)
-          if (candidate && Math.abs(candidate.x - tile.x) + Math.abs(candidate.y - tile.y) <= 4) {
-            sp = candidate
-            break outer
-          }
-        }
-      }
-      // Nation ownership
-      const nation =
-        tile.ownerId >= 0 && tile.ownerId < nationsRef.current.length
-          ? nationsRef.current[tile.ownerId]
-          : null
-      return { tile, strategic: sp, nation }
-    },
-    [getTileAt]
-  )
-
-  /* ---------------------------------------------------------------- */
-  /*  Hover handler                                                    */
-  /* ---------------------------------------------------------------- */
-  const handleHover = useCallback(
-    (e: PointerEvent, canvas: HTMLCanvasElement, renderer: MapRenderer) => {
-      if (!inspectorEnabled) {
-        setInspectorData(null)
-        return
-      }
-      const rect = canvas.getBoundingClientRect()
-      setInspectorData(buildInspectorData(e.clientX - rect.left, e.clientY - rect.top, renderer))
-    },
-    [inspectorEnabled, buildInspectorData]
-  )
-
-  /* ---------------------------------------------------------------- */
-  /*  Click handler (nation selection)                                 */
-  /* ---------------------------------------------------------------- */
-  const handleClick = useCallback(
-    (e: MouseEvent, canvas: HTMLCanvasElement, renderer: MapRenderer) => {
-      const rect = canvas.getBoundingClientRect()
-      const tile = getTileAt(e.clientX - rect.left, e.clientY - rect.top, renderer)
-      if (tile && tile.ownerId >= 0 && tile.ownerId < nationsRef.current.length) {
-        selectNation(tile.ownerId)
-      } else {
-        selectNation(-1)
-      }
-    },
-    [getTileAt, selectNation]
-  )
-
-  /* ---------------------------------------------------------------- */
   /*  Keyboard shortcuts                                               */
   /* ---------------------------------------------------------------- */
   useEffect(() => {
@@ -341,10 +341,9 @@ const MapView: React.FC = () => {
   /* ---------------------------------------------------------------- */
   /*  Active nation for panel                                          */
   /* ---------------------------------------------------------------- */
+  const nations = useGameStore((s) => s.nations)
   const activeNation =
-    selectedNation >= 0 && selectedNation < nationsRef.current.length
-      ? nationsRef.current[selectedNation]
-      : null
+    selectedNation >= 0 && selectedNation < nations.length ? nations[selectedNation] : null
 
   /* ---------------------------------------------------------------- */
   /*  Render                                                           */
