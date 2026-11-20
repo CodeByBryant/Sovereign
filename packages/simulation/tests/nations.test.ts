@@ -164,6 +164,6 @@ describe('spawnNations', () => {
   // A regression pin (see tests/determinism/terrain-golden.test.ts): any change to spawning moves it on purpose.
   it('matches its golden hash (seed 11, up to 8 nations on the 2024 world)', () => {
     expect(nations.length).toBe(8)
-    expect(hashNations(nations)).toBe('8f6dcb6de3002ad3c66d98bf02be6fd2')
+    expect(hashNations(nations)).toBe('f11da67feda48545bab84b8f812fa911')
   })
 })

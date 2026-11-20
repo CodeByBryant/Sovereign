@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import type { WorldConfigOverrides } from '@sovereign/config'
 import { HASH_SCHEMA_VERSION } from '../../src/serialization/hash'
 import { World } from '../../src/world/World'
+import { smallWorldOverrides } from '../support/worldOptions'
 
 interface GoldenEntry {
   readonly name: string
@@ -51,4 +52,26 @@ describe('golden world state hashes', () => {
       expect(world.validate()).toEqual([])
     }
   )
+})
+
+describe('golden depletion', () => {
+  // Drawing resources down and letting them regrow is state, so it is pinned like the rest: 60 tiles
+  // of each slot lose 90 units, then 700 ticks pass (renewable surface stocks regrow, minerals do not).
+  it('drawn-down stocks regrow to a pinned hash', () => {
+    const world = World.create({ seed: 5, config: smallWorldOverrides() })
+    let taken = 0
+    for (const layer of ['surface', 'ground'] as const) {
+      let drawn = 0
+      for (let i = 0; i < world.map.size && drawn < 60; i += 1) {
+        if (world.terrain.resources[layer].type[i] !== 0) {
+          taken += world.extractResource(layer, i, 90)
+          drawn += 1
+        }
+      }
+    }
+    expect(taken).toBe(7358)
+    world.run(700)
+    expect(world.validate()).toEqual([])
+    expect(world.stateHash()).toBe('915294512655ac3c8b1444db15520b62')
+  })
 })

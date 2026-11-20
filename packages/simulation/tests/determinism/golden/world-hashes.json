@@ -1,5 +1,5 @@
 {
-  "hashSchemaVersion": 1,
+  "hashSchemaVersion": 2,
   "entries": [
     {
       "name": "small world, seed 1, tick 0",
@@ -30,16 +30,13 @@
           "secondaryScale": 0.048,
           "warpStrength": 3
         },
-        "resources": {
-          "oreScale": 0.096
-        },
         "nations": {
           "count": 8,
           "minSpacing": 18
         }
       },
       "steps": 0,
-      "expectedHash": "9d566b367abdf3bf07b7c8edb34cb3f5"
+      "expectedHash": "ec02025a8f5743a79a76e89bffb2b75c"
     },
     {
       "name": "small world, seed 12345, 100 ticks",
@@ -70,16 +67,13 @@
           "secondaryScale": 0.048,
           "warpStrength": 3
         },
-        "resources": {
-          "oreScale": 0.096
-        },
         "nations": {
           "count": 8,
           "minSpacing": 18
         }
       },
       "steps": 100,
-      "expectedHash": "9108675c42d758d8fc397115d9dfd069"
+      "expectedHash": "57d6b1a18074a7bb226231b58894e3d7"
     },
     {
       "name": "text seed \"sovereign\", 30 ticks",
@@ -110,16 +104,13 @@
           "secondaryScale": 0.048,
           "warpStrength": 3
         },
-        "resources": {
-          "oreScale": 0.096
-        },
         "nations": {
           "count": 8,
           "minSpacing": 18
         }
       },
       "steps": 30,
-      "expectedHash": "49b500cb3595bd9bdd0b3d5f9d8f70c1"
+      "expectedHash": "b1a94c9d328d16b34790ade559385bba"
     },
     {
       "name": "island mode, seed 7",
@@ -150,16 +141,13 @@
           "secondaryScale": 0.048,
           "warpStrength": 3
         },
-        "resources": {
-          "oreScale": 0.096
-        },
         "nations": {
           "count": 8,
           "minSpacing": 18
         }
       },
       "steps": 10,
-      "expectedHash": "e5e75f319a0d2cde01af5b524963901c"
+      "expectedHash": "8f34a660f6e3dd163cf9326688d6c9e3"
     },
     {
       "name": "no nations, seed 3",
@@ -190,16 +178,13 @@
           "secondaryScale": 0.048,
           "warpStrength": 3
         },
-        "resources": {
-          "oreScale": 0.096
-        },
         "nations": {
           "count": 0,
           "minSpacing": 18
         }
       },
       "steps": 5,
-      "expectedHash": "7d40c9de0d18ce96c3e37779f820f667"
+      "expectedHash": "b619a356be60e038af1f47816ebb8c65"
     },
     {
       "name": "land-ratio rescue (sea level 0.9 leaves too little land), seed 2024",
@@ -230,16 +215,13 @@
           "secondaryScale": 0.048,
           "warpStrength": 3
         },
-        "resources": {
-          "oreScale": 0.096
-        },
         "nations": {
           "count": 8,
           "minSpacing": 18
         }
       },
       "steps": 0,
-      "expectedHash": "f9c1c4c901992eb76dc4d8b1d9bcd200"
+      "expectedHash": "e2ead197366673d91b4f50b116503752"
     },
     {
       "name": "slower clock: timestep 0.25, 40 ticks",
@@ -270,9 +252,6 @@
           "secondaryScale": 0.048,
           "warpStrength": 3
         },
-        "resources": {
-          "oreScale": 0.096
-        },
         "nations": {
           "count": 8,
           "minSpacing": 18
@@ -280,7 +259,7 @@
         "timestep": 0.25
       },
       "steps": 40,
-      "expectedHash": "f91c038066b6970959195fabddc95be8"
+      "expectedHash": "7d30ec1d0ab6787b049180f775f49395"
     },
     {
       "name": "wider map 320x200, seed 99, 1000 ticks",
@@ -311,16 +290,13 @@
           "secondaryScale": 0.048,
           "warpStrength": 3
         },
-        "resources": {
-          "oreScale": 0.096
-        },
         "nations": {
           "count": 12,
           "minSpacing": 25
         }
       },
       "steps": 1000,
-      "expectedHash": "aa51059b0c77f6d3632163b3e9bf1a78"
+      "expectedHash": "8e03bc5a0854b5a6df3a36c352653e52"
     }
   ]
 }
