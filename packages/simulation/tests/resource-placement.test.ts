@@ -1,7 +1,12 @@
 import type { ResourcePlacementConfig, ResourceRule } from '@sovereign/config'
 import { BIOME_INDEX, RESOURCE_CATALOG, ResourceType } from '@sovereign/contracts'
 import { describe, expect, it } from 'vitest'
-import { placeResources, regionalField, type PlacementInput } from '../src/terrain/placement'
+import {
+  placeResources,
+  regionalField,
+  regionalSampler,
+  type PlacementInput
+} from '../src/terrain/placement'
 import { createSimplexNoise2D } from '../src/noise/simplex'
 import { createStream } from '../src/random/streams'
 
@@ -591,5 +596,60 @@ describe('regionalField', () => {
     const f = regionalField(noise, 30, 200, 200)
     expect(Math.min(...f)).toBeLessThan(-0.2)
     expect(Math.max(...f)).toBeGreaterThan(0.2)
+  })
+})
+
+describe('regionalSampler', () => {
+  const noise = createSimplexNoise2D(createStream(5, 'geology'))
+
+  /** The regional field as it was first written: the whole map interpolated from a coarse grid. */
+  function referenceField(regionSize: number, width: number, height: number): Float32Array {
+    const clampTo = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v)
+    const stride = clampTo(Math.floor(regionSize / 6), 1, 16)
+    const gw = Math.ceil((width - 1) / stride) + 1
+    const gh = Math.ceil((height - 1) / stride) + 1
+    const frequency = 1 / regionSize
+    const grid = new Float32Array(gw * gh)
+    for (let gy = 0; gy < gh; gy += 1) {
+      for (let gx = 0; gx < gw; gx += 1) {
+        grid[gy * gw + gx] = clampTo(noise(gx * stride * frequency, gy * stride * frequency), -1, 1)
+      }
+    }
+    const out = new Float32Array(width * height)
+    for (let y = 0; y < height; y += 1) {
+      const gy = Math.floor(y / stride)
+      const fy = y / stride - gy
+      const gy1 = Math.min(gy + 1, gh - 1)
+      for (let x = 0; x < width; x += 1) {
+        const gx = Math.floor(x / stride)
+        const fx = x / stride - gx
+        const gx1 = Math.min(gx + 1, gw - 1)
+        const top = grid[gy * gw + gx] * (1 - fx) + grid[gy * gw + gx1] * fx
+        const bottom = grid[gy1 * gw + gx] * (1 - fx) + grid[gy1 * gw + gx1] * fx
+        out[y * width + x] = top * (1 - fy) + bottom * fy
+      }
+    }
+    return out
+  }
+
+  it.each([
+    [1, 37, 23], // stride 1
+    [20, 64, 50], // stride 3, sizes not a multiple of it
+    [96, 101, 77], // stride 16
+    [400, 130, 90] // stride clamped to 16
+  ])('gives, tile by tile, exactly the field of a %i tile region on %i x %i', (size, w, h) => {
+    const sampler = regionalSampler(noise, size, w, h)
+    const reference = referenceField(size, w, h)
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) expect(sampler.at(x, y)).toBe(reference[y * w + x])
+    }
+  })
+
+  it('is what regionalField fills the whole map with', () => {
+    const sampler = regionalSampler(noise, 30, 90, 70)
+    const field = regionalField(noise, 30, 90, 70)
+    for (let y = 0; y < 70; y += 1) {
+      for (let x = 0; x < 90; x += 1) expect(field[y * 90 + x]).toBe(sampler.at(x, y))
+    }
   })
 })

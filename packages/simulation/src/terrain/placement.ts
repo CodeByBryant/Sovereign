@@ -55,17 +55,23 @@ const SCORE_BINS = 65536
 
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v)
 
+/** A smooth field in [-1, 1] that can be asked about one tile at a time. */
+export interface RegionalSampler {
+  at(x: number, y: number): number
+}
+
 /**
  * A smooth noise field in [-1, 1] with features about `regionSize` tiles across: the noise is sampled
- * on a coarse grid and interpolated, which is much cheaper than sampling every tile and loses
- * nothing at this scale.
+ * on a coarse grid and interpolated per tile, which is much cheaper than sampling every tile and loses
+ * nothing at this scale. Asking tile by tile (instead of filling a whole-map array) means a rule only
+ * pays for the tiles that pass its gates. The value is rounded to float32, like a stored field.
  */
-export function regionalField(
+export function regionalSampler(
   noise: (x: number, y: number) => number,
   regionSize: number,
   width: number,
   height: number
-): Float32Array {
+): RegionalSampler {
   const stride = clamp(Math.floor(regionSize / 6), 1, 16)
   const gw = Math.ceil((width - 1) / stride) + 1
   const gh = Math.ceil((height - 1) / stride) + 1
@@ -76,19 +82,32 @@ export function regionalField(
       grid[gy * gw + gx] = clamp(noise(gx * stride * frequency, gy * stride * frequency), -1, 1)
     }
   }
-  const out = new Float32Array(width * height)
-  for (let y = 0; y < height; y += 1) {
-    const gy = Math.floor(y / stride)
-    const fy = y / stride - gy
-    const gy1 = Math.min(gy + 1, gh - 1)
-    for (let x = 0; x < width; x += 1) {
+  return {
+    at(x: number, y: number): number {
+      const gy = Math.floor(y / stride)
+      const fy = y / stride - gy
+      const gy1 = Math.min(gy + 1, gh - 1)
       const gx = Math.floor(x / stride)
       const fx = x / stride - gx
       const gx1 = Math.min(gx + 1, gw - 1)
       const top = grid[gy * gw + gx] * (1 - fx) + grid[gy * gw + gx1] * fx
       const bottom = grid[gy1 * gw + gx] * (1 - fx) + grid[gy1 * gw + gx1] * fx
-      out[y * width + x] = top * (1 - fy) + bottom * fy
+      return Math.fround(top * (1 - fy) + bottom * fy)
     }
+  }
+}
+
+/** The regional field of every tile, as an array (see {@link regionalSampler}). */
+export function regionalField(
+  noise: (x: number, y: number) => number,
+  regionSize: number,
+  width: number,
+  height: number
+): Float32Array {
+  const sampler = regionalSampler(noise, regionSize, width, height)
+  const out = new Float32Array(width * height)
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) out[y * width + x] = sampler.at(x, y)
   }
   return out
 }
@@ -181,6 +200,18 @@ export function placeResources(input: PlacementInput): ResourceSlots {
     }
   }
   const waterCount = size - landCount
+  // the tiles of each domain in ascending order, so a pass walks only the tiles it can use
+  const landTiles = new Int32Array(landCount)
+  const seaTiles = new Int32Array(waterCount)
+  for (let i = 0, l = 0, w = 0; i < size; i += 1) {
+    if (land[i] === 1) {
+      landTiles[l] = i
+      l += 1
+    } else {
+      seaTiles[w] = i
+      w += 1
+    }
+  }
   const toSea = distanceToMask(sea, width, height, DISTANCE_LIMIT) // for a land tile: steps to the sea
   const toLand = distanceToMask(land, width, height, DISTANCE_LIMIT) // for a water tile: steps to land
   const toRiver = distanceToMask(riverMask, width, height, DISTANCE_LIMIT)
@@ -223,7 +254,7 @@ export function placeResources(input: PlacementInput): ResourceSlots {
   for (const pass of passes) {
     const { def, rule } = pass
     const slot = slots[def.layer]
-    const region = regionalField(noises[def.id - 1], rule.regionSize, width, height)
+    const region = regionalSampler(noises[def.id - 1], rule.regionSize, width, height)
     const prefer = rule.prefer ?? {}
 
     // biome weights (land only)
@@ -239,49 +270,64 @@ export function placeResources(input: PlacementInput): ResourceSlots {
     }
 
     // ---- score every tile that passes the gates ----
+    // The rule's limits and weights are read once, not per tile.
+    const tiles = pass.water ? seaTiles : landTiles
+    const eLo = rule.elevation?.[0] ?? -Infinity
+    const eHi = rule.elevation?.[1] ?? Infinity
+    const tLo = rule.temperature?.[0] ?? -Infinity
+    const tHi = rule.temperature?.[1] ?? Infinity
+    const hLo = rule.humidity?.[0] ?? -Infinity
+    const hHi = rule.humidity?.[1] ?? Infinity
+    const cLo = pass.coastDistance?.[0] ?? -Infinity
+    const cHi = pass.coastDistance?.[1] ?? Infinity
+    const coastField = pass.water ? toLand : toSea
+    const ridgeW = prefer.ridge
+    const basinW = prefer.basin
+    const slopeW = prefer.slope
+    const heightW = prefer.height
+    const riverP = prefer.river
+    const coastP = prefer.coast
+    const wetW = prefer.wet
+    const warmW = prefer.warm
+    const regional = rule.regional
     let count = 0
     let min = Infinity
     let max = -Infinity
-    for (let i = 0; i < size; i += 1) {
-      if (pass.water ? sea[i] === 0 : land[i] === 0) continue
+    for (let k = 0; k < tiles.length; k += 1) {
+      const i = tiles[k]
       if (slot.type[i] !== 0) continue
-      const e = elevation[i]
       const base = pass.water ? 1 : biomeWeight[biomeIds[i]]
       if (base <= 0) continue
-      if (rule.elevation !== undefined && (e < rule.elevation[0] || e > rule.elevation[1])) continue
+      const e = elevation[i]
+      if (e < eLo || e > eHi) continue
       const t = temperature[i]
-      if (rule.temperature !== undefined && (t < rule.temperature[0] || t > rule.temperature[1]))
-        continue
+      if (t < tLo || t > tHi) continue
       const h = humidity[i]
-      if (rule.humidity !== undefined && (h < rule.humidity[0] || h > rule.humidity[1])) continue
-      const coast = pass.water ? toLand[i] : toSea[i]
-      if (
-        pass.coastDistance !== undefined &&
-        (coast < pass.coastDistance[0] || coast > pass.coastDistance[1])
-      ) {
-        continue
-      }
+      if (h < hLo || h > hHi) continue
+      const coast = coastField[i]
+      if (coast < cLo || coast > cHi) continue
 
       let preference = 1
-      if (prefer.ridge !== undefined)
-        preference += prefer.ridge * clamp(position[i] / features.ridgeScale, -1, 1)
-      if (prefer.basin !== undefined)
-        preference += prefer.basin * clamp(-position[i] / features.ridgeScale, -1, 1)
-      if (prefer.slope !== undefined)
-        preference += prefer.slope * clamp(slope[i] / features.slopeScale, 0, 1)
-      if (prefer.height !== undefined) {
-        preference += prefer.height * clamp((e - seaLevel) / (1 - seaLevel), 0, 1)
+      if (ridgeW !== undefined)
+        preference += ridgeW * clamp(position[i] / features.ridgeScale, -1, 1)
+      if (basinW !== undefined)
+        preference += basinW * clamp(-position[i] / features.ridgeScale, -1, 1)
+      if (slopeW !== undefined) preference += slopeW * clamp(slope[i] / features.slopeScale, 0, 1)
+      if (heightW !== undefined) {
+        preference += heightW * clamp((e - seaLevel) / (1 - seaLevel), 0, 1)
       }
-      if (prefer.river !== undefined) {
-        preference += prefer.river.weight * Math.max(0, 1 - toRiver[i] / prefer.river.within)
+      if (riverP !== undefined) {
+        preference += riverP.weight * Math.max(0, 1 - toRiver[i] / riverP.within)
       }
-      if (prefer.coast !== undefined) {
-        preference += prefer.coast.weight * Math.max(0, 1 - coast / prefer.coast.within)
+      if (coastP !== undefined) {
+        preference += coastP.weight * Math.max(0, 1 - coast / coastP.within)
       }
-      if (prefer.wet !== undefined) preference += prefer.wet * h
-      if (prefer.warm !== undefined) preference += prefer.warm * t
+      if (wetW !== undefined) preference += wetW * h
+      if (warmW !== undefined) preference += warmW * t
 
-      const score = base * Math.max(SCORE_FLOOR, preference) * (1 + rule.regional * region[i])
+      const x = i % width
+      const regionValue = region.at(x, (i - x) / width)
+      const score = base * Math.max(SCORE_FLOOR, preference) * (1 + regional * regionValue)
       candidateIndex[count] = i
       candidateScore[count] = score
       count += 1
