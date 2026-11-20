@@ -116,6 +116,7 @@ export class World {
       terrain.elevation,
       terrain.biomeIds,
       terrain.riverMask,
+      terrain.resources,
       { ...terrainConfig, seaLevel: terrain.seaLevel },
       config.nations.count,
       seed,

@@ -78,6 +78,7 @@ describe('World.create', () => {
       t.elevation,
       t.biomeIds,
       t.riverMask,
+      t.resources,
       {
         ...rescued.config.elevation,
         width: t.width,

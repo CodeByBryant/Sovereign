@@ -1,3 +1,4 @@
+import { ResourceType, type ResourceSlots } from '@sovereign/contracts'
 import { describe, expect, it } from 'vitest'
 import { generateTerrain } from '../src/terrain/pipeline'
 import { spawnNations } from '../src/nations/NationSpawner'
@@ -15,6 +16,7 @@ function spawn(seed: string | number, count: number): ReturnType<typeof spawnNat
     terrain.elevation,
     terrain.biomeIds,
     terrain.riverMask,
+    terrain.resources,
     request.terrain,
     count,
     seed,
@@ -36,6 +38,56 @@ function plain(n: Nation): unknown {
     provinces: [...n.provinces]
   }
 }
+
+describe('spawnNations and resource access', () => {
+  const W = 200
+  const H = 120
+  const elevation = new Float32Array(W * H).fill(0.5)
+  const biomeIds = new Uint8Array(W * H).fill(12) // grassland everywhere
+  const riverMask = new Uint8Array(W * H)
+  const slot = (): ResourceSlots['surface'] => ({
+    type: new Uint8Array(W * H),
+    richness: new Uint8Array(W * H),
+    stock: new Uint8Array(W * H)
+  })
+  const config = {
+    width: W,
+    height: H,
+    seaLevel: 0.37,
+    islandMode: false
+  } as typeof request.terrain
+
+  it('starts nations where there is food, timber and stone, not on equally good bare ground', () => {
+    const resources: ResourceSlots = { surface: slot(), ground: slot() }
+    for (let y = 0; y < H; y += 1) {
+      for (let x = 100; x < W; x += 1) {
+        resources.surface.type[y * W + x] = x % 2 === 0 ? ResourceType.Grain : ResourceType.Timber
+        resources.ground.type[y * W + x] = ResourceType.Stone
+      }
+    }
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const { nations } = spawnNations(
+        elevation,
+        biomeIds,
+        riverMask,
+        resources,
+        config,
+        3,
+        seed,
+        18
+      )
+      expect(nations).toHaveLength(3)
+      // A start may sit a little outside the region (its reach is about 16 tiles), never in the bare half.
+      for (const n of nations) expect(n.capital % W).toBeGreaterThanOrEqual(100 - 16)
+    }
+  })
+
+  it('still spawns them when there are no resources anywhere (nothing is guaranteed)', () => {
+    const resources: ResourceSlots = { surface: slot(), ground: slot() }
+    const { nations } = spawnNations(elevation, biomeIds, riverMask, resources, config, 3, 1, 18)
+    expect(nations).toHaveLength(3)
+  })
+})
 
 describe('spawnNations', () => {
   const { nations, ownerMap } = spawn(11, 8)
