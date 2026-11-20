@@ -188,6 +188,28 @@ describe('topographicPosition', () => {
     expect(t[3 * w + 6]).toBeCloseTo(0, 6)
   })
 
+  it('can leave some tiles out of the average, so a coast is not a ridge', () => {
+    // land (0.5) from x = 5 on, sea (0.1) before it. Averaged with the sea, the land beside the coast
+    // stands above its surroundings; averaged over land only, it is level.
+    const w = 16
+    const e = field(w, w, (x) => (x < 5 ? 0.1 : 0.5))
+    const land = mask(w, w, (x) => x >= 5)
+    const withSea = topographicPosition(e, w, w, 3)
+    const landOnly = topographicPosition(e, w, w, 3, land)
+    expect(withSea[8 * w + 5]).toBeGreaterThan(0.1)
+    expect(landOnly[8 * w + 5]).toBeCloseTo(0, 5)
+    for (let x = 5; x < w; x += 1) expect(landOnly[8 * w + x]).toBeCloseTo(0, 5)
+  })
+
+  it('still finds a ridge among the included tiles, and reads 0 on a tile that is left out', () => {
+    const w = 21
+    const e = field(w, w, (x) => (x < 4 ? 0.7 : x === 10 ? 1 : 0))
+    const land = mask(w, w, (x) => x >= 4)
+    const t = topographicPosition(e, w, w, 3, land)
+    expect(t[10 * w + 10]).toBeCloseTo(6 / 7, 5)
+    expect(t[10 * w + 2]).toBe(0) // not in the mask
+  })
+
   it('with radius 0 every tile is its own mean', () => {
     const t = topographicPosition(
       field(5, 5, (x, y) => x * y),

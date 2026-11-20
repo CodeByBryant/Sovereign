@@ -18,6 +18,7 @@ export const STREAM_NAMES = [
   'riverWarpX',
   'riverWarpY',
   'riverWidth',
+  'geology',
   'ore',
   'resourceDensity',
   'spawn',

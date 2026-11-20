@@ -82,13 +82,16 @@ export function slopeField(elevation: Float32Array, width: number, height: numbe
 /**
  * How far each tile stands above (positive) or below (negative) the mean of the tiles within
  * `radius` of it (a square window, clipped at the map edge, averaged over the tiles that exist).
- * Ridges and peaks are positive, valleys and basins negative.
+ * Ridges and peaks are positive, valleys and basins negative. With a `include` mask only those tiles
+ * are averaged (the sea is left out, so a coast is not mistaken for a ridge) and a tile outside it
+ * reads 0.
  */
 export function topographicPosition(
   elevation: Float32Array,
   width: number,
   height: number,
-  radius: number
+  radius: number,
+  include?: Uint8Array
 ): Float32Array {
   if (!Number.isInteger(radius) || radius < 0) {
     throw new RangeError('radius must be a non-negative integer')
@@ -97,27 +100,47 @@ export function topographicPosition(
   const out = new Float32Array(size)
   if (radius === 0) return out
 
-  // box sum in two passes: along each row, then down each column
+  // box sums of the elevation and of the count of included tiles, in two passes: along each row,
+  // then down each column
   const rowSum = new Float32Array(size)
+  const rowCount = include === undefined ? undefined : new Float32Array(size)
   const prefixRow = new Float64Array(width + 1)
+  const prefixRowCount = new Float64Array(width + 1)
   for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) prefixRow[x + 1] = prefixRow[x] + elevation[y * width + x]
+    for (let x = 0; x < width; x += 1) {
+      const i = y * width + x
+      const used = include === undefined || include[i] !== 0
+      prefixRow[x + 1] = prefixRow[x] + (used ? elevation[i] : 0)
+      prefixRowCount[x + 1] = prefixRowCount[x] + (used ? 1 : 0)
+    }
     for (let x = 0; x < width; x += 1) {
       const x0 = Math.max(0, x - radius)
       const x1 = Math.min(width - 1, x + radius)
       rowSum[y * width + x] = prefixRow[x1 + 1] - prefixRow[x0]
+      if (rowCount !== undefined)
+        rowCount[y * width + x] = prefixRowCount[x1 + 1] - prefixRowCount[x0]
     }
   }
   const prefixCol = new Float64Array(height + 1)
+  const prefixColCount = new Float64Array(height + 1)
   for (let x = 0; x < width; x += 1) {
-    for (let y = 0; y < height; y += 1) prefixCol[y + 1] = prefixCol[y] + rowSum[y * width + x]
+    for (let y = 0; y < height; y += 1) {
+      prefixCol[y + 1] = prefixCol[y] + rowSum[y * width + x]
+      prefixColCount[y + 1] =
+        prefixColCount[y] + (rowCount === undefined ? 0 : rowCount[y * width + x])
+    }
     const x0 = Math.max(0, x - radius)
     const x1 = Math.min(width - 1, x + radius)
     for (let y = 0; y < height; y += 1) {
+      const i = y * width + x
+      if (include !== undefined && include[i] === 0) continue
       const y0 = Math.max(0, y - radius)
       const y1 = Math.min(height - 1, y + radius)
-      const mean = (prefixCol[y1 + 1] - prefixCol[y0]) / ((x1 - x0 + 1) * (y1 - y0 + 1))
-      out[y * width + x] = elevation[y * width + x] - mean
+      const count =
+        include === undefined
+          ? (x1 - x0 + 1) * (y1 - y0 + 1)
+          : prefixColCount[y1 + 1] - prefixColCount[y0]
+      out[i] = elevation[i] - (prefixCol[y1 + 1] - prefixCol[y0]) / count
     }
   }
   return out

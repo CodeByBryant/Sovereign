@@ -198,3 +198,70 @@ export interface ResourceConfig {
   /** Minimum density to register a resource (0–255). @default 30 */
   minDensity: number
 }
+
+/* ------------------------------------------------------------------ */
+/*  Resource placement                                                 */
+/* ------------------------------------------------------------------ */
+
+/** A `[min, max]` range, both ends inclusive. */
+export type Range = readonly [min: number, max: number]
+
+/** Soft preferences: each adds `weight x feature` (a 0 to 1 feature) to a tile's score of 1. */
+export interface ResourcePreferences {
+  /** Stand above the surroundings (ridges and peaks); negative to avoid them. */
+  ridge?: number
+  /** Sit below the surroundings (basins and valleys). */
+  basin?: number
+  /** Steep ground. */
+  slope?: number
+  /** High ground, from sea level (0) to the highest peak (1). */
+  height?: number
+  /** Near a river: full weight on the river, fading to nothing `within` tiles away. */
+  river?: { within: number; weight: number }
+  /** Near the coast (on land, the sea; on water, the land): full weight at the shore, fading to nothing `within` tiles out. */
+  coast?: { within: number; weight: number }
+  /** Wet ground. */
+  wet?: number
+  /** Warm ground. */
+  warm?: number
+}
+
+/**
+ * Where one resource is found and how much of it there is. Hard gates decide which tiles can hold
+ * it; the soft preferences and the regional factor rank those tiles; the top `share` of them get it.
+ */
+export interface ResourceRule {
+  /** Fraction of the land (or, for a water resource, of the water) that holds it: an upper bound if too few tiles qualify. */
+  share: number
+  /** Land resources: the weight (0 to 1) of each biome that can hold it. A biome not listed cannot. Omit for every land biome. */
+  biomes?: Partial<Record<BiomeKey, number>>
+  /** Hard limits on the tile's elevation (0 to 1), temperature and humidity. */
+  elevation?: Range
+  temperature?: Range
+  humidity?: Range
+  /** Hard limit on the distance (tiles) to the coast: from the sea for land, from the land for water. */
+  coastDistance?: Range
+  prefer?: ResourcePreferences
+  /** How far regional geology or ecology can make it rich or barren: 0 none, 1 complete (whole regions with none). */
+  regional: number
+  /** The size of those regions, in tiles. */
+  regionSize: number
+  /** Oil and salt: the share of the **water** tiles within the coast distance range that also hold it, under the sea. */
+  offshore?: { share: number; coastDistance?: Range }
+}
+
+/** Settings shared by every rule when features are derived from the terrain. */
+export interface ResourceFeatureConfig {
+  /** Radius (tiles) of the window a tile is compared with to decide whether it is a ridge or a basin. */
+  ridgeRadius: number
+  /** How far above or below its surroundings (elevation) counts as a full ridge or basin. */
+  ridgeScale: number
+  /** The slope (elevation per tile) that counts as fully steep. */
+  slopeScale: number
+}
+
+/** The placement rules for every resource, by catalogue key (`timber`, `iron`, ...). */
+export interface ResourcePlacementConfig {
+  features: ResourceFeatureConfig
+  rules: Record<string, ResourceRule>
+}

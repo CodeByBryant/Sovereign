@@ -28,7 +28,7 @@ Choosing a random seed is the host's job (the one place `Math.random()` or the c
 A single seed yields independent named streams. The names form a fixed, ordered constant (`STREAM_NAMES`):
 
 ```text
-elevation, continent, ocean, temperature, humidity, biome, riverPrimary, riverSecondary, riverWarpX, riverWarpY, riverWidth, ore, resourceDensity, spawn, names, colors, flags
+elevation, continent, ocean, temperature, humidity, biome, riverPrimary, riverSecondary, riverWarpX, riverWarpY, riverWidth, geology, ore, resourceDensity, spawn, names, colors, flags
 ```
 
 Nothing iterates a stream registry by object key; code uses this array or a named stream. A stream's output depends only on the seed and its own name, so adding a draw in one stream, or adding a new stream, never changes another. Adding a name is still a deliberate act: edit the list, this document and `tests/stream-usage.test.ts`.
