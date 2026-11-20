@@ -11,7 +11,7 @@
 // PROBE_SEEDS=1,2,3 picks the seeds and PROBE_SIDE=512 shrinks the maps (default: ten fixed seeds at
 // the real 2000 x 2000). Nothing is asserted; the report is the output.
 import { defaultWorldConfig } from '@sovereign/config'
-import { BIOME_KEYS, type BiomeKey } from '@sovereign/contracts'
+import { BIOME_KEYS, ResourceType, type BiomeKey } from '@sovereign/contracts'
 import { performance } from 'node:perf_hooks'
 import { it } from 'vitest'
 import { determineBiome } from '../../src/terrain/biomes'
@@ -33,6 +33,11 @@ interface WorldCount {
   total: number
   land: number
   counts: number[]
+  /** River tiles, resource tiles by `ResourceType`, strategic points by type, nations spawned. */
+  riverTiles: number
+  resources: number[]
+  strategic: Record<string, number>
+  nations: number
   /** Elevation at the 50th, 90th, 99th and 99.99th percentile, and the maximum. */
   elevation: { p50: number; p90: number; p99: number; p9999: number; max: number }
 }
@@ -44,11 +49,24 @@ function countWorld(seed: number): WorldCount {
   const counts = new Array<number>(BIOME_KEYS.length).fill(0)
   for (let i = 0; i < ids.length; i += 1) counts[ids[i]] += 1
   const water = BIOME_KEYS.reduce((n, key, id) => n + (WATER.has(key) ? counts[id] : 0), 0)
+  const t = world.terrain
+  let riverTiles = 0
+  const resources = new Array<number>(8).fill(0)
+  for (let i = 0; i < ids.length; i += 1) {
+    if (t.riverMask[i] !== 0) riverTiles += 1
+    if (t.resourceType[i] !== 0) resources[t.resourceType[i]] += 1
+  }
+  const strategic: Record<string, number> = {}
+  for (const point of t.strategicPoints) strategic[point.type] = (strategic[point.type] ?? 0) + 1
   const sorted = Float32Array.from(world.terrain.elevation).sort()
   const at = (q: number): number =>
     sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]
   return {
     seed,
+    riverTiles,
+    resources,
+    strategic,
+    nations: world.nations.length,
     elevation: {
       p50: at(0.5),
       p90: at(0.9),
@@ -128,6 +146,29 @@ it(
         `  ${r.key.padEnd(17)} ${pct(r.meanAll, 4)}  ${WATER.has(r.key) ? '        -' : pct(r.meanLand, 4)}  ${pct(r.min, 4)} ${pct(r.max, 4)}   ${r.present}/${worlds.length}`
       )
     }
+
+    // Everything else the retune must not break (percent of LAND tiles, mean over the worlds).
+    const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length
+    log('\nOther layers (percent of land tiles, mean over worlds)')
+    log(
+      `  river tiles        ${pct(mean(worlds.map((w) => (100 * w.riverTiles) / w.land)), 3)}   (range ${pct(Math.min(...worlds.map((w) => (100 * w.riverTiles) / w.land)), 2).trim()} to ${pct(Math.max(...worlds.map((w) => (100 * w.riverTiles) / w.land)), 2).trim()})`
+    )
+    for (const [name, id] of Object.entries(ResourceType)) {
+      if (typeof id !== 'number' || id === 0) continue
+      log(
+        `  ${(name.toLowerCase() + ' tiles').padEnd(18)} ${pct(mean(worlds.map((w) => (100 * w.resources[id]) / w.land)), 3)}`
+      )
+    }
+    const strategicTypes = [...new Set(worlds.flatMap((w) => Object.keys(w.strategic)))].sort(
+      (a, b) => a.localeCompare(b)
+    )
+    for (const type of strategicTypes) {
+      const counts = worlds.map((w) => w.strategic[type] ?? 0)
+      log(
+        `  ${(type + ' points').padEnd(18)} mean ${mean(counts).toFixed(0).padStart(6)} per world (min ${Math.min(...counts)}, max ${Math.max(...counts)})`
+      )
+    }
+    log(`  nations spawned    ${worlds.map((w) => w.nations).join(' ')}`)
 
     const reachable = reachableBiomes()
     const unreachable = BIOME_KEYS.filter((key) => !reachable.has(key))
