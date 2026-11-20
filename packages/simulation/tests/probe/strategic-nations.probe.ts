@@ -9,7 +9,7 @@
 //   pnpm --filter @sovereign/simulation probe -- tests/probe/strategic-nations.probe.ts
 //
 // PROBE_SEEDS=1,2,3 picks the seeds (default ten) and PROBE_SIDE=512 shrinks the maps.
-import { RESOURCE_CATALOG, ResourceType, type StrategicType } from '@sovereign/contracts'
+import { RESOURCE_CATALOG, ResourceType } from '@sovereign/contracts'
 import { it } from 'vitest'
 import { World } from '../../src/world/World'
 
@@ -81,12 +81,25 @@ it(
     const governments = new Map<string, number>()
     const personality: number[][] = [[], [], [], [], []]
     let nationCount = 0
+    let hubCount = 0
+    let routeCount = 0
+    let components = 0
+    const routeTiles: number[] = []
 
     for (const seed of seeds) {
       const config = Number.isFinite(side) ? { map: { width: side, height: side } } : undefined
       const world = World.create({ seed, config })
       const t = world.terrain
       for (const v of t.riverMask) riverTiles += v
+      hubCount += t.hubs.length
+      routeCount += t.routes.length
+      const parent = t.hubs.map((_, i) => i)
+      const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x])))
+      for (const r of t.routes) {
+        parent[find(r.from)] = find(r.to)
+        routeTiles.push(r.path.length / 2)
+      }
+      components += new Set(t.hubs.map((_, i) => find(i))).size
       for (const p of t.strategicPoints) {
         const entry = byType.get(p.type) ?? { count: 0, value: 0 }
         entry.count += 1
@@ -173,6 +186,10 @@ it(
       )
     }
     lines.push(`  total            ${(total / worlds).toFixed(0).padStart(6)} points`)
+    routeTiles.sort((a, b) => a - b)
+    lines.push(
+      `  hubs ${(hubCount / worlds).toFixed(0)} and routes ${(routeCount / worlds).toFixed(0)} per world; connected groups of hubs ${(components / worlds).toFixed(1)}; route length (cells) median ${routeTiles[Math.floor(routeTiles.length / 2)] ?? 0}, longest ${routeTiles[routeTiles.length - 1] ?? 0}`
+    )
     lines.push(
       `  nearest other point: median ${q(0.5).toFixed(1)}, 10th pct ${q(0.1).toFixed(1)}, 90th pct ${q(0.9).toFixed(1)} tiles`
     )

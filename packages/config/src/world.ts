@@ -299,28 +299,25 @@ export const defaultWorldConfig: WorldConfig = {
   /* ------------------------------------------------------------ */
 
   /**
-   * Detection radii for strategic feature identification.
+   * What counts as a strategic point on a route: a pass over a ridge, a ford across a river, a strait
+   * between landmasses, a neck of land. Distances are in route cells (`routes.cell` tiles each).
    *
-   * @example Wider strait detection
+   * @example Count wider water as a strait
    * ```ts
-   * defaultWorldConfig.strategic.straitMaxWidth = 20
+   * defaultWorldConfig.strategic.straitMaxCells = 12
    * ```
    */
   strategic: {
-    /** Search radius for river crossing candidates (tiles). @default 5 */
-    riverCrossingRadius: 5,
-    /** Saddle-point search radius for mountain passes. @default 8 */
-    mountainPassRadius: 8,
-    /** Elevation by which the ground around a pass must rise above it. @default 0.02 */
-    mountainPassRise: 0.02,
-    /** Share of the surrounding samples that must rise by that much. @default 0.35 */
-    mountainPassMinRatio: 0.35,
-    /** Max water gap to qualify as a strait (tiles). @default 12 */
-    straitMaxWidth: 12,
-    /** Min water-to-total ratio in scan circle for peninsula. @default 0.6 */
-    peninsulaMinRatio: 0.6,
-    /** Scan radius for peninsula detection (tiles). @default 10 */
-    peninsulaRadius: 10
+    fordMaxRun: 6,
+    straitMaxCells: 8,
+    passRise: 0.02,
+    passMinElevation: 0.55,
+    passWindow: 6,
+    isthmusMaxSeaDistance: 2,
+    isthmusRise: 2,
+    isthmusWindow: 6,
+    mergeRadius: 3,
+    minTraffic: 0.02
   },
 
   /* ------------------------------------------------------------ */
@@ -866,14 +863,34 @@ export function validateWorldConfig(config: WorldConfig): string[] {
   validateBiomeTable(config.biomes, problems)
   validateResourcePlacement(config.resources, problems)
   validateRoutes(config.routes, problems)
-  if (!(config.strategic.mountainPassRise > 0)) {
-    problems.push('strategic.mountainPassRise must be greater than 0')
-  }
-  if (!(config.strategic.mountainPassMinRatio > 0 && config.strategic.mountainPassMinRatio <= 1)) {
-    problems.push('strategic.mountainPassMinRatio must be greater than 0 and at most 1')
-  }
+  validateStrategic(config.strategic, problems)
 
   return problems
+}
+
+/** Problems with the strategic point settings. */
+function validateStrategic(strategic: StrategicConfig, problems: string[]): void {
+  const at = 'strategic'
+  for (const name of [
+    'fordMaxRun',
+    'straitMaxCells',
+    'passWindow',
+    'isthmusMaxSeaDistance',
+    'isthmusRise',
+    'isthmusWindow',
+    'mergeRadius'
+  ] as const) {
+    if (!isInteger(strategic[name]) || strategic[name] < 1) {
+      problems.push(`${at}.${name} must be a whole number of at least 1`)
+    }
+  }
+  if (!(strategic.passRise > 0)) problems.push(`${at}.passRise must be greater than 0`)
+  if (!(strategic.passMinElevation >= 0 && strategic.passMinElevation <= 1)) {
+    problems.push(`${at}.passMinElevation must be from 0 to 1`)
+  }
+  if (!(strategic.minTraffic >= 0 && strategic.minTraffic <= 1)) {
+    problems.push(`${at}.minTraffic must be from 0 to 1`)
+  }
 }
 
 /** Problems with the route settings. */

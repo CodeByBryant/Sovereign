@@ -60,7 +60,7 @@ describe('resolveWorldConfig', () => {
     ['biomeNoise', { octaves: 4 }],
     ['rivers', { primaryWidth: 9 }],
     ['biomes', { shoreBand: 0.5 }],
-    ['strategic', { straitMaxWidth: 3 }],
+    ['strategic', { straitMaxCells: 3 }],
     ['resources', { goldRarity: 0.5 }],
     ['nations', { minSpacing: 11 }]
   ] as const)('applies an override to the %s section', (section, override) => {
@@ -129,9 +129,17 @@ describe('validateWorldConfig', () => {
     ['a lacunarity below 1', (c: WorldConfig) => (c.temperature.lacunarity = 0.9)],
     ['a fractional octave count', (c: WorldConfig) => (c.humidity.octaves = 2.5)],
     ['a non-positive noise scale', (c: WorldConfig) => (c.biomeNoise.scale = 0)],
-    ['a zero pass rise', (c: WorldConfig) => (c.strategic.mountainPassRise = 0)],
-    ['a zero pass ratio', (c: WorldConfig) => (c.strategic.mountainPassMinRatio = 0)],
-    ['a pass ratio above 1', (c: WorldConfig) => (c.strategic.mountainPassMinRatio = 1.01)]
+    ['a zero pass rise', (c: WorldConfig) => (c.strategic.passRise = 0)],
+    ['a pass floor above 1', (c: WorldConfig) => (c.strategic.passMinElevation = 1.01)],
+    ['a minimum traffic above 1', (c: WorldConfig) => (c.strategic.minTraffic = 1.01)],
+    ['a minimum traffic below 0', (c: WorldConfig) => (c.strategic.minTraffic = -0.1)],
+    ['a fractional ford run', (c: WorldConfig) => (c.strategic.fordMaxRun = 2.5)],
+    ['a zero strait width', (c: WorldConfig) => (c.strategic.straitMaxCells = 0)],
+    ['a zero pass window', (c: WorldConfig) => (c.strategic.passWindow = 0)],
+    ['a zero isthmus reach', (c: WorldConfig) => (c.strategic.isthmusMaxSeaDistance = 0)],
+    ['a zero isthmus rise', (c: WorldConfig) => (c.strategic.isthmusRise = 0)],
+    ['a zero isthmus window', (c: WorldConfig) => (c.strategic.isthmusWindow = 0)],
+    ['a zero merge radius', (c: WorldConfig) => (c.strategic.mergeRadius = 0)]
   ])('rejects %s', (_label, edit) => {
     expect(bad(edit).length).toBeGreaterThan(0)
   })

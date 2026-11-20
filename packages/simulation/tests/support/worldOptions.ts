@@ -61,6 +61,8 @@ export function smallWorldOverrides(options: SmallWorldOptions = {}): WorldConfi
       warpStrength: 3
     },
     resources: smallResources(k),
+    // hubs closer together, so a test-sized map has a network
+    routes: { hubSpacing: 24 },
     nations: { count: options.nations ?? 8, minSpacing: options.minSpacing ?? 18 }
   }
 }

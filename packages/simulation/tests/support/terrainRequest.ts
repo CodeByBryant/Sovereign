@@ -5,6 +5,7 @@ import type {
   BiomeNoiseConfig,
   HumidityConfig,
   ResourcePlacementConfig,
+  RoutesConfig,
   RiverConfig,
   StrategicConfig,
   TemperatureConfig,
@@ -21,6 +22,7 @@ export interface TerrainRequestShape {
   rivers: RiverConfig
   biomes: BiomeConfig
   strategic: StrategicConfig
+  routes: RoutesConfig
   resources: ResourcePlacementConfig
   minLandRatio?: number
 }
@@ -67,6 +69,8 @@ export function smallTerrainRequest(
     },
     biomes: { ...t.biomes },
     strategic: { ...t.strategic },
+    // hubs closer together, so a test-sized map has a network
+    routes: { ...t.routes, hubSpacing: 24 },
     resources: smallResources(k),
     minLandRatio: options.minLandRatio ?? t.map.minLandRatio
   }

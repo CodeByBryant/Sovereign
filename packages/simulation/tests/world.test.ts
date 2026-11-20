@@ -376,6 +376,62 @@ describe('resources in the world', () => {
   })
 })
 
+describe('validate() of the route network', () => {
+  it('has hubs, routes and strategic points to check in a test world', () => {
+    const world = make(7)
+    expect(world.terrain.hubs.length).toBeGreaterThan(1)
+    expect(world.terrain.routes.length).toBeGreaterThan(0)
+    expect(world.terrain.strategicPoints.length).toBeGreaterThan(0)
+  })
+
+  it.each([
+    ['a hub outside the map', (w: World) => (w.terrain.hubs[0]!.x = w.terrain.width), /hub/],
+    ['a hub with a weight above 1', (w: World) => (w.terrain.hubs[0]!.weight = 1.5), /hub/],
+    ['a hub with a weight of 0', (w: World) => (w.terrain.hubs[0]!.weight = 0), /hub/],
+    ['a route to a hub that is not there', (w: World) => (w.terrain.routes[0]!.to = 999), /route/],
+    [
+      'a route from a hub after its end',
+      (w: World) => (w.terrain.routes[0]!.from = w.terrain.routes[0]!.to),
+      /route/
+    ],
+    [
+      'a route with an odd number of path values',
+      (w: World) => w.terrain.routes[0]!.path.push(3),
+      /route/
+    ],
+    [
+      'a route with a tile outside the map',
+      (w: World) => (w.terrain.routes[0]!.path[0] = w.terrain.width),
+      /route/
+    ],
+    [
+      'a route that is only one tile',
+      (w: World) => (w.terrain.routes[0]!.path.length = 2),
+      /route/
+    ],
+    ['a route with a negative cost', (w: World) => (w.terrain.routes[0]!.cost = -1), /route/],
+    [
+      'a route with a non-finite traffic',
+      (w: World) => (w.terrain.routes[0]!.traffic = Number.NaN),
+      /route/
+    ],
+    [
+      'a strategic point with a value of 0',
+      (w: World) => (w.terrain.strategicPoints[0]!.value = 0),
+      /strategic/
+    ],
+    [
+      'a strategic point with a value above 10',
+      (w: World) => (w.terrain.strategicPoints[0]!.value = 11),
+      /strategic/
+    ]
+  ])('reports %s', (_label, edit, pattern) => {
+    const world = make(7)
+    edit(world)
+    expect(world.validate().join('\n')).toMatch(pattern)
+  })
+})
+
 describe('validate()', () => {
   it('reports a resource type that is not in the catalogue', () => {
     const world = make(7)
@@ -575,6 +631,22 @@ describe('what the state hash covers', () => {
       'a strategic point',
       (w: World) => w.terrain.strategicPoints[0] && (w.terrain.strategicPoints[0].value += 1)
     ],
+    [
+      'a strategic point type',
+      (w: World) =>
+        (w.terrain.strategicPoints[0]!.type =
+          w.terrain.strategicPoints[0]!.type === 'isthmus' ? 'strait' : 'isthmus')
+    ],
+    ['a hub position', (w: World) => (w.terrain.hubs[0]!.x += 1)],
+    ['a hub weight', (w: World) => (w.terrain.hubs[0]!.weight += 0.01)],
+    ['a route end', (w: World) => (w.terrain.routes[0]!.to += 1)],
+    ['a route start', (w: World) => (w.terrain.routes[0]!.from += 1)],
+    ['a route cost', (w: World) => (w.terrain.routes[0]!.cost += 1)],
+    ['a route traffic', (w: World) => (w.terrain.routes[0]!.traffic += 1)],
+    ['a route tile', (w: World) => (w.terrain.routes[0]!.path[2]! += 1)],
+    ['the length of a route', (w: World) => w.terrain.routes[0]!.path.push(1, 1)],
+    ['a route being gone', (w: World) => w.terrain.routes.pop()],
+    ['a hub being gone', (w: World) => w.terrain.hubs.pop()],
     [
       'the ownership layer',
       (w: World) => (w.map.ownership[0] = w.map.ownership[0] === 255 ? 0 : 255)

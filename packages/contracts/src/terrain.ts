@@ -4,7 +4,7 @@
  * generates them) and the renderer / hosts (which display and store them). Plain typed arrays, no
  * DOM types: the engine never draws.
  */
-import type { StrategicPoint } from './strategic'
+import type { RouteHub, StrategicPoint, StrategicRoute } from './strategic'
 
 export interface TerrainFields {
   width: number
@@ -24,7 +24,12 @@ export interface TerrainFields {
   riverWidth: Uint8Array
   /** The two resource slots of every tile: surface and ground. */
   resources: ResourceSlots
+  /** Where the route network has to go through: passes, fords, straits and land necks. */
   strategicPoints: StrategicPoint[]
+  /** The places routes join (the best sites to live). */
+  hubs: RouteHub[]
+  /** The cheapest ways between neighbouring hubs. */
+  routes: StrategicRoute[]
 }
 
 /**
