@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BIOME_KEYS } from '@sovereign/contracts'
+import { BIOME_KEYS, RESOURCE_CATALOG } from '@sovereign/contracts'
 import {
   assertValidWorldConfig,
   defaultWorldConfig,
@@ -330,5 +330,177 @@ describe('the classifier table (biomes.bands)', () => {
     ['a negative lowland band', (c: WorldConfig) => (c.biomes.lowlandBand = -0.1)]
   ])('rejects %s', (_label, edit) => {
     expect(bad(edit).some((p) => p.startsWith('biomes.'))).toBe(true)
+  })
+})
+
+describe('resource placement rules (resourcePlacement)', () => {
+  const placement = defaultWorldConfig.resourcePlacement
+  const bad = (edit: (c: WorldConfig) => void): string[] => {
+    const c = clone()
+    edit(c)
+    return validateWorldConfig(c)
+  }
+
+  it('has a rule for every one of the 22 resources, and for nothing else', () => {
+    expect(Object.keys(placement.rules).sort()).toEqual(RESOURCE_CATALOG.map((d) => d.key).sort())
+  })
+
+  it('has a regrowth rate for every renewable resource and for no finite one', () => {
+    const renewable = RESOURCE_CATALOG.filter((d) => d.renewable).map((d) => d.key)
+    expect(Object.keys(placement.regrowth).sort()).toEqual(renewable.sort())
+  })
+
+  it('keeps every share between 0 and 1, and each slot realistic: shares on one slot cannot exceed what exists', () => {
+    for (const def of RESOURCE_CATALOG) {
+      const rule = placement.rules[def.key]
+      expect(rule.share, def.key).toBeGreaterThan(0)
+      expect(rule.share, def.key).toBeLessThanOrEqual(1)
+    }
+    const sum = (pick: (d: (typeof RESOURCE_CATALOG)[number]) => boolean): number =>
+      RESOURCE_CATALOG.filter(pick).reduce((s, d) => s + placement.rules[d.key].share, 0)
+    expect(sum((d) => d.layer === 'surface' && d.domain === 'land')).toBeLessThan(0.8)
+    expect(sum((d) => d.layer === 'ground')).toBeLessThan(0.5)
+    expect(sum((d) => d.domain === 'water')).toBeLessThan(0.5)
+  })
+
+  it('only puts offshore deposits on resources that can lie under the sea (oil and salt)', () => {
+    for (const def of RESOURCE_CATALOG) {
+      expect(placement.rules[def.key].offshore !== undefined, def.key).toBe(def.domain === 'both')
+    }
+  })
+
+  it('is itself valid, and reports problems naming the rule', () => {
+    expect(validateWorldConfig(defaultWorldConfig)).toEqual([])
+    const problems = bad((c) => (c.resourcePlacement.rules.iron.share = 2))
+    expect(problems.some((p) => p.startsWith('resourcePlacement.rules.iron.share'))).toBe(true)
+  })
+
+  it.each([
+    [
+      'an unknown resource',
+      (c: WorldConfig) =>
+        (c.resourcePlacement.rules.unicorn = { ...c.resourcePlacement.rules.iron })
+    ],
+    ['a negative share', (c: WorldConfig) => (c.resourcePlacement.rules.iron.share = -0.1)],
+    ['a share above 1', (c: WorldConfig) => (c.resourcePlacement.rules.iron.share = 1.1)],
+    [
+      'a regional factor above 1',
+      (c: WorldConfig) => (c.resourcePlacement.rules.iron.regional = 1.2)
+    ],
+    [
+      'a negative regional factor',
+      (c: WorldConfig) => (c.resourcePlacement.rules.iron.regional = -0.1)
+    ],
+    ['a region size of 0', (c: WorldConfig) => (c.resourcePlacement.rules.iron.regionSize = 0)],
+    [
+      'a range with min above max',
+      (c: WorldConfig) => (c.resourcePlacement.rules.iron.elevation = [0.9, 0.2])
+    ],
+    [
+      'a negative coast distance',
+      (c: WorldConfig) => (c.resourcePlacement.rules.fish.coastDistance = [-1, 10])
+    ],
+    [
+      'an unknown biome',
+      (c: WorldConfig) => (c.resourcePlacement.rules.timber.biomes = { lava: 1 } as never)
+    ],
+    [
+      'a biome weight above 1',
+      (c: WorldConfig) => (c.resourcePlacement.rules.timber.biomes = { woodland: 1.5 })
+    ],
+    [
+      'a biome weight below 0',
+      (c: WorldConfig) => (c.resourcePlacement.rules.timber.biomes = { woodland: -1 })
+    ],
+    [
+      'biomes on a water resource',
+      (c: WorldConfig) => (c.resourcePlacement.rules.fish.biomes = { ocean: 1 })
+    ],
+    [
+      'an offshore deposit on a land-only resource',
+      (c: WorldConfig) => (c.resourcePlacement.rules.iron.offshore = { share: 0.01 })
+    ],
+    [
+      'no offshore setting on oil being allowed to exceed 1',
+      (c: WorldConfig) => (c.resourcePlacement.rules.oil.offshore = { share: 1.5 })
+    ],
+    [
+      'a river preference with no reach',
+      (c: WorldConfig) =>
+        (c.resourcePlacement.rules.grain.prefer = { river: { within: 0, weight: 1 } })
+    ],
+    [
+      'regrowth for a finite resource',
+      (c: WorldConfig) => (c.resourcePlacement.regrowth.iron = { units: 1, period: 10 })
+    ],
+    [
+      'regrowth for an unknown resource',
+      (c: WorldConfig) => (c.resourcePlacement.regrowth.unicorn = { units: 1, period: 10 })
+    ],
+    ['regrowth of 0 units', (c: WorldConfig) => (c.resourcePlacement.regrowth.grain.units = 0)],
+    ['regrowth of 256 units', (c: WorldConfig) => (c.resourcePlacement.regrowth.grain.units = 256)],
+    ['a regrowth period of 0', (c: WorldConfig) => (c.resourcePlacement.regrowth.grain.period = 0)],
+    [
+      'a fractional regrowth period',
+      (c: WorldConfig) => (c.resourcePlacement.regrowth.grain.period = 2.5)
+    ],
+    ['a ridge radius of 0', (c: WorldConfig) => (c.resourcePlacement.features.ridgeRadius = 0)],
+    [
+      'a fractional ridge radius',
+      (c: WorldConfig) => (c.resourcePlacement.features.ridgeRadius = 2.5)
+    ],
+    ['a ridge scale of 0', (c: WorldConfig) => (c.resourcePlacement.features.ridgeScale = 0)],
+    ['a slope scale of 0', (c: WorldConfig) => (c.resourcePlacement.features.slopeScale = 0)],
+    [
+      'surface land shares that add up to more than the land',
+      (c: WorldConfig) => {
+        for (const key of ['timber', 'grain', 'pasture']) c.resourcePlacement.rules[key].share = 0.5
+      }
+    ],
+    [
+      'ground shares that add up to more than the land',
+      (c: WorldConfig) => (c.resourcePlacement.rules.stone.share = 1)
+    ],
+    [
+      'water shares that add up to more than the water',
+      (c: WorldConfig) => (c.resourcePlacement.rules.fish.share = 1)
+    ]
+  ])('rejects %s', (_label, edit) => {
+    expect(bad(edit).some((p) => p.startsWith('resourcePlacement'))).toBe(true)
+  })
+
+  it('checks each offshore share on its own, and the offshore shares together', () => {
+    const own = bad((c) => (c.resourcePlacement.rules.oil.offshore = { share: 1.2 }))
+    expect(own.some((p) => p.includes('oil.offshore.share'))).toBe(true)
+    const together = bad((c) => {
+      c.resourcePlacement.rules.oil.offshore = { share: 0.7 }
+      c.resourcePlacement.rules.salt.offshore = { share: 0.7 }
+    })
+    expect(together.some((p) => p.includes('offshore shares add up'))).toBe(true)
+    expect(together.some((p) => p.includes('offshore.share must'))).toBe(false)
+    expect(bad((c) => (c.resourcePlacement.rules.oil.offshore = { share: 0.9 }))).toEqual([])
+  })
+
+  it('does not alias the default rules into a resolved config, however deep', () => {
+    const before = JSON.stringify(defaultWorldConfig)
+    const resolved = resolveWorldConfig()
+    resolved.resourcePlacement.rules.iron.share = 0.9
+    resolved.resourcePlacement.rules.iron.prefer = { ridge: 99 }
+    resolved.resourcePlacement.regrowth.grain.units = 200
+    resolved.resourcePlacement.features.ridgeRadius = 1
+    delete (resolved.resourcePlacement.rules as Record<string, unknown>).gold
+    expect(JSON.stringify(defaultWorldConfig)).toBe(before)
+  })
+
+  it('lets a section be overridden as a whole', () => {
+    const rules = {
+      ...clone().resourcePlacement.rules,
+      iron: { share: 0.5, regional: 0, regionSize: 10 }
+    }
+    const resolved = resolveWorldConfig({ resourcePlacement: { rules } })
+    expect(resolved.resourcePlacement.rules.iron.share).toBe(0.5)
+    expect(resolved.resourcePlacement.regrowth).toEqual(
+      defaultWorldConfig.resourcePlacement.regrowth
+    )
   })
 })

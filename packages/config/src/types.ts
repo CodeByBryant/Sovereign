@@ -265,3 +265,17 @@ export interface ResourcePlacementConfig {
   features: ResourceFeatureConfig
   rules: Record<string, ResourceRule>
 }
+
+/** How fast a drawn-down renewable resource grows back. */
+export interface ResourceRegrowth {
+  /** Units of stock regrown each time. 1 to 255. */
+  units: number
+  /** Every this many ticks (a tick is a day). 1 to 65535. */
+  period: number
+}
+
+/** Everything that decides where resources are, how rich they are, and how they regrow. */
+export interface ResourcePlacementSettings extends ResourcePlacementConfig {
+  /** Regrowth by catalogue key, for every renewable resource (the surface ones). Ground resources are finite. */
+  regrowth: Record<string, ResourceRegrowth>
+}
