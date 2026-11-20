@@ -1,0 +1,196 @@
+# Determinism specification
+
+Normative spec for the simulation engine (`@sovereign/simulation`). Anything an independent implementation must reproduce bit for bit is defined here. Rationale and alternatives are in [ADR 0003](../decisions/0003-determinism-policy.md).
+
+**Guarantee.** For the same seed, the same world configuration and the same sequence of API calls, every engine (any JS runtime, any OS) produces identical simulation state, and therefore an identical state hash.
+
+> **Status.** The primitives below (seed, streams, deterministic math, hashing, lint bans) are implemented and tested. The terrain and nation generators moved in from the old app (`terrain/`, `nations/`, `world/`) still use `alea`, `simplex-noise` and `Math.pow`; they are exempt from the lint bans until they are ported onto these primitives, after which the guarantee covers world generation. The simulation clock and golden world hashes arrive with the `World` API.
+
+## 1. Numeric model
+
+- All simulation numbers are IEEE-754 **binary64** (JS `number`). Tile layers are stored in typed arrays; a value is computed in binary64 and rounded once on store, which is deterministic.
+- Only these operations may touch simulation state: `+ - * /`, `Math.sqrt` (correctly rounded by IEEE-754), comparisons, `Math.abs/floor/ceil/min/max/trunc/sign`, `Math.imul`, and bitwise operators on 32-bit integers. Transcendental functions come from `math/transcendental.ts`, which is built from those operations only. `Math.sin`, `Math.pow`, `**`, `Math.hypot` and friends are forbidden because their results are implementation-defined.
+- **NaN and ±Infinity are invalid simulation values.** The hasher throws on them (fail loud, never hash garbage), and the math functions throw `RangeError` outside their domains instead of returning them. Nothing normalizes, clamps or repairs.
+- **-0 is canonicalized to +0 before hashing** (`x === 0 ? 0 : x`), because the engine treats them as equal.
+
+## 2. Seed
+
+The engine's seed is an integer in `[0, 2^32 - 1]`. `normalizeSeed(input)` turns whatever a host has into one:
+
+- a **number** must already be such an integer, otherwise `RangeError`;
+- a **canonical digit string** (`"0"` or no leading zero) that fits in 32 bits is the number it spells, so typing `12345` and passing `12345` give the same world;
+- **any other text** (including digit strings that do not fit, or with leading zeros such as `"007"`) is hashed with FNV-1a 32 over its UTF-8 bytes. The empty string hashes to the FNV offset basis; hosts that want a random world pick a random seed instead.
+
+Choosing a random seed is the host's job (the one place `Math.random()` or the clock may be used); the engine only ever receives a seed.
+
+## 3. Random streams
+
+A single seed yields independent named streams. The names form a fixed, ordered constant (`STREAM_NAMES`):
+
+```text
+elevation, continent, ocean, temperature, humidity, biome, riverPrimary, riverSecondary, riverWarpX, riverWarpY, riverWidth, ore, resourceDensity, spawn, names, colors, flags
+```
+
+Nothing iterates a stream registry by object key; code uses this array or a named stream. A stream's output depends only on the seed and its own name, so adding a draw in one stream, or adding a new stream, never changes another. Adding a name is still a deliberate act: edit the list, this document and `tests/stream-usage.test.ts`.
+
+### 3.1 Deriving a stream's initial state
+
+1. Build the input bytes: ASCII `"sovereign-rng-v1"`, `0x00`, the seed as 4 bytes **big-endian**, `0x00`, then the **UTF-8** bytes of the stream name.
+2. `s` = **FNV-1a 32-bit** over the bytes (offset basis `0x811c9dc5`, prime `0x01000193`, multiply with `Math.imul`, result as uint32).
+3. Expand with **splitmix32** starting from state `s`; take four outputs `w0..w3`:
+
+   ```text
+   state = (state + 0x9e3779b9) | 0
+   z = state
+   z = imul(z ^ (z >>> 16), 0x85ebca6b)
+   z = imul(z ^ (z >>> 13), 0xc2b2ae35)
+   out = (z ^ (z >>> 16)) >>> 0
+   ```
+
+4. The xoshiro128\*\* state is `[w0, w1, w2, w3]`. An all-zero state is invalid; if all four words are zero it becomes the fixed constant `[0x9e3779b9, 0x243f6a88, 0xb7e15162, 0x71374491]`.
+
+Changing any byte of this derivation (including the `sovereign-rng-v1` prefix) changes every world: it is a breaking, versioned change.
+
+### 3.2 Generator and derived draws
+
+**xoshiro128\*\*** (uint32 arithmetic):
+
+```text
+result = imul(rotl(imul(s1, 5), 7), 9) >>> 0
+t = s1 << 9
+s2 ^= s0; s3 ^= s1; s1 ^= s2; s0 ^= s3; s2 ^= t; s3 = rotl(s3, 11)
+```
+
+- `nextUint32()` returns `result`.
+- `float()` in `[0, 1)`: `hi = nextUint32() >>> 5`, then `lo = nextUint32() >>> 6` (in that order); result `(hi * 67108864 + lo) / 9007199254740992`.
+- `integer(min, max)` inclusive, both safe integers, `range = max - min + 1 <= 2^32`. `limit = floor(2^32 / range) * range`. Draw `u = nextUint32()` until `u < limit`; result `min + (u % range)` (rejection sampling, no modulo bias).
+- `boolean(p = 0.5)`: `float() < p` (strictly less, so `p = 0` is never true).
+- `choose(items)`: `items[integer(0, items.length - 1)]`; throws on an empty list.
+- `getState()` / `setState()` expose the four words for saves.
+
+A Gaussian draw is not provided yet; it will be added (Marsaglia polar, using the engine's `ln`) with its vectors when first needed.
+
+## 4. Time
+
+Planned with the `World` API: a fixed timestep where `tick` increases by exactly 1 per step and `time = tick * deltaTime` is computed by multiplication, never accumulated. No wall-clock source is read anywhere in the engine (enforced by lint).
+
+## 5. Iteration order
+
+- No system, hash, snapshot or event may depend on JS object or property enumeration order.
+- Entity stores iterate in a defined order (ascending id, or ascending tile index for tile layers). `Map`/`Set` are allowed only where their iteration order is the insertion order the code controls and never feeds into results unsorted.
+- ESLint bans `for...in`, `Object.keys/values/entries`, and `Array.prototype.sort` without a comparator (the default sort is lexicographic, not numeric).
+
+## 6. Deterministic math
+
+`math/transcendental.ts` provides `ln`, `exp` and `pow` built only from exact operations (fdlibm-style kernels: range reduction plus a minimax polynomial), accurate to about one unit in the last place. Domains; anything else throws `RangeError`:
+
+| Function   | Domain                         | Notes                                                                |
+| ---------- | ------------------------------ | -------------------------------------------------------------------- |
+| `ln(x)`    | positive normal numbers        | subnormals, 0, negatives, NaN, Infinity throw                        |
+| `exp(x)`   | finite `x <= 709.782712893384` | results below the smallest normal (`x < -708.3964185322641`) are `0` |
+| `pow(x,y)` | finite `x >= 0`, finite `y`    | `pow(0,0)=1`; `pow(0,y<0)` and overflow throw; underflow is `0`      |
+
+`pow` is `exp(y * ln x)`: accurate to about `1e-14` relative while `|y * ln x| <= 30`, and **not exact for integer powers**. `sin`, `cos` and `atan2` are not provided yet; they will be implemented in the same file, with accuracy tests, when first needed. ESLint bans the platform equivalents in `packages/simulation/src`: `Math.sin/cos/tan/asin/acos/atan/atan2/log/log2/log10/log1p/exp/expm1/pow/hypot/cbrt/sinh/cosh/tanh/asinh/acosh/atanh`, `Math.random`, `Date.now`, `performance.now`, `new Date()` and the `**` operator.
+
+## 7. State hash
+
+A state hash is a 32-character lowercase hex string (128 bits).
+
+### 7.1 Byte encoding
+
+| Writer         | Bytes                                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `writeUint8`   | 1 byte                                                                                                                          |
+| `writeUint32`  | 4 bytes, big-endian                                                                                                             |
+| `writeFloat64` | 8 bytes: exact IEEE-754 bits, **big-endian** (`DataView.setFloat64(o, x, false)`), -0 canonicalized to +0, throws if non-finite |
+| `writeString`  | `writeUint32(byteLength)` then the UTF-8 bytes                                                                                  |
+
+Never decimal strings, `JSON.stringify` or `toFixed`.
+
+### 7.2 Hash function
+
+**cyrb128-style**, 4 x 32-bit lanes, fed one byte `k` at a time:
+
+```text
+init: h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762
+per byte k:
+  h1 = h2 ^ imul(h1 ^ k, 597399067)
+  h2 = h3 ^ imul(h2 ^ k, 2869860233)
+  h3 = h4 ^ imul(h3 ^ k, 951274213)
+  h4 = h1 ^ imul(h4 ^ k, 2716044179)
+finish:
+  h1 = imul(h3 ^ (h1 >>> 18), 597399067)
+  h2 = imul(h4 ^ (h2 >>> 22), 2869860233)
+  h3 = imul(h1 ^ (h3 >>> 17), 951274213)
+  h4 = imul(h2 ^ (h4 >>> 19), 2716044179)
+  h1 ^= (h2 ^ h3 ^ h4); h2 ^= h1; h3 ^= h1; h4 ^= h1
+output: hex(h1) hex(h2) hex(h3) hex(h4), each as 8 lowercase hex digits (uint32)
+```
+
+`digest()` does not consume state: more bytes may be written afterwards.
+
+### 7.3 Canonical stream, schema versions
+
+A state hash begins with the four ASCII bytes `SOVH`, then `writeUint32(HASH_SCHEMA_VERSION)`. Any change to the field list, order or encoding of what is hashed requires bumping `HASH_SCHEMA_VERSION` and regenerating the golden hashes with a rationale in the PR. Old versions stay documented here rather than being edited in place, so a reader can tell what an older golden entry actually hashed.
+
+#### Version 1 (current)
+
+The header only. The set of hashed world fields is defined with the `World` API and recorded here when it lands.
+
+## 8. Golden hashes
+
+Planned with the `World` API. Golden files will live in `packages/simulation/tests/golden/` and record `{ hashSchemaVersion, entries }`, each entry pinning a seed, a config, a tick count and the expected hash. A test first compares the golden's `hashSchemaVersion` with the current constant, so a layout change yields an explicit "bump the version and regenerate" message instead of an opaque mismatch. Regenerating goldens is a deliberate act in its own commit with the reason in the PR.
+
+## 9. Test vectors
+
+Produced by an independent reference implementation written from this document alone (Python integers and masks), and reproduced by the engine's tests. Hex values are lowercase.
+
+**xoshiro128\*\* reference** (state `[1, 2, 3, 4]`, decimal): `11520, 0, 5927040, 70819200, 2031721883`.
+
+**splitmix32** from state `0`: `92ca2f0e, 3cd6e3f3, 1b147dcc, 4c081dbf`.
+
+**FNV-1a 32**: empty input `811c9dc5`; `"a"` `e40c292c`; `"foobar"` `bf9cf968`.
+
+**Stream derivation** (the words are the splitmix32 outputs; then the first five `nextUint32()` values):
+
+| seed       | stream       | state words                           | first five outputs                             |
+| ---------- | ------------ | ------------------------------------- | ---------------------------------------------- |
+| 0          | `elevation`  | `d7117f9b 523f7bff ed700d00 ba2b3334` | `9465ec35 43d34a24 94346339 ac916aeb acb5aba7` |
+| 12345      | `elevation`  | `cba02774 fb23c1a8 8c5232ad b1b025b4` | `a485480b 712bf198 72c5e0e1 00a8c92a 571d3632` |
+| 12345      | `names`      | `dab067d8 2f43aa12 632c8641 d85fd031` | `72729926 a023bbc1 fc7ffd3e 92c7e46a aa0873a8` |
+| 4294967295 | `spawn`      | `41d56cd8 56bedb81 3573cf20 9e377b4a` | `c64ad998 2696a57d 7a6555bd f977a8fb 3f481221` |
+| 305419896  | `names`      | `d3f7002d 50479d51 2fb26b38 0084542d` | `4b53a108 42a4fb9e 801f0396 f9e669e5 e7141911` |
+| 3735928559 | `elevation`  | `c44a5996 67216423 fad07633 a8145af7` | `6f4d1389 f6234a60 35190a94 b509b022 f59b0c3e` |
+| 16711936   | `spawn`      | `bfc5cce7 6d0a67b5 a870f99c 9b605bb9` | `6a1d6910 d0c71cc2 6744c741 91ff3c09 3339f064` |
+| 0          | `riverWarpX` | `fc34eb54 7493dfbc eefa770f 9ab03e43` | `ff2a073b 3277d1f7 beb686bb 7ec2aba3 935d3898` |
+
+The seeds `305419896` (`0x12345678`), `3735928559` (`0xdeadbeef`) and `16711936` (`0x00ff0100`) have distinct bytes, so an error in the byte order of the seed encoding cannot go unnoticed.
+
+**`float()`**, from the state words of seed `12345`, stream `elevation`, first three: `0.642658713773465, 0.448331885058995, 0.34028948229342704`.
+
+**All-zero fallback**: with the fallback constant as state, the first three outputs are `92dcf72a, 00544cb2, 3c7807cc`.
+
+**Seed normalization**: `"sovereign"` is `a3579d13`; `"héllo ✓"` is `b4ab03a7`; `"4294967296"` is `a5d2f78f`; `"99999999999"` is `f695eb82`; `"007"` is `e2cb360e`.
+
+**Hash** (bytes exactly as written by the writers in 7.1; the header is `"SOVH"` then `writeUint32(1)`):
+
+| Input                                                                              | Output                             |
+| ---------------------------------------------------------------------------------- | ---------------------------------- |
+| no bytes                                                                           | `027ae52ecfc796215593990d4b41437c` |
+| header only                                                                        | `0fe9d992d6cf4eba7b27f691dba022c3` |
+| header, `writeUint32(7)`, `writeFloat64(-0)`, `writeFloat64(0.5)`, `writeUint8(1)` | `0cfff52cd59cd936ea6e87ef760fd062` |
+| same with `writeFloat64(+0)` instead of `-0` (proves canonicalization)             | `0cfff52cd59cd936ea6e87ef760fd062` |
+| header, `writeString("héllo ✓ 🌍")`                                                | `1ee750036f11b9738e0e26b0a664f383` |
+
+**Deterministic math accuracy.** `ln`, `exp` and `pow` are tested against the platform functions: within `2.3e-16` relative (about one ulp) for `ln` over `1e-300..1e300` and for `exp` over `-700..700`, and within `1e-14` relative for `pow` where `|y * ln x| <= 30`. The platform functions are only an oracle in tests, which are exempt from the lint bans.
+
+## 10. Enforcement summary
+
+| Rule                                                                | Enforced by                                                                           |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| No platform transcendentals, `Math.random`, wall clock, `**`        | ESLint, `packages/simulation/src` (tested in `tests/lint-rules.test.ts`)              |
+| No `for...in`, `Object.keys/values/entries`, comparator-less `sort` | ESLint, `packages/simulation/src`                                                     |
+| No browser, React, Pixi or Electron in the engine                   | ESLint (`no-restricted-globals`, `no-restricted-imports`)                             |
+| Not yet ported: `terrain/`, `nations/`, `world/`                    | Temporarily exempt in `eslint.config.js` (exemption and its test removed when ported) |
+| Stream list, hash version and this document stay in sync            | `tests/stream-usage.test.ts`                                                          |
+| Bit-exact reproducibility of whole worlds                           | Golden hashes (planned with the `World` API)                                          |
