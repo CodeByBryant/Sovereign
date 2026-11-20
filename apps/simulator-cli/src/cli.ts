@@ -128,7 +128,9 @@ function buildConfig(opts: Options, io: Io): WorldConfigOverrides {
     try {
       parsed = JSON.parse(new TextDecoder().decode(io.readFile(opts.config)))
     } catch (error) {
-      if (error instanceof SyntaxError) throw new Error(`${opts.config} is not valid JSON`)
+      if (error instanceof SyntaxError) {
+        throw new Error(`${opts.config} is not valid JSON`, { cause: error })
+      }
       throw error
     }
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
