@@ -2,11 +2,13 @@
 
 > Technical reference for the procedural terrain system.
 
+Terrain is one pure, headless function, `generateTerrain(request)` in `packages/simulation/src/terrain/pipeline.ts`. It returns typed fields (`TerrainFields`) and nothing else: colour is the renderer's job and running it off the UI thread is the host's. All randomness comes from named streams derived from the seed, and all noise is the engine's own simplex ([simulation/determinism.md](simulation/determinism.md)), so a seed gives the same terrain, bit for bit, on every machine.
+
 ---
 
 ## Pipeline Stages
 
-The terrain worker (`terrain.worker.ts`) executes these stages sequentially:
+`generateTerrain` runs these stages in order (module names are under `packages/simulation/src/terrain/`):
 
 ### 1. Elevation Field
 
@@ -20,9 +22,15 @@ Multi-octave fractal simplex noise with three additive layers:
 | Continent bias | `continentScale`   | Large landmasses  |
 | Ocean carving  | `oceanScale`       | Deep ocean basins |
 
-Post-processing: power redistribution (`e^redistributionPower`) compresses lowlands.
+Post-processing: power redistribution (`pow(e, redistributionPower)`, default 1.4) compresses lowlands. It uses the engine's own `pow`, not `Math.pow`, whose result differs between JavaScript engines in the last bits.
+
+The elevation, continent and ocean layers each draw from their own random stream (`elevation`, `continent`, `ocean`).
 
 Optional **island mode** multiplies by a radial falloff from map centre.
+
+### 1b. Sea-level rescue
+
+If a seed produces less land than `minLandRatio`, the effective sea level is lowered (never below 0.05) until enough tiles are above water. Every later stage, and the save, uses this effective sea level.
 
 ### 2. Water Distance
 
@@ -116,38 +124,30 @@ Auto-detects geographically significant locations:
 | Strait         | Narrow water gap between two landmasses                  | 0–10  |
 | Peninsula      | High water-to-total ratio in scan circle                 | 0–10  |
 
-### 9. ImageData Rendering
+### Colour is not terrain
 
-Each field is rendered to an `ImageData` (RGBA pixel buffer):
-
-- Elevation: blue → green → brown → white gradient
-- Temperature: blue → red gradient
-- Humidity: tan → teal gradient
-- Biome: 26-colour palette with river overlay
-- Strategic: biome base + highlighted points
-- Resource: biome base + tinted resource deposits
-- Political: nation territory colours + borders
-
-All buffers are posted back as **transferable** ArrayBuffers (zero-copy).
+The pipeline stops at the fields. Turning them into pixels happens in `@sovereign/renderer` (`packages/renderer/src/palettes`): pure functions from a field value to RGBA for each overlay (elevation: blue → green → brown → white; temperature: blue → red; humidity: tan → teal; biome: the 26-colour palette with the river overlay; strategic and resource: the biome base plus highlights; political: territory colour at 45% with borders darkened 35%, see `apps/web/src/viewConfig.ts`). The browser app gets the tile layers from its worker by transfer and hands them to the PixiJS renderer.
 
 ---
 
 ## Configuration
 
-All parameters live in `Config.ts → defaultConfig.terrain`:
+The terrain parameters are the sections of `WorldConfig` in `packages/config/src/world.ts` (`defaultWorldConfig`), and they are part of a world's identity: they are saved with it and covered by its hash.
 
 ```ts
-terrain: {
-  seed,                    // World seed (number)
-  map: { width, height, tileSize, chunkSize, seaLevel, islandMode },
-  elevation: { scale, octaves, persistence, lacunarity, ... },
-  temperature: { scale, octaves, latitudeStrength, elevationCooling, ... },
-  humidity: { scale, octaves, coastalInfluence, elevationDrying },
-  rivers: { primaryScale, secondaryScale, thresholds, widths, ... },
-  strategic: { radii, thresholds },
-  biomeNoise: { scale, octaves, jitter amounts },
-  biomes: { elevation thresholds, jitter amounts },
-  resources: { oreScale, goldRarity, ironRarity, minDensity },
-  nations: { count, minSpacing }
-}
+map:         { width, height, seaLevel, islandMode }   // defaults tuned for 2000 x 2000
+elevation:   { scale, octaves, persistence, lacunarity, continentScale, oceanScale, ... }
+temperature: { scale, octaves, latitudeStrength, elevationCooling, ... }
+humidity:    { scale, octaves, coastalInfluence, elevationDrying }
+rivers:      { primaryScale, secondaryScale, thresholds, widths, warpStrength, ... }
+strategic:   { radii, thresholds }
+biomeNoise:  { scale, octaves, jitter amounts }
+biomes:      { elevation thresholds, jitter amounts }
+resources:   { oreScale, goldRarity, ironRarity, minDensity }
+nations:     { count, minSpacing }
+timestep:    in-game days per tick
 ```
+
+`resolveWorldConfig(overrides)` merges per-section partial overrides over the defaults and `validateWorldConfig` rejects values the engine cannot use (side lengths 16 to 8192, at most 4096 x 4096 tiles, at most 255 nations, octaves 1 to 8, and so on) before anything is allocated. The seed is **not** configuration: it is an input to `World.create`.
+
+The spatial frequencies are tuned for a 2000 x 2000 map; a small test map multiplies them (see `packages/simulation/tests/support/worldOptions.ts`) to stay interesting.
