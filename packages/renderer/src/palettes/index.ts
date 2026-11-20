@@ -235,3 +235,55 @@ export function resourceRgba(
   }
   return data
 }
+
+/** How strongly nations are drawn on the political overlay. */
+export interface PoliticalStyle {
+  /** Alpha blend of the nation colour over the map (0 to 1). */
+  alpha: number
+  /** Extra blend on border tiles (0 to 1); borders are also dimmed by 30%. */
+  darken: number
+}
+
+/**
+ * The political overlay: the base map with each owned tile blended toward its nation's colour. A
+ * tile is a border if any of its four in-map neighbours has a different owner (the edge of the map
+ * does not count). `ownership` holds one byte per tile: the owning nation's index, or 255.
+ */
+export function politicalRgba(
+  base: Uint8ClampedArray,
+  ownership: Uint8Array,
+  nationColors: ReadonlyArray<readonly [number, number, number]>,
+  width: number,
+  height: number,
+  style: PoliticalStyle
+): Uint8ClampedArray {
+  const data = new Uint8ClampedArray(base)
+  const { alpha, darken } = style
+
+  for (let i = 0; i < ownership.length; i += 1) {
+    const owner = ownership[i] as number
+    if (owner === 255) continue
+    const color = nationColors[owner]
+    if (color === undefined) continue
+
+    const x = i % width
+    const y = (i - x) / width
+    const isBorder =
+      (x > 0 && ownership[i - 1] !== owner) ||
+      (x < width - 1 && ownership[i + 1] !== owner) ||
+      (y > 0 && ownership[i - width] !== owner) ||
+      (y < height - 1 && ownership[i + width] !== owner)
+
+    const p = i * 4
+    const blend = isBorder ? alpha + darken : alpha
+    data[p] = Math.round((data[p] as number) * (1 - blend) + color[0] * blend)
+    data[p + 1] = Math.round((data[p + 1] as number) * (1 - blend) + color[1] * blend)
+    data[p + 2] = Math.round((data[p + 2] as number) * (1 - blend) + color[2] * blend)
+    if (isBorder) {
+      data[p] = Math.round((data[p] as number) * 0.7)
+      data[p + 1] = Math.round((data[p + 1] as number) * 0.7)
+      data[p + 2] = Math.round((data[p + 2] as number) * 0.7)
+    }
+  }
+  return data
+}

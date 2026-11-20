@@ -68,3 +68,26 @@ export function checksum(bytes: Uint8Array | Uint8ClampedArray): string {
   }
   return (h >>> 0).toString(16).padStart(8, '0')
 }
+
+/** Deterministic ownership data: three nations as overlapping blobs, a lone tile, and a corner tile. */
+export function syntheticOwnership(
+  width = 64,
+  height = 40
+): { ownership: Uint8Array; colors: Array<[number, number, number]> } {
+  const ownership = new Uint8Array(width * height).fill(255)
+  const fill = (id: number, x0: number, y0: number, x1: number, y1: number): void => {
+    for (let y = y0; y <= y1; y += 1)
+      for (let x = x0; x <= x1; x += 1) ownership[y * width + x] = id
+  }
+  fill(0, 5, 5, 20, 15)
+  fill(1, 18, 10, 40, 30) // overlaps nation 0's rectangle; later fill wins
+  fill(2, 50, 2, 50, 2) // a single tile
+  fill(0, 0, 0, 0, 0) // a corner tile
+  fill(2, width - 1, height - 1, width - 1, height - 1) // the opposite corner
+  const colors: Array<[number, number, number]> = [
+    [200, 40, 40],
+    [40, 200, 40],
+    [40, 40, 200]
+  ]
+  return { ownership, colors }
+}

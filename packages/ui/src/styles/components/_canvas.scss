@@ -9,6 +9,12 @@
   overflow: hidden;
 }
 
+// Holds the canvas the renderer creates, filling the shell.
+.canvas-shell__host {
+  position: absolute;
+  inset: 0;
+}
+
 .canvas-shell__viewport {
   background: #050607;
   width: 100%;

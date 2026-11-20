@@ -12,16 +12,14 @@ export const viewConfig = {
   /** How the tile map is drawn. */
   map: {
     /** Each tile is drawn as `tileSize x tileSize` canvas pixels. */
-    tileSize: 4,
-    /** Tiles per chunk edge; each chunk becomes one `ImageBitmap` for fast drawing. */
-    chunkSize: 64
+    tileSize: 4
   },
   /** The political (nation territory) overlay. */
   political: {
     /** Alpha blend for territory fill (0 to 1). */
-    territoryAlpha: 0.45,
+    alpha: 0.45,
     /** Darkening factor for border tiles (0 to 1). */
-    borderDarken: 0.35
+    darken: 0.35
   },
   camera: {
     /** Minimum zoom level (fully zoomed out). */

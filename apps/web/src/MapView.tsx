@@ -8,7 +8,8 @@
 import React, { useEffect, useRef, useCallback } from 'react'
 import { defaultWorldConfig as world, type TerrainConfig } from '@sovereign/config'
 import type { StrategicPoint } from '@sovereign/contracts'
-import { Camera, Renderer } from '@sovereign/renderer'
+import { Camera, politicalRgba } from '@sovereign/renderer'
+import { MapRenderer } from '@sovereign/renderer/pixi'
 import { WorldMap, spawnNations, type Nation } from '@sovereign/simulation'
 import type { TerrainWorkerRequest, TerrainWorkerResponse } from './host/terrain.worker'
 import TerrainWorker from './host/terrain.worker?worker'
@@ -40,17 +41,15 @@ const VIEW_KEYS: Record<ViewMode, string> = {
 }
 
 const MapView: React.FC = () => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const hostRef = useRef<HTMLDivElement | null>(null)
   const shellRef = useRef<HTMLDivElement | null>(null)
-  const rendererRef = useRef<Renderer | null>(null)
+  const rendererRef = useRef<MapRenderer | null>(null)
   const cameraRef = useRef<Camera | null>(null)
-  const mapsRef = useRef<Partial<Record<ViewMode, ImageBitmap[]>>>({})
   const mapSizeRef = useRef({ width: 0, height: 0, tileSize: 1 })
   const biomeIdsRef = useRef<Uint8Array | null>(null)
   const nationsRef = useRef<Nation[]>([])
   const strategicPointsRef = useRef<StrategicPoint[]>([])
   const strategicGridRef = useRef<Map<number, StrategicPoint>>(new Map())
-  const chunkLayoutRef = useRef<Array<{ x: number; y: number; width: number; height: number }>>([])
 
   // --- Zustand selectors ---
   const seed = useGameStore((s) => s.seed)
@@ -74,308 +73,241 @@ const MapView: React.FC = () => {
   /*  Canvas / Camera / Renderer bootstrap                             */
   /* ---------------------------------------------------------------- */
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return undefined
+    const host = hostRef.current
+    if (!host) return undefined
 
     const camera = new Camera({
       minZoom: viewConfig.camera.minZoom,
       maxZoom: viewConfig.camera.maxZoom
     })
-    const renderer = new Renderer(canvas, camera, { background: viewConfig.canvas.background })
-    rendererRef.current = renderer
-    cameraRef.current = camera
-    const frameLoop = new FrameLoop(renderer, setFps)
+    let disposed = false
+    let stop: (() => void) | undefined
 
-    const resize = (): void => renderer.resize()
-    const resizeObserver = new ResizeObserver(resize)
-    resizeObserver.observe(canvas)
-    window.addEventListener('resize', resize)
+    // Pixi initialises asynchronously, and React may run this effect's cleanup before that finishes
+    // (StrictMode does so in development), so everything that needs the renderer runs from here.
+    const start = (renderer: MapRenderer): (() => void) => {
+      const canvas = renderer.canvas
+      rendererRef.current = renderer
+      cameraRef.current = camera
+      const frameLoop = new FrameLoop(renderer, setFps)
 
-    /* ------------- Pointer / wheel events ------------- */
-    let isDragging = false
-    let lastX = 0
-    let lastY = 0
+      const resize = (): void => renderer.resize()
+      const resizeObserver = new ResizeObserver(resize)
+      resizeObserver.observe(canvas)
+      window.addEventListener('resize', resize)
 
-    const onPointerDown = (e: PointerEvent): void => {
-      isDragging = true
-      lastX = e.clientX
-      lastY = e.clientY
-      canvas.setPointerCapture(e.pointerId)
+      /* ------------- Pointer / wheel events ------------- */
+      let isDragging = false
+      let lastX = 0
+      let lastY = 0
+
+      const onPointerDown = (e: PointerEvent): void => {
+        isDragging = true
+        lastX = e.clientX
+        lastY = e.clientY
+        canvas.setPointerCapture(e.pointerId)
+      }
+
+      const onPointerMove = (e: PointerEvent): void => {
+        if (!isDragging) {
+          handleHover(e, canvas, renderer)
+          return
+        }
+        camera.pan(e.clientX - lastX, e.clientY - lastY)
+        lastX = e.clientX
+        lastY = e.clientY
+      }
+
+      const onPointerUp = (e: PointerEvent): void => {
+        isDragging = false
+        canvas.releasePointerCapture(e.pointerId)
+      }
+
+      const onWheel = (e: WheelEvent): void => {
+        e.preventDefault()
+        const { width, height } = renderer.getViewportSize()
+        const rect = canvas.getBoundingClientRect()
+        const anchorX = e.clientX - rect.left
+        const anchorY = e.clientY - rect.top
+        const scale = 1 + (e.deltaY > 0 ? -1 : 1) * viewConfig.camera.zoomStep
+        camera.zoomAt(scale, anchorX, anchorY, width, height)
+      }
+
+      const onClick = (e: MouseEvent): void => {
+        handleClick(e, canvas, renderer)
+      }
+
+      canvas.addEventListener('pointerdown', onPointerDown)
+      canvas.addEventListener('pointermove', onPointerMove)
+      canvas.addEventListener('pointerup', onPointerUp)
+      canvas.addEventListener('pointerleave', onPointerUp)
+      canvas.addEventListener('wheel', onWheel, { passive: false })
+      canvas.addEventListener('click', onClick)
+
+      /* ------------- Spawn terrain worker ------------- */
+      const { tileSize } = viewConfig.map
+      const terrainConfig: TerrainConfig = { ...world.map, ...world.elevation }
+
+      const worker = new TerrainWorker()
+
+      const useSeed = seed ?? randomSeed()
+
+      const request: TerrainWorkerRequest = {
+        type: 'generate',
+        seed: useSeed,
+        terrain: terrainConfig,
+        temperature: world.temperature,
+        humidity: world.humidity,
+        biomeNoise: world.biomeNoise,
+        rivers: world.rivers,
+        biomes: world.biomes,
+        strategic: world.strategic,
+        resources: world.resources,
+        minLandRatio: world.map.minLandRatio
+      }
+
+      worker.postMessage(request)
+
+      worker.onmessage = async (event: MessageEvent<TerrainWorkerResponse>): Promise<void> => {
+        const data = event.data
+        if (data.type !== 'done') return
+
+        const { width, height } = data
+
+        // The pixel buffers were transferred from the worker, so wrapping them copies nothing.
+        const pixels = (buf: ArrayBuffer): Uint8ClampedArray => new Uint8ClampedArray(buf)
+        const biomePixels = pixels(data.biomePixels)
+
+        renderer.setLayer('elevation', pixels(data.elevationPixels), width, height)
+        renderer.setLayer('temperature', pixels(data.temperaturePixels), width, height)
+        renderer.setLayer('humidity', pixels(data.humidityPixels), width, height)
+        renderer.setLayer('biome', biomePixels, width, height)
+        renderer.setLayer('strategic', pixels(data.strategicPixels), width, height)
+        renderer.setLayer('resource', pixels(data.resourcePixels), width, height)
+
+        mapSizeRef.current = { width, height, tileSize }
+        biomeIdsRef.current = new Uint8Array(data.biomeIds)
+        strategicPointsRef.current = data.strategicPoints
+
+        // Build strategic spatial grid (cell size 8)
+        const sGrid = new Map<number, StrategicPoint>()
+        const SCELL = 8
+        const sgridW = Math.ceil(width / SCELL)
+        for (const sp of data.strategicPoints) {
+          const key = Math.floor(sp.y / SCELL) * sgridW + Math.floor(sp.x / SCELL)
+          const existing = sGrid.get(key)
+          if (!existing || sp.value > existing.value) sGrid.set(key, sp)
+        }
+        strategicGridRef.current = sGrid
+
+        // Build WorldMap from raw fields
+        const ownershipArr = new Uint8Array(width * height).fill(255)
+        const worldMap = new WorldMap({
+          width,
+          height,
+          seaLevel: data.seaLevel,
+          elevation: new Float32Array(data.elevationField),
+          temperature: new Float32Array(data.temperatureField),
+          humidity: new Float32Array(data.humidityField),
+          biomeIds: new Uint8Array(data.biomeIds),
+          riverMask: new Uint8Array(data.riverMask),
+          resourceType: new Uint8Array(data.resourceType),
+          resourceDensity: new Uint8Array(data.resourceDensity),
+          ownership: ownershipArr
+        })
+
+        // --- Nation spawning ---
+        const nationsConfig = world.nations
+        const terrainForSpawn: TerrainConfig = {
+          width,
+          height,
+          seaLevel: data.seaLevel,
+          islandMode: world.map.islandMode,
+          ...world.elevation
+        }
+        const { nations, ownerMap } = spawnNations(
+          worldMap.elevation,
+          worldMap.biomeIds,
+          worldMap.riverMask,
+          terrainForSpawn,
+          nationsConfig.count,
+          useSeed,
+          nationsConfig.minSpacing
+        )
+
+        // Write string-based ownerMap into Uint8Array ownership layer
+        // Nation index (0–254) maps to nation array index; '' → 255 (unclaimed)
+        const nationIdToIndex = new Map<string, number>()
+        for (let ni = 0; ni < nations.length; ni += 1) {
+          nationIdToIndex.set(nations[ni].id, ni)
+        }
+        for (let i = 0; i < ownerMap.length; i += 1) {
+          if (ownerMap[i] !== '') {
+            const nIdx = nationIdToIndex.get(ownerMap[i])
+            if (nIdx !== undefined) ownershipArr[i] = nIdx
+          }
+        }
+        nationsRef.current = nations
+
+        setWorldMap(worldMap)
+        setStrategicPoints(data.strategicPoints)
+        setNations(nations)
+
+        // --- Political overlay ---
+        renderer.setLayer(
+          'political',
+          politicalRgba(
+            biomePixels,
+            ownershipArr,
+            nations.map((n) => n.color),
+            width,
+            height,
+            viewConfig.political
+          ),
+          width,
+          height
+        )
+        renderer.showLayer(useGameStore.getState().view)
+
+        setPhase('playing')
+        worker.terminate()
+      }
+
+      frameLoop.start()
+
+      return () => {
+        frameLoop.stop()
+        worker.terminate()
+        resizeObserver.disconnect()
+        window.removeEventListener('resize', resize)
+        canvas.removeEventListener('pointerdown', onPointerDown)
+        canvas.removeEventListener('pointermove', onPointerMove)
+        canvas.removeEventListener('pointerup', onPointerUp)
+        canvas.removeEventListener('pointerleave', onPointerUp)
+        canvas.removeEventListener('wheel', onWheel)
+        canvas.removeEventListener('click', onClick)
+        rendererRef.current = null
+        cameraRef.current = null
+        biomeIdsRef.current = null
+        renderer.destroy()
+      }
     }
 
-    const onPointerMove = (e: PointerEvent): void => {
-      if (!isDragging) {
-        handleHover(e, canvas, camera, renderer)
+    void MapRenderer.create(host, camera, {
+      className: 'canvas-shell__viewport',
+      background: viewConfig.canvas.background,
+      tileSize: viewConfig.map.tileSize
+    }).then((renderer) => {
+      if (disposed) {
+        renderer.destroy()
         return
       }
-      camera.pan(e.clientX - lastX, e.clientY - lastY)
-      lastX = e.clientX
-      lastY = e.clientY
-    }
-
-    const onPointerUp = (e: PointerEvent): void => {
-      isDragging = false
-      canvas.releasePointerCapture(e.pointerId)
-    }
-
-    const onWheel = (e: WheelEvent): void => {
-      e.preventDefault()
-      const { width, height } = renderer.getViewportSize()
-      const rect = canvas.getBoundingClientRect()
-      const anchorX = e.clientX - rect.left
-      const anchorY = e.clientY - rect.top
-      const scale = 1 + (e.deltaY > 0 ? -1 : 1) * viewConfig.camera.zoomStep
-      camera.zoomAt(scale, anchorX, anchorY, width, height)
-    }
-
-    const onClick = (e: MouseEvent): void => {
-      handleClick(e, canvas, camera, renderer)
-    }
-
-    canvas.addEventListener('pointerdown', onPointerDown)
-    canvas.addEventListener('pointermove', onPointerMove)
-    canvas.addEventListener('pointerup', onPointerUp)
-    canvas.addEventListener('pointerleave', onPointerUp)
-    canvas.addEventListener('wheel', onWheel, { passive: false })
-    canvas.addEventListener('click', onClick)
-
-    /* ------------- Spawn terrain worker ------------- */
-    const { tileSize, chunkSize } = viewConfig.map
-    const terrainConfig: TerrainConfig = { ...world.map, ...world.elevation }
-
-    const worker = new TerrainWorker()
-
-    const useSeed = seed ?? randomSeed()
-
-    const request: TerrainWorkerRequest = {
-      type: 'generate',
-      seed: useSeed,
-      terrain: terrainConfig,
-      temperature: world.temperature,
-      humidity: world.humidity,
-      biomeNoise: world.biomeNoise,
-      rivers: world.rivers,
-      biomes: world.biomes,
-      strategic: world.strategic,
-      resources: world.resources,
-      minLandRatio: world.map.minLandRatio
-    }
-
-    worker.postMessage(request)
-
-    worker.onmessage = async (event: MessageEvent<TerrainWorkerResponse>): Promise<void> => {
-      const data = event.data
-      if (data.type !== 'done') return
-
-      const { width, height } = data
-
-      const imageDataFromBuffer = (buf: ArrayBuffer, w: number, h: number): ImageData =>
-        new ImageData(new Uint8ClampedArray(buf), w, h)
-
-      const buildChunks = async (imgData: ImageData, cs: number): Promise<ImageBitmap[]> => {
-        const chunks: ImageBitmap[] = []
-        for (let y = 0; y < imgData.height; y += cs) {
-          for (let x = 0; x < imgData.width; x += cs) {
-            const cw = Math.min(cs, imgData.width - x)
-            const ch = Math.min(cs, imgData.height - y)
-            const bitmap = await createImageBitmap(imgData, x, y, cw, ch)
-            chunks.push(bitmap)
-          }
-        }
-        return chunks
-      }
-
-      // Reconstruct ImageData from transferred buffers
-      const elevationMap = imageDataFromBuffer(data.elevationPixels, width, height)
-      const temperatureMap = imageDataFromBuffer(data.temperaturePixels, width, height)
-      const humidityMap = imageDataFromBuffer(data.humidityPixels, width, height)
-      const biomeMap = imageDataFromBuffer(data.biomePixels, width, height)
-      const strategicMap = imageDataFromBuffer(data.strategicPixels, width, height)
-      const resourceMap = imageDataFromBuffer(data.resourcePixels, width, height)
-
-      // Chunk all views
-      const [elevC, tempC, humC, bioC, stratC, resC] = await Promise.all([
-        buildChunks(elevationMap, chunkSize),
-        buildChunks(temperatureMap, chunkSize),
-        buildChunks(humidityMap, chunkSize),
-        buildChunks(biomeMap, chunkSize),
-        buildChunks(strategicMap, chunkSize),
-        buildChunks(resourceMap, chunkSize)
-      ])
-
-      mapsRef.current = {
-        elevation: elevC,
-        temperature: tempC,
-        humidity: humC,
-        biome: bioC,
-        strategic: stratC,
-        resource: resC
-      }
-      mapSizeRef.current = { width, height, tileSize }
-      biomeIdsRef.current = new Uint8Array(data.biomeIds)
-      strategicPointsRef.current = data.strategicPoints
-
-      // Precompute chunk layout
-      const chunksWide = Math.ceil(width / chunkSize)
-      const layout: Array<{ x: number; y: number; width: number; height: number }> = []
-      for (let ci = 0; ci < elevC.length; ci += 1) {
-        const cx = ci % chunksWide
-        const cy = Math.floor(ci / chunksWide)
-        layout.push({
-          x: cx * chunkSize * tileSize,
-          y: cy * chunkSize * tileSize,
-          width: Math.min(chunkSize, width - cx * chunkSize) * tileSize,
-          height: Math.min(chunkSize, height - cy * chunkSize) * tileSize
-        })
-      }
-      chunkLayoutRef.current = layout
-
-      // Build strategic spatial grid (cell size 8)
-      const sGrid = new Map<number, StrategicPoint>()
-      const SCELL = 8
-      const sgridW = Math.ceil(width / SCELL)
-      for (const sp of data.strategicPoints) {
-        const key = Math.floor(sp.y / SCELL) * sgridW + Math.floor(sp.x / SCELL)
-        const existing = sGrid.get(key)
-        if (!existing || sp.value > existing.value) sGrid.set(key, sp)
-      }
-      strategicGridRef.current = sGrid
-
-      // Build WorldMap from raw fields
-      const ownershipArr = new Uint8Array(width * height).fill(255)
-      const worldMap = new WorldMap({
-        width,
-        height,
-        seaLevel: data.seaLevel,
-        elevation: new Float32Array(data.elevationField),
-        temperature: new Float32Array(data.temperatureField),
-        humidity: new Float32Array(data.humidityField),
-        biomeIds: new Uint8Array(data.biomeIds),
-        riverMask: new Uint8Array(data.riverMask),
-        resourceType: new Uint8Array(data.resourceType),
-        resourceDensity: new Uint8Array(data.resourceDensity),
-        ownership: ownershipArr
-      })
-
-      // --- Nation spawning ---
-      const nationsConfig = world.nations
-      const terrainForSpawn: TerrainConfig = {
-        width,
-        height,
-        seaLevel: data.seaLevel,
-        islandMode: world.map.islandMode,
-        ...world.elevation
-      }
-      const { nations, ownerMap } = spawnNations(
-        worldMap.elevation,
-        worldMap.biomeIds,
-        worldMap.riverMask,
-        terrainForSpawn,
-        nationsConfig.count,
-        useSeed,
-        nationsConfig.minSpacing
-      )
-
-      // Write string-based ownerMap into Uint8Array ownership layer
-      // Nation index (0–254) maps to nation array index; '' → 255 (unclaimed)
-      const nationIdToIndex = new Map<string, number>()
-      for (let ni = 0; ni < nations.length; ni += 1) {
-        nationIdToIndex.set(nations[ni].id, ni)
-      }
-      for (let i = 0; i < ownerMap.length; i += 1) {
-        if (ownerMap[i] !== '') {
-          const nIdx = nationIdToIndex.get(ownerMap[i])
-          if (nIdx !== undefined) ownershipArr[i] = nIdx
-        }
-      }
-      nationsRef.current = nations
-
-      setWorldMap(worldMap)
-      setStrategicPoints(data.strategicPoints)
-      setNations(nations)
-
-      // --- Build political overlay ImageData ---
-      const politicalData = new Uint8ClampedArray(biomeMap.data)
-      const alpha = viewConfig.political.territoryAlpha
-      const darken = viewConfig.political.borderDarken
-
-      // Pre-compute border set for each nation
-      const borderSet = new Set<number>()
-      for (const nation of nations) {
-        const nIdx = nationIdToIndex.get(nation.id)!
-        for (const tileIdx of nation.provinces) {
-          const tx = tileIdx % width
-          const ty = (tileIdx - tx) / width
-          const neighbours = [
-            tx > 0 ? tileIdx - 1 : -1,
-            tx < width - 1 ? tileIdx + 1 : -1,
-            ty > 0 ? tileIdx - width : -1,
-            ty < height - 1 ? tileIdx + width : -1
-          ]
-          for (const ni of neighbours) {
-            if (ni >= 0 && ownershipArr[ni] !== nIdx) {
-              borderSet.add(tileIdx)
-              break
-            }
-          }
-        }
-      }
-
-      // Blend nation colours onto biome base
-      for (let i = 0; i < ownerMap.length; i += 1) {
-        if (ownershipArr[i] === 255) continue
-        const nation = nations[ownershipArr[i]]
-        const [nr, ng, nb] = nation.color
-        const px = i * 4
-        const isBorder = borderSet.has(i)
-        const blend = isBorder ? alpha + darken : alpha
-        politicalData[px] = Math.round(politicalData[px] * (1 - blend) + nr * blend)
-        politicalData[px + 1] = Math.round(politicalData[px + 1] * (1 - blend) + ng * blend)
-        politicalData[px + 2] = Math.round(politicalData[px + 2] * (1 - blend) + nb * blend)
-        if (isBorder) {
-          // Darken border tiles slightly more
-          politicalData[px] = Math.round(politicalData[px] * 0.7)
-          politicalData[px + 1] = Math.round(politicalData[px + 1] * 0.7)
-          politicalData[px + 2] = Math.round(politicalData[px + 2] * 0.7)
-        }
-      }
-      const politicalImg = new ImageData(politicalData, width, height)
-      const polC = await buildChunks(politicalImg, chunkSize)
-      mapsRef.current.political = polC
-
-      // Set initial chunks on renderer
-      if (rendererRef.current) {
-        const currentView = useGameStore.getState().view
-        const current = mapsRef.current[currentView]
-        if (current) {
-          rendererRef.current.setMapChunks(
-            current.map((bitmap, i) => ({ bitmap, ...layout[i] })),
-            width * tileSize,
-            height * tileSize
-          )
-        }
-      }
-
-      setPhase('playing')
-      worker.terminate()
-    }
-
-    frameLoop.start()
+      stop = start(renderer)
+    })
 
     return () => {
-      frameLoop.stop()
-      worker.terminate()
-      resizeObserver.disconnect()
-      window.removeEventListener('resize', resize)
-      canvas.removeEventListener('pointerdown', onPointerDown)
-      canvas.removeEventListener('pointermove', onPointerMove)
-      canvas.removeEventListener('pointerup', onPointerUp)
-      canvas.removeEventListener('pointerleave', onPointerUp)
-      canvas.removeEventListener('wheel', onWheel)
-      canvas.removeEventListener('click', onClick)
-      rendererRef.current = null
-      cameraRef.current = null
-      biomeIdsRef.current = null
+      disposed = true
+      stop?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -383,28 +315,16 @@ const MapView: React.FC = () => {
   /* ---------------------------------------------------------------- */
   /*  Tile lookup helpers                                              */
   /* ---------------------------------------------------------------- */
-  const getTileAt = useCallback(
-    (screenX: number, screenY: number, camera: Camera, renderer: Renderer) => {
-      const { width, height } = renderer.getViewportSize()
-      const world = camera.screenToWorld(screenX, screenY, width, height)
-      const { width: mapW, height: mapH, tileSize } = mapSizeRef.current
-      const mapX = Math.floor((world.x + (mapW * tileSize) / 2) / tileSize)
-      const mapY = Math.floor((world.y + (mapH * tileSize) / 2) / tileSize)
-      if (mapX < 0 || mapY < 0 || mapX >= mapW || mapY >= mapH) return null
-      const worldMap = useGameStore.getState().worldMap
-      return worldMap ? worldMap.at(mapX, mapY) : null
-    },
-    []
-  )
+  const getTileAt = useCallback((screenX: number, screenY: number, renderer: MapRenderer) => {
+    const tile = renderer.screenToTile(screenX, screenY)
+    if (!tile) return null
+    const worldMap = useGameStore.getState().worldMap
+    return worldMap ? worldMap.at(tile.x, tile.y) : null
+  }, [])
 
   const buildInspectorData = useCallback(
-    (
-      screenX: number,
-      screenY: number,
-      camera: Camera,
-      renderer: Renderer
-    ): InspectorData | null => {
-      const tile = getTileAt(screenX, screenY, camera, renderer)
+    (screenX: number, screenY: number, renderer: MapRenderer): InspectorData | null => {
+      const tile = getTileAt(screenX, screenY, renderer)
       if (!tile) return null
       // Strategic point near tile
       const SCELL = 8
@@ -434,15 +354,13 @@ const MapView: React.FC = () => {
   /*  Hover handler                                                    */
   /* ---------------------------------------------------------------- */
   const handleHover = useCallback(
-    (e: PointerEvent, canvas: HTMLCanvasElement, camera: Camera, renderer: Renderer) => {
+    (e: PointerEvent, canvas: HTMLCanvasElement, renderer: MapRenderer) => {
       if (!inspectorEnabled) {
         setInspectorData(null)
         return
       }
       const rect = canvas.getBoundingClientRect()
-      setInspectorData(
-        buildInspectorData(e.clientX - rect.left, e.clientY - rect.top, camera, renderer)
-      )
+      setInspectorData(buildInspectorData(e.clientX - rect.left, e.clientY - rect.top, renderer))
     },
     [inspectorEnabled, buildInspectorData]
   )
@@ -451,9 +369,9 @@ const MapView: React.FC = () => {
   /*  Click handler (nation selection)                                 */
   /* ---------------------------------------------------------------- */
   const handleClick = useCallback(
-    (e: MouseEvent, canvas: HTMLCanvasElement, camera: Camera, renderer: Renderer) => {
+    (e: MouseEvent, canvas: HTMLCanvasElement, renderer: MapRenderer) => {
       const rect = canvas.getBoundingClientRect()
-      const tile = getTileAt(e.clientX - rect.left, e.clientY - rect.top, camera, renderer)
+      const tile = getTileAt(e.clientX - rect.left, e.clientY - rect.top, renderer)
       if (tile && tile.ownerId >= 0 && tile.ownerId < nationsRef.current.length) {
         selectNation(tile.ownerId)
       } else {
@@ -489,17 +407,7 @@ const MapView: React.FC = () => {
   /*  View-mode switching                                              */
   /* ---------------------------------------------------------------- */
   useEffect(() => {
-    const chunks = mapsRef.current[view]
-    const renderer = rendererRef.current
-    const layout = chunkLayoutRef.current
-    if (chunks && renderer && layout.length > 0) {
-      const { width, height, tileSize } = mapSizeRef.current
-      renderer.setMapChunks(
-        chunks.map((bitmap, i) => ({ bitmap, ...layout[i] })),
-        width * tileSize,
-        height * tileSize
-      )
-    }
+    rendererRef.current?.showLayer(view)
   }, [view])
 
   /* ---------------------------------------------------------------- */
@@ -530,7 +438,7 @@ const MapView: React.FC = () => {
   /* ---------------------------------------------------------------- */
   return (
     <section className="canvas-shell" ref={shellRef}>
-      <canvas ref={canvasRef} className="canvas-shell__viewport" />
+      <div ref={hostRef} className="canvas-shell__host" />
 
       <div className="canvas-shell__hud">
         FPS: {fps} · {view}

@@ -22,8 +22,8 @@ export interface CameraOptions {
 }
 
 /**
- * A 2-D pan/zoom camera that transforms canvas draw calls so the
- * visible portion of the world map tracks user input.
+ * A 2-D pan/zoom camera: world position and zoom, with the conversions
+ * between screen and world space. The renderer reads it to place the map.
  */
 export class Camera {
   /** Current X offset in world units. */
@@ -68,17 +68,6 @@ export class Camera {
 
     this.x += worldBefore.x - worldAfter.x
     this.y += worldBefore.y - worldAfter.y
-  }
-
-  /** Push the full view transform onto a `CanvasRenderingContext2D`. */
-  applyTransform(
-    ctx: CanvasRenderingContext2D,
-    viewportWidth: number,
-    viewportHeight: number
-  ): void {
-    ctx.translate(viewportWidth / 2, viewportHeight / 2)
-    ctx.scale(this.zoom, this.zoom)
-    ctx.translate(-this.x, -this.y)
   }
 
   /** Convert a screen-space pixel position to world coordinates. */

@@ -1,8 +1,9 @@
 /**
  * @module @sovereign/renderer
- * @description Map rendering and camera. Currently the Canvas 2D renderer; replaced by a
- * PixiJS renderer in R4. Depends only on `@sovereign/contracts`.
+ * @description The pure part of the renderer: camera, view math and the palettes that turn terrain
+ * fields into pixels. No DOM drawing and no PixiJS, so it runs anywhere (including in a worker).
+ * The PixiJS map renderer is in `@sovereign/renderer/pixi`. Depends only on `@sovereign/contracts`.
  */
 export * from './Camera'
-export * from './Renderer'
 export * from './palettes'
+export * from './view'

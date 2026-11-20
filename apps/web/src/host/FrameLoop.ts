@@ -6,15 +6,19 @@
  * so the render rate stays near the configured target FPS, reducing
  * GPU/CPU load when high frame rates are unnecessary.
  */
-import type { Renderer } from '@sovereign/renderer'
 import { viewConfig } from '../viewConfig'
 
 /**
- * Drives a {@link Renderer} at a target frame rate and reports the
+ * Drives a {@link Drawable} at a target frame rate and reports the
  * measured FPS back through a callback.
  */
+/** Anything that can draw one frame. */
+export interface Drawable {
+  render(): void
+}
+
 export class FrameLoop {
-  private renderer: Renderer
+  private renderer: Drawable
   private running = false
   private lastTime = 0
   private frameCount = 0
@@ -22,7 +26,7 @@ export class FrameLoop {
   private onFps?: (fps: number) => void
   private targetFps = viewConfig.canvas.targetFps
 
-  constructor(renderer: Renderer, onFps?: (fps: number) => void) {
+  constructor(renderer: Drawable, onFps?: (fps: number) => void) {
     this.renderer = renderer
     this.onFps = onFps
   }
