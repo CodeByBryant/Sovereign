@@ -1,0 +1,33 @@
+{
+  "name": "@sovereign/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "preview": "vite preview",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "e2e": "node e2e/strict-mode.e2e.mjs"
+  },
+  "dependencies": {
+    "@sovereign/config": "workspace:*",
+    "@sovereign/contracts": "workspace:*",
+    "@sovereign/renderer": "workspace:*",
+    "@sovereign/simulation": "workspace:*",
+    "@sovereign/ui": "workspace:*",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^6.1.1",
+    "playwright": "1.63.0",
+    "sass": "^1.69.5",
+    "vite": "^8.3.0"
+  }
+}

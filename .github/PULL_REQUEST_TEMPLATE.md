@@ -4,7 +4,7 @@
 
 ## Changes
 
-- 
+-
 
 ## Related Issues
 
@@ -20,8 +20,10 @@
 
 ## Checklist
 
-- [ ] Code compiles without errors (`npm run build:web`)
-- [ ] Linting passes (`npm run lint`)
-- [ ] Type checking passes (`npm run typecheck`)
-- [ ] Tested locally in both Electron and web modes
+- [ ] Builds (`pnpm build`)
+- [ ] Linting and the dependency rules pass (`pnpm lint`)
+- [ ] Type checking passes (`pnpm typecheck`)
+- [ ] Tests pass (`pnpm test`; and `pnpm test:determinism` if the engine changed)
+- [ ] Tested locally in the web app (and the desktop shell if it changed)
+- [ ] If a golden hash moved, it is regenerated in its own commit and the reason is above
 - [ ] Updated documentation / JSDoc where applicable

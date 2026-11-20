@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "target": "ES2022",
+    "sourceMap": false
+  },
+  "include": ["src/main.ts", "src/preload.ts", "src/paths.ts"],
+  "exclude": ["src/preload.d.ts"]
+}

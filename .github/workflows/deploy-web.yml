@@ -22,17 +22,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
 
       - name: Build web version
-        run: npm run build:web
+        run: pnpm --filter @sovereign/web build
+
+      # Every URL must be relative (the site is served under /Sovereign/) and point at a file in the build.
+      - name: Check the artifact
+        run: node tools/check-pages-artifact.mjs apps/web/dist
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -40,7 +49,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'
+          path: './apps/web/dist'
 
   deploy:
     environment:

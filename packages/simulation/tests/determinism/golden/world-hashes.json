@@ -1,0 +1,326 @@
+{
+  "hashSchemaVersion": 1,
+  "entries": [
+    {
+      "name": "small world, seed 1, tick 0",
+      "seed": 1,
+      "config": {
+        "map": {
+          "width": 160,
+          "height": 96,
+          "seaLevel": 0.2,
+          "islandMode": false
+        },
+        "elevation": {
+          "scale": 0.009600000000000001,
+          "continentScale": 0.0024000000000000002,
+          "oceanScale": 0.00144
+        },
+        "temperature": {
+          "scale": 0.03
+        },
+        "humidity": {
+          "scale": 0.048
+        },
+        "biomeNoise": {
+          "scale": 0.07200000000000001
+        },
+        "rivers": {
+          "primaryScale": 0.0108,
+          "secondaryScale": 0.048,
+          "warpStrength": 3
+        },
+        "resources": {
+          "oreScale": 0.096
+        },
+        "nations": {
+          "count": 8,
+          "minSpacing": 18
+        }
+      },
+      "steps": 0,
+      "expectedHash": "390f3e50905c969c91c2a75311cfafd2"
+    },
+    {
+      "name": "small world, seed 12345, 100 ticks",
+      "seed": 12345,
+      "config": {
+        "map": {
+          "width": 160,
+          "height": 96,
+          "seaLevel": 0.2,
+          "islandMode": false
+        },
+        "elevation": {
+          "scale": 0.009600000000000001,
+          "continentScale": 0.0024000000000000002,
+          "oceanScale": 0.00144
+        },
+        "temperature": {
+          "scale": 0.03
+        },
+        "humidity": {
+          "scale": 0.048
+        },
+        "biomeNoise": {
+          "scale": 0.07200000000000001
+        },
+        "rivers": {
+          "primaryScale": 0.0108,
+          "secondaryScale": 0.048,
+          "warpStrength": 3
+        },
+        "resources": {
+          "oreScale": 0.096
+        },
+        "nations": {
+          "count": 8,
+          "minSpacing": 18
+        }
+      },
+      "steps": 100,
+      "expectedHash": "08009323b75aa9c7b6002e0db5f04e5e"
+    },
+    {
+      "name": "text seed \"sovereign\", 30 ticks",
+      "seed": "sovereign",
+      "config": {
+        "map": {
+          "width": 160,
+          "height": 96,
+          "seaLevel": 0.2,
+          "islandMode": false
+        },
+        "elevation": {
+          "scale": 0.009600000000000001,
+          "continentScale": 0.0024000000000000002,
+          "oceanScale": 0.00144
+        },
+        "temperature": {
+          "scale": 0.03
+        },
+        "humidity": {
+          "scale": 0.048
+        },
+        "biomeNoise": {
+          "scale": 0.07200000000000001
+        },
+        "rivers": {
+          "primaryScale": 0.0108,
+          "secondaryScale": 0.048,
+          "warpStrength": 3
+        },
+        "resources": {
+          "oreScale": 0.096
+        },
+        "nations": {
+          "count": 8,
+          "minSpacing": 18
+        }
+      },
+      "steps": 30,
+      "expectedHash": "7e77c4b75e46ae8fc26c0cc03014b4c0"
+    },
+    {
+      "name": "island mode, seed 7",
+      "seed": 7,
+      "config": {
+        "map": {
+          "width": 160,
+          "height": 96,
+          "seaLevel": 0.2,
+          "islandMode": true
+        },
+        "elevation": {
+          "scale": 0.009600000000000001,
+          "continentScale": 0.0024000000000000002,
+          "oceanScale": 0.00144
+        },
+        "temperature": {
+          "scale": 0.03
+        },
+        "humidity": {
+          "scale": 0.048
+        },
+        "biomeNoise": {
+          "scale": 0.07200000000000001
+        },
+        "rivers": {
+          "primaryScale": 0.0108,
+          "secondaryScale": 0.048,
+          "warpStrength": 3
+        },
+        "resources": {
+          "oreScale": 0.096
+        },
+        "nations": {
+          "count": 8,
+          "minSpacing": 18
+        }
+      },
+      "steps": 10,
+      "expectedHash": "0c8928fb315611e011c488552162da14"
+    },
+    {
+      "name": "no nations, seed 3",
+      "seed": 3,
+      "config": {
+        "map": {
+          "width": 160,
+          "height": 96,
+          "seaLevel": 0.2,
+          "islandMode": false
+        },
+        "elevation": {
+          "scale": 0.009600000000000001,
+          "continentScale": 0.0024000000000000002,
+          "oceanScale": 0.00144
+        },
+        "temperature": {
+          "scale": 0.03
+        },
+        "humidity": {
+          "scale": 0.048
+        },
+        "biomeNoise": {
+          "scale": 0.07200000000000001
+        },
+        "rivers": {
+          "primaryScale": 0.0108,
+          "secondaryScale": 0.048,
+          "warpStrength": 3
+        },
+        "resources": {
+          "oreScale": 0.096
+        },
+        "nations": {
+          "count": 0,
+          "minSpacing": 18
+        }
+      },
+      "steps": 5,
+      "expectedHash": "83967010d382f1cb4cbbe2d7a790222a"
+    },
+    {
+      "name": "land-ratio rescue (default sea level 0.37), seed 2024",
+      "seed": 2024,
+      "config": {
+        "map": {
+          "width": 160,
+          "height": 96,
+          "seaLevel": 0.37,
+          "islandMode": false
+        },
+        "elevation": {
+          "scale": 0.009600000000000001,
+          "continentScale": 0.0024000000000000002,
+          "oceanScale": 0.00144
+        },
+        "temperature": {
+          "scale": 0.03
+        },
+        "humidity": {
+          "scale": 0.048
+        },
+        "biomeNoise": {
+          "scale": 0.07200000000000001
+        },
+        "rivers": {
+          "primaryScale": 0.0108,
+          "secondaryScale": 0.048,
+          "warpStrength": 3
+        },
+        "resources": {
+          "oreScale": 0.096
+        },
+        "nations": {
+          "count": 8,
+          "minSpacing": 18
+        }
+      },
+      "steps": 0,
+      "expectedHash": "9dd8c571359fda217d7c2751ded624b2"
+    },
+    {
+      "name": "slower clock: timestep 0.25, 40 ticks",
+      "seed": 5,
+      "config": {
+        "map": {
+          "width": 160,
+          "height": 96,
+          "seaLevel": 0.2,
+          "islandMode": false
+        },
+        "elevation": {
+          "scale": 0.009600000000000001,
+          "continentScale": 0.0024000000000000002,
+          "oceanScale": 0.00144
+        },
+        "temperature": {
+          "scale": 0.03
+        },
+        "humidity": {
+          "scale": 0.048
+        },
+        "biomeNoise": {
+          "scale": 0.07200000000000001
+        },
+        "rivers": {
+          "primaryScale": 0.0108,
+          "secondaryScale": 0.048,
+          "warpStrength": 3
+        },
+        "resources": {
+          "oreScale": 0.096
+        },
+        "nations": {
+          "count": 8,
+          "minSpacing": 18
+        },
+        "timestep": 0.25
+      },
+      "steps": 40,
+      "expectedHash": "45c470fa5f43b507360a30c37076b884"
+    },
+    {
+      "name": "wider map 320x200, seed 99, 1000 ticks",
+      "seed": 99,
+      "config": {
+        "map": {
+          "width": 320,
+          "height": 200,
+          "seaLevel": 0.2,
+          "islandMode": false
+        },
+        "elevation": {
+          "scale": 0.009600000000000001,
+          "continentScale": 0.0024000000000000002,
+          "oceanScale": 0.00144
+        },
+        "temperature": {
+          "scale": 0.03
+        },
+        "humidity": {
+          "scale": 0.048
+        },
+        "biomeNoise": {
+          "scale": 0.07200000000000001
+        },
+        "rivers": {
+          "primaryScale": 0.0108,
+          "secondaryScale": 0.048,
+          "warpStrength": 3
+        },
+        "resources": {
+          "oreScale": 0.096
+        },
+        "nations": {
+          "count": 12,
+          "minSpacing": 25
+        }
+      },
+      "steps": 1000,
+      "expectedHash": "33b5e375f6fd95e77ded14d2d263f230"
+    }
+  ]
+}

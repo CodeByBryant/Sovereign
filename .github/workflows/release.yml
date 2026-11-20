@@ -1,4 +1,5 @@
-# Build and release desktop apps
+# Build and release the desktop app (apps/desktop). Not run by pull requests: it fires when a
+# release is published, or by hand.
 name: Build & Release
 
 on:
@@ -15,121 +16,67 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  package:
+    name: Package (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            flag: --win
+            artifacts: |
+              apps/desktop/release/*.exe
+          - name: Linux
+            os: ubuntu-latest
+            flag: --linux
+            artifacts: |
+              apps/desktop/release/*.AppImage
+          - name: macOS
+            os: macos-latest
+            flag: --mac
+            artifacts: |
+              apps/desktop/release/*.dmg
+    runs-on: ${{ matrix.os }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Windows app
-        run: npm run build:win
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-release
-          path: |
-            release/*.exe
-            release/*.msi
-          retention-days: 30
-
-      - name: Upload to Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            release/*.exe
-            release/*.msi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Build Linux app
-        run: npm run build:linux
+      - name: Build the web app
+        run: pnpm --filter @sovereign/web build
+
+      - name: Build the desktop shell
+        run: pnpm --filter @sovereign/desktop build
+
+      - name: Package the desktop app
+        run: pnpm --filter @sovereign/desktop exec electron-builder ${{ matrix.flag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Linux artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: linux-release
-          path: |
-            release/*.AppImage
-            release/*.deb
-            release/*.snap
+          name: ${{ matrix.name }}-release
+          path: ${{ matrix.artifacts }}
           retention-days: 30
 
-      - name: Upload to Release
+      - name: Upload to the release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            release/*.AppImage
-            release/*.deb
-            release/*.snap
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build macOS app
-        run: npm run build:mac
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-release
-          path: |
-            release/*.dmg
-            release/*.zip
-          retention-days: 30
-
-      - name: Upload to Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            release/*.dmg
-            release/*.zip
+          files: ${{ matrix.artifacts }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

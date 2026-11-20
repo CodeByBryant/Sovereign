@@ -12,7 +12,7 @@ Nations are autonomous entities that own territory (provinces), have unique visu
 
 ## Spawning Pipeline
 
-**Module:** `NationSpawner.spawnNations()` in `src/core/systems/NationSpawner.ts`
+**Module:** `spawnNations()` in `packages/simulation/src/nations/NationSpawner.ts`
 
 ### 1. Find Candidates
 
@@ -42,6 +42,8 @@ Tiles adjacent to rivers get a **+0.2 bonus** (river civilizations).
 Uninhabitable biomes (ocean, deep ocean, shore, glacier, polar desert, desert, mountain, alpine) are excluded entirely.
 
 ### 2. Pick Spawn Points
+
+Everything random here comes from named streams of the world seed: `spawn` for the shuffle and the starting stats, and `names`, `colors` and `flags` for the generators. A nation's tiles are a `Set` kept in **claim order**: JavaScript guarantees insertion order, and the engine never iterates anything else, so the order is part of the world's identity (it is in the save and the hash).
 
 Greedy selection from shuffled-and-sorted candidates:
 
@@ -78,9 +80,10 @@ class Nation {
   name: string // "United Aldoria"
   color: [R, G, B] // Display colour 0–255
   flag: FlagPattern // Pattern type + HSL colours
+  founded: number // Tick the nation was founded at
   government: GovernmentType // 'monarchy' | 'republic' | ...
   personality: NationPersonality
-  provinces: Set<number> // Flat tile indices
+  provinces: Set<number> // Flat tile indices, in claim order
   capital: number // Spawn tile index
   stats: NationStats // population, military, economy, diplomacy
 }
@@ -99,12 +102,14 @@ class Nation {
 
 ## Political Map Overlay
 
-The political overlay is rendered on the main thread after nation spawning:
+The political overlay is a palette in `@sovereign/renderer` (`politicalRgba`), computed from the biome colours and the ownership layer:
 
-1. Start with a copy of the biome ImageData
+1. Start from the biome colour of each tile
 2. For each tile owned by a nation, blend the nation's colour at 45% opacity
-3. For border tiles (owned tile with ≥1 non-owned neighbour), darken by 30%
-4. Result is chunked into ImageBitmaps like all other view modes
+3. For border tiles (owned tile with ≥1 non-owned neighbour), darken by 35%
+4. The result is uploaded as a texture like every other overlay
+
+The two numbers are view settings (`apps/web/src/viewConfig.ts`), not engine configuration.
 
 Accessible via the **Political (P)** toolbar button or `P` key.
 

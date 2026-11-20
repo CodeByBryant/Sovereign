@@ -2,270 +2,156 @@
 
 # SOVEREIGN
 
-**A Procedural Geopolitical Simulation**
+**A deterministic geopolitical simulation**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
-[![Electron](https://img.shields.io/badge/Electron-28.0-47848F.svg)](https://www.electronjs.org/)
-[![CI](https://github.com/CodeByBryant/Sovereign/actions/workflows/ci.yml/badge.svg)](https://github.com/CodeByBryant/Sovereign/actions/workflows/ci.yml)
+[![Quality](https://github.com/CodeByBryant/Sovereign/actions/workflows/quality.yml/badge.svg)](https://github.com/CodeByBryant/Sovereign/actions/workflows/quality.yml)
 [![Deploy](https://github.com/CodeByBryant/Sovereign/actions/workflows/deploy-web.yml/badge.svg)](https://github.com/CodeByBryant/Sovereign/actions/workflows/deploy-web.yml)
 
-Watch nations rise and fall in a living, breathing world of emergent geopolitics.
+Procedurally generated worlds that are the same on every machine, and (soon) nations that rise and fall on them.
 
-[Features](#features) · [Getting Started](#getting-started) · [Controls](#controls) · [Architecture](#architecture) · [Roadmap](#roadmap) · [Contributing](#contributing)
+[What it is](#what-it-is) · [Getting started](#getting-started) · [Controls](#controls) · [How it is built](#how-it-is-built) · [Roadmap](#roadmap) · [Contributing](#contributing)
 
 </div>
 
 ---
 
-## Features
+## What it is
 
-### Procedural World Generation
+Sovereign is heading toward a deep grand-strategy simulation: individual rulers, generals and governors, populations with cultures and religions, economies, diplomacy and war, all running on a world whose entire history can be reproduced from a seed. You will start as an observer with god tools; playing a nation comes later.
 
-- **Massive maps** — 2 000 × 2 000 tile worlds with per-tile data (elevation, temperature, humidity, biome, river, resource, ownership)
-- **Web Worker pipeline** — entire terrain generation runs off the main thread with zero-copy `ArrayBuffer` transfers
-- **26 biomes** — from deep ocean and glaciers to tropical rainforests and volcanic peaks, with organic jittered boundaries
-- **Rivers** — Minecraft-style noise zero-crossing algorithm producing primary and secondary waterways with shore tapering
-- **8 resource types** — Timber, Stone, Iron, Gold, Fertile Soil, Fish, Fur & Game — derived from biome, ore noise, elevation and river proximity
-- **Strategic locations** — automatic detection of river crossings, mountain passes, straits and peninsulas scored 0–10
-- **Nation spawning** — 12 nations placed on habitable land with procedural names, colours, flags, governments and personality traits
+**Today** it generates and shows the world, and spawns the nations. **Nothing simulates yet**: that is the next phase, and it is built on the foundation below on purpose.
 
-### Tile Data System
+### The world
 
-- **Struct-of-arrays** — 8 typed-array layers (Float32Array / Uint8Array) instead of 4M JS objects
-- **WorldMap.at(x, y)** — ergonomic accessor returns a `TileInfo` snapshot with biome, resource, owner, river, shore adjacency
-- **Per-tile ownership** — Uint8Array layer tracking which nation owns each tile (255 = unclaimed)
+- **2 000 x 2 000 tile maps** with elevation, temperature, humidity, biome, river, resource and ownership for every tile
+- **26 biomes**, from deep ocean and glaciers to rainforest and volcanic peaks, with organic boundaries
+- **Rivers** that follow noise zero-crossings: primary and secondary waterways, tapered at the shore
+- **7 resource types**: timber, stone, iron, gold, fertile soil, fish, fur and game
+- **Strategic locations**: river crossings, mountain passes, straits and peninsulas, scored 0 to 10
+- **Nations**: 12 placed on habitable land, each with a name, colour, flag, government, personality and starting territory
 
-### Rendering & Performance
+### Seven map overlays
 
-- **Chunked ImageBitmap pipeline** — tiles are rasterised once per view mode and cached as bitmaps
-- **Viewport culling** — only visible chunks are drawn each frame
-- **Precomputed chunk layout** — view switching swaps cached bitmaps into a fixed layout without recalculation
-- **Spatial-hash tooltip grid** — O(1) strategic point lookups on hover
-- **`{ alpha: false }` canvas context** — lets the browser skip compositing
+| Key | Overlay     | Shows                              |
+| --- | ----------- | ---------------------------------- |
+| `E` | Elevation   | Height (blue, green, brown, white) |
+| `T` | Temperature | Heat (blue to red)                 |
+| `H` | Humidity    | Moisture (tan to teal)             |
+| `B` | Biome       | The 26-biome palette (default)     |
+| `G` | Strategic   | Biome plus strategic points        |
+| `R` | Resource    | Biome plus resource deposits       |
+| `P` | Political   | Territory colours and borders      |
 
-### Seven Overlay Modes
+Click a nation's territory for its panel; the tile inspector (`I`) describes whatever is under the cursor.
 
-| Key | Mode        | Visualises                                |
-| --- | ----------- | ----------------------------------------- |
-| `E` | Elevation   | Height map (blue → green → brown → white) |
-| `T` | Temperature | Heat map (blue → red)                     |
-| `H` | Humidity    | Moisture map (tan → teal)                 |
-| `B` | Biome       | Full 26-biome colour palette (default)    |
-| `G` | Strategic   | Biome base + highlighted strategic points |
-| `R` | Resource    | Biome base + tinted resource deposits     |
-| `P` | Political   | Territory colours + nation borders        |
+### Determinism is the point
 
-### State Management & Persistence
+The same seed and config give the same world **byte for byte**, in the browser, in Node and on the command line, on Linux and Windows. That is what makes seeds shareable, runs replayable and balance work possible. The engine therefore uses its own PRNG, its own noise and its own `ln`/`exp`/`pow` instead of the platform's, has no third-party runtime dependencies, and is checked by golden hashes in CI. See [docs/simulation/determinism.md](docs/simulation/determinism.md).
 
-- **Zustand store** — single source of truth for phase routing, view mode, world data, nations
-- **Title screen** — seed input + "New World" button with phase-based routing
-- **Save / Load** — binary format in IndexedDB (~68 MB per 2000×2000 world)
-- **Tile inspector** — hover tooltip showing biome · river · resource · strategic · nation (toggle: `I`)
+```bash
+pnpm sim -- --seed 1337        # prints a 128-bit hash of the world
+```
 
-### Desktop & Web
+### Runs everywhere
 
-- Runs as a **native Electron app** (Windows, macOS, Linux)
-- Also ships as a **static web build** deployed to GitHub Pages via CI
+- **Web**: a static build on GitHub Pages
+- **Desktop**: an Electron app (Windows, macOS, Linux) that loads the same web build
+- **Headless**: `pnpm sim`, the simulator CLI, which needs no browser at all
 
 ---
 
-## Getting Started
+## Getting started
 
-### Prerequisites
-
-- **Node.js** 18+ and **npm**
-- **Git**
-
-### Install
+You need **Node 22+** and **pnpm 10** (`corepack enable`).
 
 ```bash
 git clone https://github.com/CodeByBryant/Sovereign.git
 cd Sovereign
-npm install
+pnpm install
 ```
-
-### Run
 
 ```bash
-# Electron (desktop)
-npm run dev
-
-# Web-only (Vite dev server)
-npm run dev:web
+pnpm dev        # the web app on the Vite dev server
+pnpm desktop    # builds the web app, then opens the Electron app
+pnpm sim -- --seed 1337 --summary
 ```
-
-### Build
 
 ```bash
-# Web build → dist/
-npm run build:web
-
-# Desktop build + package
-npm run build
-npm run package
-
-# Platform-specific installers
-npm run build:win
-npm run build:mac
-npm run build:linux
+pnpm check              # typecheck, lint, fast tests
+pnpm test:determinism   # golden hashes and bit-exact math
+pnpm build
 ```
+
+Everything else (test layout, CI, measured performance) is in [docs/development.md](docs/development.md).
 
 ---
 
 ## Controls
 
-| Input        | Action                |
-| ------------ | --------------------- |
-| Click + drag | Pan the camera        |
-| Scroll wheel | Zoom in / out         |
-| `E`          | Elevation overlay     |
-| `T`          | Temperature overlay   |
-| `H`          | Humidity overlay      |
-| `B`          | Biome overlay         |
-| `G`          | Strategic overlay     |
-| `R`          | Resource overlay      |
-| `P`          | Political overlay     |
-| `I`          | Toggle tile inspector |
-| `S`          | Toggle toolbar        |
+| Input                       | Action                    |
+| --------------------------- | ------------------------- |
+| Click and drag              | Pan the camera            |
+| Scroll wheel                | Zoom in and out           |
+| `E` `T` `H` `B` `G` `R` `P` | Switch overlay            |
+| Click a nation              | Open its panel            |
+| `Esc`                       | Close the nation panel    |
+| `I`                         | Toggle the tile inspector |
+| `S`                         | Toggle the toolbar        |
 
 ---
 
-## Architecture
+## How it is built
 
+A pnpm workspace in which the simulation engine is a headless library and everything else is a client of it. The dependency rules are enforced by a lint check, not by convention.
+
+```text
+packages/
+  contracts/        shared types; depends on nothing
+  config/           the typed world configuration
+  simulation/       the deterministic engine: RNG, math, noise, terrain, nations, hash, saves, World
+  renderer/         camera and palettes (pure) and the PixiJS map renderer
+  ui/               React components and styles
+apps/
+  web/              the browser app: engine in a Web Worker, IndexedDB saves
+  desktop/          the Electron shell
+  simulator-cli/    the headless runner
+tools/              dependency-rule check, CI scoping, Pages artifact check
+docs/               architecture, ADRs, the determinism spec, roadmap
 ```
-sovereign/
-├── electron/                # Electron main + preload
-│   ├── main/
-│   └── preload/
-├── src/
-│   ├── config/
-│   │   └── Config.ts        # Every tunable parameter in one place
-│   ├── core/
-│   │   ├── ai/              # (Phase 4+) AI decision systems
-│   │   ├── camera/
-│   │   │   └── Camera.ts    # Pan / zoom state
-│   │   ├── entities/
-│   │   │   ├── Nation.ts          # Nation class (provinces, stats, personality)
-│   │   │   ├── NameGenerator.ts   # Procedural nation names
-│   │   │   ├── ColorGenerator.ts  # Golden-angle colour spacing
-│   │   │   └── FlagGenerator.ts   # Procedural flag patterns
-│   │   ├── rendering/
-│   │   │   └── Renderer.ts  # Chunked Canvas 2D draw loop
-│   │   ├── simulation/
-│   │   │   └── Simulation.ts
-│   │   ├── state/
-│   │   │   ├── GameStore.ts      # Zustand global store
-│   │   │   └── persistence.ts    # IndexedDB save / load
-│   │   ├── systems/
-│   │   │   └── NationSpawner.ts  # Greedy spawn + territory claiming
-│   │   ├── terrain/
-│   │   │   ├── biomes.ts           # 26-biome classifier
-│   │   │   ├── rivers.ts           # Noise zero-crossing rivers
-│   │   │   ├── resources.ts        # 8 resource types generator
-│   │   │   ├── strategic.ts        # Strategic point detection
-│   │   │   ├── terrain.worker.ts   # Web Worker pipeline
-│   │   │   └── TerrainGenerator.ts # Orchestrates all layers
-│   │   └── world/
-│   │       └── WorldMap.ts   # Struct-of-arrays tile storage
-│   ├── styles/               # SCSS w/ tokens, mixins, components
-│   ├── types/
-│   │   ├── resources.ts      # ResourceType enum + metadata
-│   │   └── tile.ts           # TileInfo / TileData interfaces
-│   └── ui/
-│       ├── App.tsx           # Phase router
-│       ├── MapView.tsx       # Canvas + toolbar + tooltip + worker
-│       ├── TitleScreen.tsx   # Seed input + New World
-│       └── main.tsx          # Entry point
-├── public/                   # Static assets
-├── docs/                     # Documentation
-│   ├── architecture.md
-│   ├── terrain.md
-│   ├── nations.md
-│   └── save-load.md
-├── electron-builder.yml      # Desktop packaging config
-├── electron.vite.config.ts
-└── vite.config.ts            # Web-only Vite config
-```
+
+Start with [docs/architecture.md](docs/architecture.md); [docs/README.md](docs/README.md) indexes the rest.
 
 ---
 
 ## Roadmap
 
-### Phase 1 — Terrain Generation ✅
+The restructure is done: workspace, deterministic engine, PixiJS renderer, apps and CI. Next:
 
-- [x] Seeded simplex noise (elevation, temperature, humidity)
-- [x] 26-biome classification with organic jitter
-- [x] Chunked ImageBitmap rendering with viewport culling
-- [x] Camera pan & zoom
-- [x] River generation (primary + secondary waterways)
-- [x] Strategic point detection (river crossings, mountain passes, straits, peninsulas)
-- [x] Web Worker terrain pipeline with zero-copy transfers
-- [x] JSDoc documentation across all modules
+1. **Provinces and borders**: a province graph, expansion, natural borders, time controls
+2. **People and economy**: pops, production, trade, notables
+3. **AI and diplomacy**, then **warfare**, then **culture and events**
+4. **God mode and observability**: every intervention a logged, deterministic command; replays
+5. **Scale and 1.0**; later, **play a nation**
 
-### Phase 2 — Foundation & Nation Spawning ✅
-
-- [x] Struct-of-arrays tile data (WorldMap)
-- [x] 8 resource types derived from biome, ore noise, elevation & rivers
-- [x] Title screen with seed input
-- [x] Zustand state management + phase routing
-- [x] Save / Load via IndexedDB (binary format)
-- [x] Seven overlay modes (Elevation, Temperature, Humidity, Biome, Strategic, Resource, Political)
-- [x] Tile inspector tooltip
-- [x] Nation entity system with procedural names, colours, flags & personality
-- [x] Greedy spawn placement + 5 × 5 starting territories
-- [x] Political map overlay with territory colouring
-
-### Phase 3 — Expansion & Borders
-
-- [ ] Organic expansion algorithm with terrain costs
-- [ ] Border detection & rendering
-- [ ] Natural borders (rivers, mountain ranges)
-- [ ] Collision / conflict resolution
-
-### Phase 4+ — Simulation Loop
-
-- [ ] Population, economy & technology growth
-- [ ] Diplomacy & alliances
-- [ ] Warfare (province-by-province conquest)
-- [ ] Religion & culture spread
-- [ ] AI decision-making (Top-K / Top-P sampling)
-- [ ] God Mode (intervention tools)
-- [ ] Historical timeline & statistics
-
-> See individual phase docs in [`docs/`](docs/) for details.
+Details, exit criteria and the decisions behind them: [docs/roadmap.md](docs/roadmap.md).
 
 ---
 
 ## Contributing
 
-Contributions are welcome! The project is in early development.
-
-1. **Fork** the repository
-2. **Create** a feature branch — `git checkout -b feature/your-feature`
-3. **Commit** your changes — `git commit -m 'Add your feature'`
-4. **Push** — `git push origin feature/your-feature`
-5. **Open** a Pull Request
-
-### Guidelines
-
-- TypeScript strict mode
-- ESLint + Prettier — `npm run lint:fix && npm run format`
-- Meaningful commit messages
-- Update docs when adding features
-
----
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md): it is short, and the one rule that matters is that the same seed must give the same world everywhere.
 
 ## License
 
-[MIT](LICENSE) — Copyright (c) 2026 Bryant Ejorh
+[MIT](LICENSE). Copyright (c) 2026 Bryant Ejorh.
 
 ---
 
 <div align="center">
 
-**Inspired by** Ages of Conflict, WorldBox and grand strategy games
+**Inspired by** Ages of Conflict, WorldBox and grand-strategy games
 
-Built with [Electron](https://www.electronjs.org/) · [React](https://react.dev/) · [TypeScript](https://www.typescriptlang.org/) · [simplex-noise](https://github.com/jwagner/simplex-noise.js)
+Built with [TypeScript](https://www.typescriptlang.org/) · [PixiJS](https://pixijs.com/) · [React](https://react.dev/) · [Electron](https://www.electronjs.org/) · [Vite](https://vite.dev/) · [pnpm](https://pnpm.io/)
 
 </div>

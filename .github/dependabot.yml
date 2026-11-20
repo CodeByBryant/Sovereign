@@ -1,5 +1,8 @@
 version: 2
 updates:
+  # pnpm workspaces are handled by the npm ecosystem (it reads pnpm-lock.yaml). Minor and patch
+  # updates arrive as one grouped pull request per week instead of one per package; a major
+  # version always gets its own, because it is the one that needs a human.
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:
@@ -7,10 +10,14 @@ updates:
     commit-message:
       prefix: 'deps'
       include: 'scope'
-    versioning-strategy: 'auto'
     labels:
       - 'dependencies'
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - 'minor'
+          - 'patch'
 
   - package-ecosystem: 'github-actions'
     directory: '/'
