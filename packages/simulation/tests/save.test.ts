@@ -35,13 +35,13 @@ describe('SAVE_FORMAT_VERSION and layout', () => {
   const bytes = encodeWorld(make(7))
   const view = new DataView(bytes.buffer, bytes.byteOffset)
 
-  it('is version 3', () => {
-    expect(SAVE_FORMAT_VERSION).toBe(3)
+  it('is version 4', () => {
+    expect(SAVE_FORMAT_VERSION).toBe(4)
   })
 
   it('starts with the magic "SOVW", the version (uint32, big-endian) and the header length', () => {
     expect([...bytes.subarray(0, 4)]).toEqual(MAGIC)
-    expect(view.getUint32(4, false)).toBe(3)
+    expect(view.getUint32(4, false)).toBe(4)
     expect(view.getUint32(8, false)).toBeGreaterThan(0)
   })
 
@@ -161,7 +161,7 @@ describe('decodeWorld rejects a file that is not a good save', () => {
     rejects(bad, /not a Sovereign save/)
   })
 
-  it.each([0, 1, 2, 4, 99])('a file of unsupported format version %d', (version) => {
+  it.each([0, 1, 2, 3, 5, 99])('a file of unsupported format version %d', (version) => {
     const bad = good.slice()
     new DataView(bad.buffer).setUint32(4, version, false)
     rejects(bad, /unsupported save format version/)
