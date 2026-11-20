@@ -49,15 +49,19 @@ export default tseslint.config(
   },
   {
     // Node scripts (browser end-to-end tests): the few globals they use, declared explicitly.
-    // `document` is only touched inside functions that Playwright runs in the page.
+    // `document`, `window` and `getComputedStyle` are only touched inside functions that Playwright runs
+    // in the page.
     files: ['**/e2e/**/*.mjs'],
     languageOptions: {
       globals: {
         console: 'readonly',
         document: 'readonly',
         fetch: 'readonly',
+        getComputedStyle: 'readonly',
+        URL: 'readonly',
         process: 'readonly',
-        setTimeout: 'readonly'
+        setTimeout: 'readonly',
+        window: 'readonly'
       }
     }
   },
