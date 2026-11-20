@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { STREAM_NAMES } from '../src/random/streams'
 import { HASH_SCHEMA_VERSION } from '../src/serialization/hash'
+
+const srcDir = fileURLToPath(new URL('../src', import.meta.url))
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir)
+    .sort()
+    .flatMap((name) => {
+      const full = join(dir, name)
+      return statSync(full).isDirectory() ? sourceFiles(full) : full.endsWith('.ts') ? [full] : []
+    })
+}
 
 const spec = readFileSync(
   new URL('../../../docs/simulation/determinism.md', import.meta.url),
@@ -46,6 +59,21 @@ describe('the fixed list of random streams', () => {
     const block = /```text\n([\s\S]*?)\n```/.exec(section)
     expect(block, 'section 3 must contain a ```text block with the stream list').not.toBeNull()
     expect(block?.[1]?.replace(/\s+/g, ' ').trim()).toBe(STREAM_NAMES.join(', '))
+  })
+})
+
+describe('every declared stream is used, and only declared streams are', () => {
+  const files = sourceFiles(srcDir).filter((f) => !f.endsWith(join('random', 'streams.ts')))
+  const text = files.map((f) => readFileSync(f, 'utf8')).join('\n')
+
+  it.each([...STREAM_NAMES])("a stream named '%s' is created somewhere in the engine", (name) => {
+    expect(text).toMatch(new RegExp(`createStream\\([^,]+,\\s*'${name}'\\)`))
+  })
+
+  it('has no createStream call with a name that is not in the fixed list', () => {
+    const used = [...text.matchAll(/createStream\([^,]+,\s*'([^']+)'\)/g)].map((m) => m[1])
+    expect(used.length).toBeGreaterThan(10)
+    for (const name of used) expect(STREAM_NAMES as readonly string[]).toContain(name)
   })
 })
 

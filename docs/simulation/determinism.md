@@ -4,7 +4,7 @@ Normative spec for the simulation engine (`@sovereign/simulation`). Anything an 
 
 **Guarantee.** For the same seed, the same world configuration and the same sequence of API calls, every engine (any JS runtime, any OS) produces identical simulation state, and therefore an identical state hash.
 
-> **Status.** The primitives below (seed, streams, deterministic math, hashing, lint bans) are implemented and tested. The terrain and nation generators moved in from the old app (`terrain/`, `nations/`, `world/`) still use `alea`, `simplex-noise` and `Math.pow`; they are exempt from the lint bans until they are ported onto these primitives, after which the guarantee covers world generation. The simulation clock and golden world hashes arrive with the `World` API.
+> **Status.** The primitives below (seed, streams, deterministic math, noise, hashing, lint bans) are implemented and tested, and terrain generation and nation spawning run on them: the engine has no third-party runtime dependencies and the lint bans cover all of `packages/simulation/src`. The simulation clock and golden _world_ state hashes arrive with the `World` API.
 
 ## 1. Numeric model
 
@@ -79,6 +79,8 @@ Planned with the `World` API: a fixed timestep where `tick` increases by exactly
 - No system, hash, snapshot or event may depend on JS object or property enumeration order.
 - Entity stores iterate in a defined order (ascending id, or ascending tile index for tile layers). `Map`/`Set` are allowed only where their iteration order is the insertion order the code controls and never feeds into results unsorted.
 - ESLint bans `for...in`, `Object.keys/values/entries`, and `Array.prototype.sort` without a comparator (the default sort is lexicographic, not numeric).
+- A sort with a comparator relies on the **stable sort guaranteed by ES2019** (equal elements keep their order). The nation spawner depends on this: it shuffles candidates and then stable-sorts by score, so ties stay randomly ordered.
+- A `Set` iterates in insertion order, which is deterministic when the insertion loop is (nation provinces are inserted by a fixed nested loop), and is otherwise only used for membership tests.
 
 ## 6. Deterministic math
 
@@ -90,7 +92,18 @@ Planned with the `World` API: a fixed timestep where `tick` increases by exactly
 | `exp(x)`   | finite `x <= 709.782712893384` | results below the smallest normal (`x < -708.3964185322641`) are `0` |
 | `pow(x,y)` | finite `x >= 0`, finite `y`    | `pow(0,0)=1`; `pow(0,y<0)` and overflow throw; underflow is `0`      |
 
-`pow` is `exp(y * ln x)`: accurate to about `1e-14` relative while `|y * ln x| <= 30`, and **not exact for integer powers**. `sin`, `cos` and `atan2` are not provided yet; they will be implemented in the same file, with accuracy tests, when first needed. ESLint bans the platform equivalents in `packages/simulation/src`: `Math.sin/cos/tan/asin/acos/atan/atan2/log/log2/log10/log1p/exp/expm1/pow/hypot/cbrt/sinh/cosh/tanh/asinh/acosh/atanh`, `Math.random`, `Date.now`, `performance.now`, `new Date()` and the `**` operator.
+`pow` is `exp(y * ln x)`: accurate to about `1e-14` relative while `|y * ln x| <= 30`, and **not exact for integer powers**.
+
+**Why own math.** Over 400,000 inputs, the platform `Math.pow(x, 1.4)` gives three different results (bit for bit) on Node 22 (V8 12.4), Chromium 157 (V8 14) and QuickJS, so even two V8 versions disagree. The engine's own `pow` gives the identical result on all three. (World hashes at small sizes would not show this, because elevation is stored as float32, which rounds away last-bit differences in almost every value; at 2000x2000 tiles a few values per world are expected to flip.)
+
+### 6.1 Simplex noise
+
+`noise/simplex.ts` provides `createSimplexNoise2D(random)`, a standard 2D simplex noise whose only inputs are a `RandomSource` and `(x, y)`; it uses `+ - * /`, `Math.sqrt` and `Math.floor` only.
+
+- **Permutation**: `perm[0..255] = 0..255`, then for `i` from 0 to 254: `r = i + integer(0, 255 - i)`, swap `perm[i]` and `perm[r]`; `perm[256..511]` repeats `perm[0..255]`.
+- **Gradients** (index `perm[..] % 12`): `(1,1) (-1,1) (1,-1) (-1,-1) (1,0) (-1,0) (1,0) (-1,0) (0,1) (0,-1) (0,1) (0,-1)`.
+- **Constants**: `F2 = 0.5 * (sqrt(3) - 1)`, `G2 = (3 - sqrt(3)) / 6`, output scale `70.14805770653952` (range about `[-1, 1]`).
+- Each noise layer takes its own named stream (section 3), so layers are independent. `sin`, `cos` and `atan2` are not provided yet; they will be implemented in the same file, with accuracy tests, when first needed. ESLint bans the platform equivalents in `packages/simulation/src`: `Math.sin/cos/tan/asin/acos/atan/atan2/log/log2/log10/log1p/exp/expm1/pow/hypot/cbrt/sinh/cosh/tanh/asinh/acosh/atanh`, `Math.random`, `Date.now`, `performance.now`, `new Date()` and the `**` operator.
 
 ## 7. State hash
 
@@ -172,6 +185,19 @@ The seeds `305419896` (`0x12345678`), `3735928559` (`0xdeadbeef`) and `16711936`
 
 **Seed normalization**: `"sovereign"` is `a3579d13`; `"héllo ✓"` is `b4ab03a7`; `"4294967296"` is `a5d2f78f`; `"99999999999"` is `f695eb82`; `"007"` is `e2cb360e`.
 
+**Simplex noise** (stream `elevation`, seed `12345`; produced by an independent reference and reproduced exactly):
+
+| `(x, y)`                 | value                                                        |
+| ------------------------ | ------------------------------------------------------------ |
+| `(0.5, 0.5)`             | `-0.3078061834694493`                                        |
+| `(1.3, -2.7)`            | `0.4213085827898947`                                         |
+| `(-10.25, 33.125)`       | `0.6233383467908111`                                         |
+| `(123.456, 789.012)`     | `-0.18378226453632554`                                       |
+| `(3, 7.928203230275509)` | `0.24150037923003204` (one ulp below a skewed-cell boundary) |
+| `(3, 7.92820323027551)`  | `0.2415003792300292` (exactly on it, so the next cell)       |
+
+**Math goldens** (FNV-1a 32 over the exact IEEE-754 bytes of every result; identical on Node 22, Chromium 157 and QuickJS): `ln` over 461,208 points from `1e-300` to `1e300` (`x *= 1.003`) `d390efa5`; `exp` over `i * 0.003` for `i` in `-233333..233333` `793b0ab8`; `pow((i + 0.5) / 400000, 1.4)` `5f886638`; `pow((i + 0.5) / 400000 * 50, 0.5)` `78829315`.
+
 **Hash** (bytes exactly as written by the writers in 7.1; the header is `"SOVH"` then `writeUint32(1)`):
 
 | Input                                                                              | Output                             |
@@ -186,11 +212,12 @@ The seeds `305419896` (`0x12345678`), `3735928559` (`0xdeadbeef`) and `16711936`
 
 ## 10. Enforcement summary
 
-| Rule                                                                | Enforced by                                                                           |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| No platform transcendentals, `Math.random`, wall clock, `**`        | ESLint, `packages/simulation/src` (tested in `tests/lint-rules.test.ts`)              |
-| No `for...in`, `Object.keys/values/entries`, comparator-less `sort` | ESLint, `packages/simulation/src`                                                     |
-| No browser, React, Pixi or Electron in the engine                   | ESLint (`no-restricted-globals`, `no-restricted-imports`)                             |
-| Not yet ported: `terrain/`, `nations/`, `world/`                    | Temporarily exempt in `eslint.config.js` (exemption and its test removed when ported) |
-| Stream list, hash version and this document stay in sync            | `tests/stream-usage.test.ts`                                                          |
-| Bit-exact reproducibility of whole worlds                           | Golden hashes (planned with the `World` API)                                          |
+| Rule                                                                | Enforced by                                                                       |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| No platform transcendentals, `Math.random`, wall clock, `**`        | ESLint, `packages/simulation/src` (tested in `tests/lint-rules.test.ts`)          |
+| No `for...in`, `Object.keys/values/entries`, comparator-less `sort` | ESLint, `packages/simulation/src`                                                 |
+| No browser, React, Pixi or Electron in the engine                   | ESLint (`no-restricted-globals`, `no-restricted-imports`)                         |
+| No `alea` / `simplex-noise` in the engine; every stream is used     | `tests/no-legacy-rng.test.ts`, `tests/stream-usage.test.ts`                       |
+| Noise, RNG and math match independent references, bit for bit       | `tests/simplex.test.ts`, `tests/streams.test.ts`, `tests/transcendental*.test.ts` |
+| Stream list, hash version and this document stay in sync            | `tests/stream-usage.test.ts`                                                      |
+| Bit-exact reproducibility of whole worlds                           | Golden hashes (planned with the `World` API)                                      |

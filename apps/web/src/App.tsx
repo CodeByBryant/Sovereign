@@ -10,7 +10,7 @@
  */
 import { TitleScreen } from '@sovereign/ui'
 import { useGameStore } from './state/GameStore'
-import { parseSeed, randomSeed } from './seed'
+import { randomSeed } from './seed'
 import MapView from './MapView'
 
 const App = (): JSX.Element => {
@@ -19,7 +19,7 @@ const App = (): JSX.Element => {
   const setPhase = useGameStore((s) => s.setPhase)
 
   const handleNewWorld = (typed: string | null): void => {
-    setSeed(typed === null ? randomSeed() : parseSeed(typed))
+    setSeed(typed === null ? randomSeed() : typed)
     setPhase('generating')
   }
 

@@ -11,7 +11,9 @@
  * const nations = spawnNations(elevation, biomeIds, terrainConfig, 12, seed)
  * ```
  */
-import alea from 'alea'
+import type { RandomSource } from '../random/RandomSource'
+import { normalizeSeed } from '../random/seed'
+import { createStream } from '../random/streams'
 import type { GovernmentType, NationPersonality } from '@sovereign/contracts'
 import { Nation } from './Nation'
 import { NameGenerator } from './NameGenerator'
@@ -119,19 +121,20 @@ function findCandidates(
 
 /**
  * Pick N spawn points from candidates ensuring minimum distance between them.
+ * Exported for tests; the public entry point is {@link spawnNations}.
  */
-function pickSpawnPoints(
+export function pickSpawnPoints(
   candidates: { index: number; score: number }[],
   count: number,
   minDist: number,
   width: number,
-  rng: () => number
+  rng: RandomSource
 ): number[] {
   // Sort by score descending, then pick greedily with distance check
   const shuffled = candidates.slice()
   // Fisher-Yates partial shuffle weighted by score
   for (let i = shuffled.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(rng() * (i + 1))
+    const j = rng.integer(0, i)
     const tmp = shuffled[i]
     shuffled[i] = shuffled[j]
     shuffled[j] = tmp
@@ -233,10 +236,11 @@ export function spawnNations(
   seed: string | number,
   minSpacing = 70
 ): SpawnResult {
-  const rng = alea(`${seed}-spawn`)
-  const nameGen = new NameGenerator(seed)
-  const colorGen = new ColorGenerator(seed)
-  const flagGen = new FlagGenerator(seed)
+  const worldSeed = normalizeSeed(seed)
+  const rng = createStream(worldSeed, 'spawn')
+  const nameGen = new NameGenerator(worldSeed)
+  const colorGen = new ColorGenerator(worldSeed)
+  const flagGen = new FlagGenerator(worldSeed)
 
   const { width, height } = terrain
   const ownerMap = new Array<string>(width * height).fill('')
@@ -252,14 +256,14 @@ export function spawnNations(
     const name = nameGen.generate()
     const color = colorGen.generate()
     const flag = flagGen.generate()
-    const government = GOVERNMENT_TYPES[Math.floor(rng() * GOVERNMENT_TYPES.length)]
+    const government = rng.choose(GOVERNMENT_TYPES)
 
     const personality: NationPersonality = {
-      aggression: 0.1 + rng() * 0.8,
-      expansionism: 0.1 + rng() * 0.8,
-      diplomacy: 0.1 + rng() * 0.8,
-      mercantilism: 0.1 + rng() * 0.8,
-      militarism: 0.1 + rng() * 0.8
+      aggression: 0.1 + rng.float() * 0.8,
+      expansionism: 0.1 + rng.float() * 0.8,
+      diplomacy: 0.1 + rng.float() * 0.8,
+      mercantilism: 0.1 + rng.float() * 0.8,
+      militarism: 0.1 + rng.float() * 0.8
     }
 
     const provinces = claimTerritory(spawnIdx, elevation, biomeIds, terrain, ownerMap, id)
@@ -274,10 +278,10 @@ export function spawnNations(
       capital: spawnIdx,
       provinces,
       stats: {
-        population: Math.floor(50 + rng() * 100),
-        military: Math.floor(50 + rng() * 50),
-        economy: Math.floor(30 + rng() * 70),
-        diplomacy: Math.floor(30 + rng() * 70)
+        population: Math.floor(50 + rng.float() * 100),
+        military: Math.floor(50 + rng.float() * 50),
+        economy: Math.floor(30 + rng.float() * 70),
+        diplomacy: Math.floor(30 + rng.float() * 70)
       }
     })
 

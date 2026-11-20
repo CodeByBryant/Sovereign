@@ -16,8 +16,9 @@
  * const elevImg = gen.generateElevationMap(elev, terrainConfig)
  * ```
  */
-import { createNoise2D } from 'simplex-noise'
-import alea from 'alea'
+import { pow } from '../math/transcendental'
+import { createSimplexNoise2D } from '../noise/simplex'
+import { createStream } from '../random/streams'
 import type {
   BiomeNoiseConfig,
   HumidityConfig,
@@ -35,9 +36,9 @@ import type {
 /* ------------------------------------------------------------------ */
 
 /**
- * Procedural terrain generator backed by simplex noise (via `simplex-noise`
- * + `alea` PRNG).  Each noise layer is seeded independently so elevation,
- * temperature, humidity and biome-variation are decorrelated.
+ * Procedural terrain generator backed by the engine's own simplex noise.  Each
+ * noise layer has its own named random stream, so elevation, temperature,
+ * humidity and biome-variation are decorrelated and independent.
  */
 export class TerrainGenerator {
   private elevationNoise: (x: number, y: number) => number
@@ -47,14 +48,14 @@ export class TerrainGenerator {
   private humidityNoise: (x: number, y: number) => number
   private biomeNoise: (x: number, y: number) => number
 
-  /** @param seed - A string or number used to deterministically seed all noise layers. */
-  constructor(seed: string | number) {
-    this.elevationNoise = this.createNoise(`${seed}-elevation`)
-    this.continentNoise = this.createNoise(`${seed}-continent`)
-    this.oceanNoise = this.createNoise(`${seed}-ocean`)
-    this.temperatureNoise = this.createNoise(`${seed}-temperature`)
-    this.humidityNoise = this.createNoise(`${seed}-humidity`)
-    this.biomeNoise = this.createNoise(`${seed}-biome-variation`)
+  /** @param seed - The engine seed (a uint32, see `normalizeSeed`); each layer derives its own stream. */
+  constructor(seed: number) {
+    this.elevationNoise = createSimplexNoise2D(createStream(seed, 'elevation'))
+    this.continentNoise = createSimplexNoise2D(createStream(seed, 'continent'))
+    this.oceanNoise = createSimplexNoise2D(createStream(seed, 'ocean'))
+    this.temperatureNoise = createSimplexNoise2D(createStream(seed, 'temperature'))
+    this.humidityNoise = createSimplexNoise2D(createStream(seed, 'humidity'))
+    this.biomeNoise = createSimplexNoise2D(createStream(seed, 'biome'))
   }
 
   /* ---------------------------------------------------------------- */
@@ -97,7 +98,7 @@ export class TerrainGenerator {
             ocean * config.oceanStrength
         )
         // Redistribution: exponent > 1 flattens lowlands and steepens highlands
-        const elevation = Math.pow(raw, config.redistributionPower ?? 1.4)
+        const elevation = pow(raw, config.redistributionPower ?? 1.4)
         const index = y * width + x
         elevations[index] = config.islandMode
           ? elevation * this.islandFalloff(x, y, width, height)
@@ -216,10 +217,6 @@ export class TerrainGenerator {
   /* ---------------------------------------------------------------- */
 
   /** Create a seeded 2-D simplex noise function. */
-  private createNoise(seed: string): (x: number, y: number) => number {
-    const rng = alea(seed)
-    return createNoise2D(rng)
-  }
 
   /**
    * Fractal Brownian motion (fBm) sampler.

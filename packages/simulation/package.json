@@ -14,9 +14,7 @@
   },
   "dependencies": {
     "@sovereign/config": "workspace:*",
-    "@sovereign/contracts": "workspace:*",
-    "alea": "^1.0.1",
-    "simplex-noise": "^4.0.1"
+    "@sovereign/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.20.5"

@@ -12,7 +12,8 @@
  * gen.generate() // → "United Aldoria"
  * ```
  */
-import alea from 'alea'
+import type { RandomSource } from '../random/RandomSource'
+import { createStream } from '../random/streams'
 
 const PREFIXES = [
   'Al',
@@ -154,16 +155,17 @@ const TITLES = [
 ]
 
 export class NameGenerator {
-  private rng: () => number
+  private rng: RandomSource
   private usedNames = new Set<string>()
 
-  constructor(seed: string | number) {
-    this.rng = alea(`${seed}-names`)
+  /** @param seed - The engine seed (a uint32, see `normalizeSeed`). */
+  constructor(seed: number) {
+    this.rng = createStream(seed, 'names')
   }
 
   /** Pick a random element from an array using the seeded RNG. */
   private pick<T>(arr: readonly T[]): T {
-    return arr[Math.floor(this.rng() * arr.length)]
+    return this.rng.choose(arr)
   }
 
   /**
@@ -175,7 +177,7 @@ export class NameGenerator {
     for (let attempt = 0; attempt < 50; attempt += 1) {
       const base = this.pick(PREFIXES) + this.pick(ROOTS) + this.pick(SUFFIXES)
       // ~40% chance of a government prefix
-      const withTitle = this.rng() < 0.4 ? `${this.pick(TITLES)} ${base}` : base
+      const withTitle = this.rng.float() < 0.4 ? `${this.pick(TITLES)} ${base}` : base
       if (!this.usedNames.has(withTitle)) {
         this.usedNames.add(withTitle)
         return withTitle

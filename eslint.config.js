@@ -50,13 +50,6 @@ export default tseslint.config(
   {
     // The simulation engine must stay headless and deterministic (docs/simulation/determinism.md).
     files: ['packages/simulation/src/**/*.ts'],
-    // TEMPORARY: code moved in from the old app that still uses alea, simplex-noise, Math.pow and
-    // browser types. R2 ports it onto the deterministic RNG/math and deletes this exemption.
-    ignores: [
-      'packages/simulation/src/terrain/**',
-      'packages/simulation/src/nations/**',
-      'packages/simulation/src/world/**'
-    ],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       'no-console': 'error',

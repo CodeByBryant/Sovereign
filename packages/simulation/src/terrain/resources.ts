@@ -16,8 +16,8 @@
  * | Fish        | shore-adjacent land                                |
  * | Fur & Game  | taiga, boreal_forest, tundra (cold forests)        |
  */
-import { createNoise2D } from 'simplex-noise'
-import alea from 'alea'
+import { createSimplexNoise2D } from '../noise/simplex'
+import { createStream } from '../random/streams'
 import { ResourceType } from '@sovereign/contracts'
 import type { ResourceConfig } from '@sovereign/config'
 
@@ -71,7 +71,7 @@ export function generateResources(
   width: number,
   height: number,
   seaLevel: number,
-  seed: string | number,
+  seed: number,
   config: ResourceConfig
 ): { resourceType: Uint8Array; resourceDensity: Uint8Array } {
   const size = width * height
@@ -79,8 +79,8 @@ export function generateResources(
   const resourceDensity = new Uint8Array(size)
 
   // Independent noise for ore deposits and density variation
-  const oreNoise = createNoise2D(alea(`${seed}-ore`))
-  const densityNoise = createNoise2D(alea(`${seed}-res-density`))
+  const oreNoise = createSimplexNoise2D(createStream(seed, 'ore'))
+  const densityNoise = createSimplexNoise2D(createStream(seed, 'resourceDensity'))
 
   // Pre-compute shore adjacency for fish detection
   const nearWater = new Uint8Array(size)

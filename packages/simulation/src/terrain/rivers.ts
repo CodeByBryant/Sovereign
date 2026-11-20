@@ -13,8 +13,8 @@
  * const data = rivers.generate(elevation, humidity, terrain, config)
  * ```
  */
-import { createNoise2D } from 'simplex-noise'
-import alea from 'alea'
+import { createSimplexNoise2D } from '../noise/simplex'
+import { createStream } from '../random/streams'
 import type { RiverConfig, TerrainConfig } from '@sovereign/config'
 
 /* ------------------------------------------------------------------ */
@@ -41,18 +41,13 @@ export class RiverGenerator {
   private warpNoiseY: (x: number, y: number) => number
   private widthNoise: (x: number, y: number) => number
 
-  constructor(seed: string | number) {
-    const rng1 = alea(`${seed}-river-primary`)
-    const rng2 = alea(`${seed}-river-secondary`)
-    const rng3 = alea(`${seed}-river-warpX`)
-    const rng4 = alea(`${seed}-river-warpY`)
-    const rng5 = alea(`${seed}-river-width`)
-
-    this.primaryNoise = createNoise2D(rng1)
-    this.secondaryNoise = createNoise2D(rng2)
-    this.warpNoiseX = createNoise2D(rng3)
-    this.warpNoiseY = createNoise2D(rng4)
-    this.widthNoise = createNoise2D(rng5)
+  /** @param seed - The engine seed (a uint32, see `normalizeSeed`). */
+  constructor(seed: number) {
+    this.primaryNoise = createSimplexNoise2D(createStream(seed, 'riverPrimary'))
+    this.secondaryNoise = createSimplexNoise2D(createStream(seed, 'riverSecondary'))
+    this.warpNoiseX = createSimplexNoise2D(createStream(seed, 'riverWarpX'))
+    this.warpNoiseY = createSimplexNoise2D(createStream(seed, 'riverWarpY'))
+    this.widthNoise = createSimplexNoise2D(createStream(seed, 'riverWidth'))
   }
 
   /* ---------------------------------------------------------------- */

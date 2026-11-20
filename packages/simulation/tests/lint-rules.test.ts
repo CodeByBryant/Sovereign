@@ -74,18 +74,8 @@ describe('determinism lint rules (packages/simulation/src)', () => {
     expect(await lint('export const x = Math.random()', 'apps/web/src/seed.ts')).toEqual([])
   })
 
-  // TEMPORARY (R1 only): code moved in from the old app is exempt until R2 ports it onto the
-  // deterministic RNG and math. R2 deletes this test together with the exemption in eslint.config.js.
-  it('exempts the not-yet-ported legacy directories (terrain, nations, world)', async () => {
-    for (const dir of ['terrain', 'nations', 'world']) {
-      expect(
-        await lint('export const x = Math.random()', `packages/simulation/src/${dir}/legacy.ts`)
-      ).toEqual([])
-    }
-  })
-
-  it('binds every new engine directory', async () => {
-    for (const dir of ['random', 'math', 'serialization']) {
+  it('binds every engine directory, including terrain, nations and world', async () => {
+    for (const dir of ['random', 'math', 'serialization', 'noise', 'terrain', 'nations', 'world']) {
       expect(
         (await lint('export const x = Math.random()', `packages/simulation/src/${dir}/x.ts`)).length
       ).toBeGreaterThan(0)

@@ -22,7 +22,9 @@ import { WorldMap, type WorldMapData } from '@sovereign/simulation'
 const DB_NAME = 'sovereign'
 const DB_VERSION = 1
 const STORE_NAME = 'saves'
-const SAVE_FORMAT_VERSION = 1
+// 2: world generation moved to the deterministic engine (own noise, named streams); the same seed
+// now produces a different world, so version-1 saves are rejected rather than mismatched.
+const SAVE_FORMAT_VERSION = 2
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */

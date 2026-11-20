@@ -16,6 +16,7 @@ import type {
   TerrainConfig
 } from '@sovereign/config'
 import type { TerrainFields } from '@sovereign/contracts'
+import { normalizeSeed } from '../random/seed'
 import { classifyBiomes } from './biomes'
 import { generateResources } from './resources'
 import { RiverGenerator } from './rivers'
@@ -24,6 +25,7 @@ import { TerrainGenerator } from './TerrainGenerator'
 
 /** Everything the pipeline needs; the seed and the world-generation config sections. */
 export interface TerrainRequest {
+  /** Anything a person can type or a host can pick; see `normalizeSeed`. */
   seed: string | number
   terrain: TerrainConfig
   temperature: TemperatureConfig
@@ -69,8 +71,9 @@ function effectiveSeaLevel(
 
 /** Generate every terrain field for a seed and configuration. */
 export function generateTerrain(request: TerrainRequest): TerrainFields {
-  const { seed, terrain, temperature, humidity, biomeNoise, rivers, biomes, strategic, resources } =
+  const { terrain, temperature, humidity, biomeNoise, rivers, biomes, strategic, resources } =
     request
+  const seed = normalizeSeed(request.seed)
 
   const generator = new TerrainGenerator(seed)
   const elevation = generator.generateElevationField(terrain)

@@ -12,7 +12,8 @@
  * const [r, g, b] = gen.generate() // → [180, 60, 90]
  * ```
  */
-import alea from 'alea'
+import type { RandomSource } from '../random/RandomSource'
+import { createStream } from '../random/streams'
 
 /**
  * Convert HSL (hue 0–360, saturation/lightness 0–1) to RGB 0–255.
@@ -57,7 +58,7 @@ function colorDistSq(a: [number, number, number], b: [number, number, number]): 
 }
 
 export class ColorGenerator {
-  private rng: () => number
+  private rng: RandomSource
   private usedColors: Array<[number, number, number]> = []
   /** Golden angle in degrees for hue spacing. */
   private hueOffset: number
@@ -66,10 +67,11 @@ export class ColorGenerator {
   /** Minimum squared RGB distance required between any two nation colours. */
   private static MIN_DIST_SQ = 2500 // ~50 units in RGB space
 
-  constructor(seed: string | number) {
-    this.rng = alea(`${seed}-colors`)
+  /** @param seed - The engine seed (a uint32, see `normalizeSeed`). */
+  constructor(seed: number) {
+    this.rng = createStream(seed, 'colors')
     // Randomise starting hue so different seeds feel different
-    this.hueOffset = this.rng() * 360
+    this.hueOffset = this.rng.float() * 360
   }
 
   /**
@@ -81,8 +83,8 @@ export class ColorGenerator {
   generate(): [number, number, number] {
     for (let attempt = 0; attempt < 30; attempt += 1) {
       const hue = (this.hueOffset + this.index * 137.508 + attempt * 47) % 360
-      const saturation = 0.55 + this.rng() * 0.3 // 0.55–0.85
-      const lightness = 0.38 + this.rng() * 0.22 // 0.38–0.60
+      const saturation = 0.55 + this.rng.float() * 0.3 // 0.55–0.85
+      const lightness = 0.38 + this.rng.float() * 0.22 // 0.38–0.60
 
       const rgb = hslToRgb(hue, saturation, lightness)
 
@@ -114,9 +116,9 @@ export class ColorGenerator {
    * Generate an HSL colour for flag use — returns [H, S, L] directly.
    */
   generateHSL(): [number, number, number] {
-    const hue = (this.hueOffset + this.index * 97 + this.rng() * 60) % 360
-    const sat = 0.5 + this.rng() * 0.35
-    const lit = 0.35 + this.rng() * 0.3
+    const hue = (this.hueOffset + this.index * 97 + this.rng.float() * 60) % 360
+    const sat = 0.5 + this.rng.float() * 0.35
+    const lit = 0.35 + this.rng.float() * 0.3
     this.index += 1
     return [hue, sat, lit]
   }
