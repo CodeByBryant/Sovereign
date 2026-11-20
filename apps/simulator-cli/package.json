@@ -1,0 +1,22 @@
+{
+  "name": "@sovereign/simulator-cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Run, hash, save and load Sovereign worlds from the command line, with no UI.",
+  "scripts": {
+    "start": "tsx src/bin.ts",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@sovereign/config": "workspace:*",
+    "@sovereign/simulation": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.19.0"
+  }
+}

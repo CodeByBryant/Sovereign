@@ -7,7 +7,7 @@ import React from 'react'
 import {
   getBiomeById,
   STRATEGIC_META,
-  type NationData,
+  type NationSnapshot,
   type StrategicPoint,
   type TileInfo
 } from '@sovereign/contracts'
@@ -17,7 +17,7 @@ export interface InspectorData {
   /** Nearby strategic point, if any. */
   strategic: StrategicPoint | null
   /** Owning nation, if any. */
-  nation: NationData | null
+  nation: NationSnapshot | null
 }
 
 interface Props {

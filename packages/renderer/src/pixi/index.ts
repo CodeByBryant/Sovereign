@@ -4,4 +4,4 @@
  * which only needs the pure parts of the renderer never loads PixiJS.
  */
 export { MapRenderer } from './MapRenderer'
-export type { LayerName, MapRendererOptions } from './MapRenderer'
+export type { MapRendererOptions } from './MapRenderer'

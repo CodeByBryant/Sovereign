@@ -19,6 +19,9 @@
     "node": ">=22"
   },
   "scripts": {
+    "dev": "pnpm --filter @sovereign/web dev",
+    "desktop": "pnpm --filter @sovereign/desktop start",
+    "sim": "pnpm --filter @sovereign/simulator-cli start --",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",

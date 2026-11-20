@@ -10,11 +10,8 @@
  */
 import { Application, BufferImageSource, Container, Sprite, Texture } from 'pixi.js'
 import type { Camera } from '../Camera'
+import type { LayerName } from '../layers'
 import { clampedViewport, tileAtScreen, viewTransform } from '../view'
-
-/** The overlays the renderer can show. */
-export type LayerName =
-  'elevation' | 'temperature' | 'humidity' | 'biome' | 'strategic' | 'resource' | 'political'
 
 export interface MapRendererOptions {
   /** CSS class given to the canvas the renderer creates. */

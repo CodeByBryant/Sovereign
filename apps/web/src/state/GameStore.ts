@@ -6,8 +6,8 @@
  * the serialisation target for save/load.
  */
 import { create } from 'zustand'
-import type { StrategicPoint } from '@sovereign/contracts'
-import type { Nation, WorldMap } from '@sovereign/simulation'
+import type { NationSnapshot, StrategicPoint } from '@sovereign/contracts'
+import type { WorldMap } from '@sovereign/simulation'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -31,7 +31,7 @@ export interface GameState {
   /** Strategic points from terrain generation. */
   strategicPoints: StrategicPoint[]
   /** Spawned nations — empty until nation spawning completes. */
-  nations: Nation[]
+  nations: NationSnapshot[]
   /** Index of nation currently selected in the detail panel, or -1. */
   selectedNation: number
   /** FPS counter from the render loop. */
@@ -44,7 +44,7 @@ export interface GameState {
   setSeed: (seed: number | string) => void
   setWorldMap: (world: WorldMap) => void
   setStrategicPoints: (points: StrategicPoint[]) => void
-  setNations: (nations: Nation[]) => void
+  setNations: (nations: NationSnapshot[]) => void
   selectNation: (index: number) => void
   setFps: (fps: number) => void
   /** Reset to title screen state. */

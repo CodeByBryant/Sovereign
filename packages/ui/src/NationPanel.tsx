@@ -7,10 +7,10 @@
  * economy, diplomacy), personality traits, and territory size.
  */
 import React from 'react'
-import type { NationData } from '@sovereign/contracts'
+import type { NationSnapshot } from '@sovereign/contracts'
 
 interface Props {
-  nation: NationData
+  nation: NationSnapshot
   onClose: () => void
 }
 
@@ -49,7 +49,7 @@ const NationPanel: React.FC<Props> = ({ nation, onClose }) => {
           <div className="nation-panel__stat-row">
             <span className="nation-panel__stat-icon">🗺️</span>
             <span className="nation-panel__stat-label">Provinces</span>
-            <span className="nation-panel__stat-value">{nation.totalArea} tiles</span>
+            <span className="nation-panel__stat-value">{nation.area} tiles</span>
           </div>
         </div>
       </section>

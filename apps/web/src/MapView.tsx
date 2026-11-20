@@ -6,15 +6,14 @@
  * Wired to zustand GameStore for view mode, FPS and world data.
  */
 import React, { useEffect, useRef, useCallback } from 'react'
-import { defaultWorldConfig as world, type TerrainConfig } from '@sovereign/config'
-import type { StrategicPoint } from '@sovereign/contracts'
-import { Camera, politicalRgba } from '@sovereign/renderer'
+import type { NationSnapshot, StrategicPoint } from '@sovereign/contracts'
+import { Camera, LAYER_NAMES } from '@sovereign/renderer'
 import { MapRenderer } from '@sovereign/renderer/pixi'
-import { WorldMap, spawnNations, type Nation } from '@sovereign/simulation'
-import type { TerrainWorkerRequest, TerrainWorkerResponse } from './host/terrain.worker'
-import TerrainWorker from './host/terrain.worker?worker'
+import { WorldMap } from '@sovereign/simulation'
 import { TileInspector, NationPanel, type InspectorData } from '@sovereign/ui'
 import { FrameLoop } from './host/FrameLoop'
+import { SimulationHost } from './host/SimulationHost'
+import { createWorldWorker } from './host/createWorldWorker'
 import { randomSeed } from './seed'
 import { useGameStore, type ViewMode } from './state/GameStore'
 import { viewConfig } from './viewConfig'
@@ -47,7 +46,7 @@ const MapView: React.FC = () => {
   const cameraRef = useRef<Camera | null>(null)
   const mapSizeRef = useRef({ width: 0, height: 0, tileSize: 1 })
   const biomeIdsRef = useRef<Uint8Array | null>(null)
-  const nationsRef = useRef<Nation[]>([])
+  const nationsRef = useRef<NationSnapshot[]>([])
   const strategicPointsRef = useRef<StrategicPoint[]>([])
   const strategicGridRef = useRef<Map<number, StrategicPoint>>(new Map())
 
@@ -144,140 +143,54 @@ const MapView: React.FC = () => {
       canvas.addEventListener('wheel', onWheel, { passive: false })
       canvas.addEventListener('click', onClick)
 
-      /* ------------- Spawn terrain worker ------------- */
+      /* ------------- Generate the world in the worker ------------- */
       const { tileSize } = viewConfig.map
-      const terrainConfig: TerrainConfig = { ...world.map, ...world.elevation }
+      const simulation = new SimulationHost(createWorldWorker)
+      let cancelled = false
 
-      const worker = new TerrainWorker()
+      simulation
+        .create(seed ?? randomSeed())
+        .then((ready) => {
+          if (cancelled) return
+          const { width, height, seaLevel } = ready.snapshot
 
-      const useSeed = seed ?? randomSeed()
+          for (const name of LAYER_NAMES) renderer.setLayer(name, ready.layers[name], width, height)
 
-      const request: TerrainWorkerRequest = {
-        type: 'generate',
-        seed: useSeed,
-        terrain: terrainConfig,
-        temperature: world.temperature,
-        humidity: world.humidity,
-        biomeNoise: world.biomeNoise,
-        rivers: world.rivers,
-        biomes: world.biomes,
-        strategic: world.strategic,
-        resources: world.resources,
-        minLandRatio: world.map.minLandRatio
-      }
+          mapSizeRef.current = { width, height, tileSize }
+          biomeIdsRef.current = ready.fields.biomeIds
+          strategicPointsRef.current = ready.strategicPoints
+          nationsRef.current = ready.snapshot.nations
 
-      worker.postMessage(request)
-
-      worker.onmessage = async (event: MessageEvent<TerrainWorkerResponse>): Promise<void> => {
-        const data = event.data
-        if (data.type !== 'done') return
-
-        const { width, height } = data
-
-        // The pixel buffers were transferred from the worker, so wrapping them copies nothing.
-        const pixels = (buf: ArrayBuffer): Uint8ClampedArray => new Uint8ClampedArray(buf)
-        const biomePixels = pixels(data.biomePixels)
-
-        renderer.setLayer('elevation', pixels(data.elevationPixels), width, height)
-        renderer.setLayer('temperature', pixels(data.temperaturePixels), width, height)
-        renderer.setLayer('humidity', pixels(data.humidityPixels), width, height)
-        renderer.setLayer('biome', biomePixels, width, height)
-        renderer.setLayer('strategic', pixels(data.strategicPixels), width, height)
-        renderer.setLayer('resource', pixels(data.resourcePixels), width, height)
-
-        mapSizeRef.current = { width, height, tileSize }
-        biomeIdsRef.current = new Uint8Array(data.biomeIds)
-        strategicPointsRef.current = data.strategicPoints
-
-        // Build strategic spatial grid (cell size 8)
-        const sGrid = new Map<number, StrategicPoint>()
-        const SCELL = 8
-        const sgridW = Math.ceil(width / SCELL)
-        for (const sp of data.strategicPoints) {
-          const key = Math.floor(sp.y / SCELL) * sgridW + Math.floor(sp.x / SCELL)
-          const existing = sGrid.get(key)
-          if (!existing || sp.value > existing.value) sGrid.set(key, sp)
-        }
-        strategicGridRef.current = sGrid
-
-        // Build WorldMap from raw fields
-        const ownershipArr = new Uint8Array(width * height).fill(255)
-        const worldMap = new WorldMap({
-          width,
-          height,
-          seaLevel: data.seaLevel,
-          elevation: new Float32Array(data.elevationField),
-          temperature: new Float32Array(data.temperatureField),
-          humidity: new Float32Array(data.humidityField),
-          biomeIds: new Uint8Array(data.biomeIds),
-          riverMask: new Uint8Array(data.riverMask),
-          resourceType: new Uint8Array(data.resourceType),
-          resourceDensity: new Uint8Array(data.resourceDensity),
-          ownership: ownershipArr
-        })
-
-        // --- Nation spawning ---
-        const nationsConfig = world.nations
-        const terrainForSpawn: TerrainConfig = {
-          width,
-          height,
-          seaLevel: data.seaLevel,
-          islandMode: world.map.islandMode,
-          ...world.elevation
-        }
-        const { nations, ownerMap } = spawnNations(
-          worldMap.elevation,
-          worldMap.biomeIds,
-          worldMap.riverMask,
-          terrainForSpawn,
-          nationsConfig.count,
-          useSeed,
-          nationsConfig.minSpacing
-        )
-
-        // Write string-based ownerMap into Uint8Array ownership layer
-        // Nation index (0–254) maps to nation array index; '' → 255 (unclaimed)
-        const nationIdToIndex = new Map<string, number>()
-        for (let ni = 0; ni < nations.length; ni += 1) {
-          nationIdToIndex.set(nations[ni].id, ni)
-        }
-        for (let i = 0; i < ownerMap.length; i += 1) {
-          if (ownerMap[i] !== '') {
-            const nIdx = nationIdToIndex.get(ownerMap[i])
-            if (nIdx !== undefined) ownershipArr[i] = nIdx
+          // Build strategic spatial grid (cell size 8)
+          const sGrid = new Map<number, StrategicPoint>()
+          const SCELL = 8
+          const sgridW = Math.ceil(width / SCELL)
+          for (const sp of ready.strategicPoints) {
+            const key = Math.floor(sp.y / SCELL) * sgridW + Math.floor(sp.x / SCELL)
+            const existing = sGrid.get(key)
+            if (!existing || sp.value > existing.value) sGrid.set(key, sp)
           }
-        }
-        nationsRef.current = nations
+          strategicGridRef.current = sGrid
 
-        setWorldMap(worldMap)
-        setStrategicPoints(data.strategicPoints)
-        setNations(nations)
-
-        // --- Political overlay ---
-        renderer.setLayer(
-          'political',
-          politicalRgba(
-            biomePixels,
-            ownershipArr,
-            nations.map((n) => n.color),
-            width,
-            height,
-            viewConfig.political
-          ),
-          width,
-          height
-        )
-        renderer.showLayer(useGameStore.getState().view)
-
-        setPhase('playing')
-        worker.terminate()
-      }
+          setWorldMap(new WorldMap({ width, height, seaLevel, ...ready.fields }))
+          setStrategicPoints(ready.strategicPoints)
+          setNations(ready.snapshot.nations)
+          renderer.showLayer(useGameStore.getState().view)
+          setPhase('playing')
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return
+          // Generation failed (the engine rejected the seed or config): go back rather than hang.
+          console.error(error)
+          setPhase('title')
+        })
 
       frameLoop.start()
 
       return () => {
+        cancelled = true
         frameLoop.stop()
-        worker.terminate()
+        simulation.dispose()
         resizeObserver.disconnect()
         window.removeEventListener('resize', resize)
         canvas.removeEventListener('pointerdown', onPointerDown)
@@ -401,7 +314,7 @@ const MapView: React.FC = () => {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [setView])
+  }, [setView, selectNation])
 
   /* ---------------------------------------------------------------- */
   /*  View-mode switching                                              */

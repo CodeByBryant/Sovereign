@@ -1,9 +1,15 @@
-# Packaging config for the desktop shell.
-# TODO(R5): wire `files` / `extraResources` to the built @sovereign/web output and add build scripts.
+# Packaging config for the desktop shell: `pnpm --filter @sovereign/desktop package`.
+# The web build is shipped next to the app as resources/web (see src/paths.ts).
 appId: com.codebybryant.sovereign
 productName: Sovereign
 directories:
   output: release
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: ../web/dist
+    to: web
 win:
   target: nsis
   executableName: sovereign
@@ -20,6 +26,7 @@ dmg:
 linux:
   target: AppImage
   category: Game
+  executableName: sovereign
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false

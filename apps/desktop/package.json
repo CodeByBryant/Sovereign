@@ -6,14 +6,18 @@
   "author": "CodeByBryant",
   "license": "MIT",
   "scripts": {
-    "build": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "start": "pnpm --filter @sovereign/web build && pnpm build && electron .",
+    "package": "pnpm --filter @sovereign/web build && pnpm build && electron-builder"
   },
   "devDependencies": {
+    "@sovereign/web": "workspace:*",
     "@types/node": "^22.10.0",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1"
-  }
+  },
+  "main": "dist/main.js"
 }

@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "target": "ES2022",
+    "sourceMap": false
+  },
+  "include": ["src/main.ts", "src/preload.ts", "src/paths.ts"],
+  "exclude": ["src/preload.d.ts"]
+}

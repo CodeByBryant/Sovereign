@@ -1,5 +1,7 @@
 import { contextBridge } from 'electron'
 
+// The one thing the page may know about its host: that it is the desktop shell, and on what.
 contextBridge.exposeInMainWorld('sovereign', {
-  version: '0.1.0'
+  desktop: true,
+  platform: process.platform
 })
