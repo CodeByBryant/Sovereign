@@ -5,7 +5,7 @@
  * The underlying storage is struct-of-arrays (compact typed arrays).
  * `TileInfo` is a readonly view returned by `WorldMap.at(x, y)`.
  */
-import { ResourceType, RESOURCE_META } from './resources'
+import { ResourceType } from './resources'
 import type { BiomeKey } from './biomes'
 
 /**
@@ -46,4 +46,4 @@ export interface TileInfo {
   ownerId: number
 }
 
-export { ResourceType, RESOURCE_META }
+export { ResourceType }

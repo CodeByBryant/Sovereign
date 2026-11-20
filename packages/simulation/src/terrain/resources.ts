@@ -42,18 +42,18 @@ const BIOME_RESOURCE: Record<number, ResourceType | null> = {
   8: ResourceType.Fur, // taiga
   9: null, // cold_steppe
   10: null, // temperate_desert
-  11: ResourceType.Fertile, // steppe
-  12: ResourceType.Fertile, // grassland
+  11: ResourceType.Grain, // steppe
+  12: ResourceType.Grain, // grassland
   13: ResourceType.Timber, // woodland
   14: ResourceType.Timber, // temperate_forest
   15: null, // chaparral / scrubland
   16: null, // swamp
   17: null, // desert
   18: ResourceType.Stone, // badlands
-  19: ResourceType.Fertile, // savanna
+  19: ResourceType.Grain, // savanna
   20: ResourceType.Timber, // tropical_forest
   21: ResourceType.Timber, // rainforest
-  22: ResourceType.Fertile, // wetland
+  22: ResourceType.Grain, // wetland
   23: null, // mangrove
   24: ResourceType.Stone, // highland
   25: ResourceType.Stone // mountain
@@ -161,7 +161,7 @@ export function generateResources(
           resourceType[i] = baseRes
 
           // Fertile soil gets humidity bonus
-          if (baseRes === ResourceType.Fertile) {
+          if (baseRes === ResourceType.Grain) {
             resourceDensity[i] = Math.round(density * (0.5 + humidity[i] * 0.5))
           } else {
             resourceDensity[i] = density

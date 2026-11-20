@@ -14,7 +14,7 @@
  * ```
  */
 import { BIOME_KEYS, type BiomeKey } from '@sovereign/contracts'
-import { ResourceType, RESOURCE_META } from '@sovereign/contracts'
+import { ResourceType, resourceDef } from '@sovereign/contracts'
 import type { TileInfo } from '@sovereign/contracts'
 
 /** Raw layer data transferred from the terrain worker. */
@@ -121,7 +121,7 @@ export class WorldMap {
       nearShore,
       resource: resType,
       resourceDensity: this.resourceDensity[i],
-      resourceLabel: RESOURCE_META[resType]?.label ?? 'None',
+      resourceLabel: resourceDef(resType)?.label ?? 'None',
       ownerId: ownRaw === 255 ? -1 : ownRaw
     }
   }

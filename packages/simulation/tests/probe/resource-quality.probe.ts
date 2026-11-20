@@ -10,7 +10,7 @@
 //   pnpm --filter @sovereign/simulation probe -- tests/probe/resource-quality.probe.ts
 //
 // PROBE_SEEDS=1,2,3 picks the seeds (default ten) and PROBE_SIDE=512 shrinks the maps.
-import { RESOURCE_META, ResourceType, type TerrainFields } from '@sovereign/contracts'
+import { RESOURCE_CATALOG, type TerrainFields } from '@sovereign/contracts'
 import { it } from 'vitest'
 import { World } from '../../src/world/World'
 
@@ -44,7 +44,7 @@ function measure(world: World): WorldStats {
   const t = world.terrain
   const { width, height } = t
   const size = width * height
-  const kinds = Object.keys(ResourceType).length / 2
+  const kinds = RESOURCE_CATALOG.length + 1
   const count = new Array<number>(kinds).fill(0)
   const sameNeighbours = new Array<number>(kinds).fill(0)
   let land = 0
@@ -126,8 +126,8 @@ it(
     lines.push(
       '\n  resource            % of land   clustering   landmasses with none   worlds present'
     )
-    for (let type = 1; type < Object.keys(ResourceType).length / 2; type += 1) {
-      const entry = RESOURCE_META[type as ResourceType]
+    for (let type = 1; type <= RESOURCE_CATALOG.length; type += 1) {
+      const entry = RESOURCE_CATALOG[type - 1]
       const share = mean(worlds.map((w) => (100 * w.count[type]) / w.land))
       const present = worlds.filter((w) => w.count[type] > 0)
       const clustering =
