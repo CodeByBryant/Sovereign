@@ -88,6 +88,37 @@ try {
   )
   if (canvases !== 1)
     problems.push(`expected exactly one map canvas after the StrictMode remount, found ${canvases}`)
+
+  // Nothing may sit on top of the controls pinned to the top corners. The toggle is clickable, so
+  // the point at its centre must hit it; the FPS label ignores the pointer, so no panel may
+  // overlap its box. Either failing means a side panel has covered a control.
+  const covered = await page.evaluate(() => {
+    const box = (selector) => document.querySelector(selector)?.getBoundingClientRect() ?? null
+    const problems = []
+    const toggle = document.querySelector('.canvas-shell__toggle')
+    if (!toggle) problems.push('the toolbar toggle is missing')
+    else {
+      const b = toggle.getBoundingClientRect()
+      const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)
+      if (hit === null || !toggle.contains(hit)) problems.push('the toolbar toggle is covered')
+    }
+    const hud = box('.canvas-shell__hud')
+    if (!hud) problems.push('the FPS label is missing')
+    for (const panel of document.querySelectorAll('.inspector, .nation-panel')) {
+      const p = panel.getBoundingClientRect()
+      if (
+        hud &&
+        p.left < hud.right &&
+        p.right > hud.left &&
+        p.top < hud.bottom &&
+        p.bottom > hud.top
+      ) {
+        problems.push(`the FPS label is covered by .${panel.className}`)
+      }
+    }
+    return problems
+  })
+  problems.push(...covered)
   if (problems.length > 0) throw new Error(problems.join('\n'))
   console.log('StrictMode e2e OK: one canvas, page responsive, no errors')
 } catch (error) {

@@ -7,6 +7,9 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
+  // Side panels start below the controls pinned to the top corners (the FPS label and the toolbar
+  // toggle, both about 2.4rem tall), so a panel never covers one and makes it unclickable.
+  --panel-top: calc(var(--space-3) + 2.75rem);
 }
 
 // Holds the canvas the renderer creates, filling the shell.
@@ -162,11 +165,11 @@
 /* ------------------------------------------------------------------ */
 .inspector {
   position: absolute;
-  top: var(--space-5);
+  top: var(--panel-top);
   right: var(--space-3);
   bottom: var(--space-5);
   width: 240px;
-  max-height: calc(100vh - 2 * var(--space-5));
+  max-height: calc(100vh - var(--panel-top) - var(--space-5));
   overflow-y: auto;
   padding: var(--space-3) var(--space-4);
   background: rgba(20, 16, 12, 0.88);
@@ -247,11 +250,11 @@
 /* ------------------------------------------------------------------ */
 .nation-panel {
   position: absolute;
-  top: var(--space-4);
+  top: var(--panel-top);
   left: var(--space-4);
   bottom: var(--space-4);
   width: 300px;
-  max-height: calc(100vh - 2 * var(--space-4));
+  max-height: calc(100vh - var(--panel-top) - var(--space-4));
   overflow-y: auto;
   padding: 0;
   background: rgba(20, 16, 12, 0.92);
