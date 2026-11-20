@@ -29,7 +29,9 @@ export function chooseCapitals(
       if (taken[h] === 1 || !eligible(h)) continue
       let nearest = Infinity
       for (const c of chosen) {
-        nearest = Math.min(nearest, Math.hypot(hubs[h].x - hubs[c].x, hubs[h].y - hubs[c].y))
+        const dx = hubs[h].x - hubs[c].x
+        const dy = hubs[h].y - hubs[c].y
+        nearest = Math.min(nearest, Math.sqrt(dx * dx + dy * dy))
       }
       if (nearest < minSpacing) continue
       const spread = chosen.length === 0 ? 1 : Math.min(1, nearest / (2 * minSpacing))

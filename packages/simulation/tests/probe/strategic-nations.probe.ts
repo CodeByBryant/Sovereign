@@ -79,6 +79,24 @@ it(
       area: [] as number[]
     }
     const governments = new Map<string, number>()
+    const profileKeys = [
+      'food',
+      'timber',
+      'stone',
+      'horses',
+      'metals',
+      'luxuries',
+      'diversity',
+      'coast',
+      'river',
+      'highGround',
+      'defence',
+      'traffic',
+      'contacts'
+    ] as const
+    const profiles: Record<string, number[]> = Object.fromEntries(
+      profileKeys.map((k) => [k, [] as number[]])
+    )
     const personality: number[][] = [[], [], [], [], []]
     let nationCount = 0
     let hubCount = 0
@@ -167,6 +185,7 @@ it(
         stat.eco.push(n.stats.economy)
         stat.dip.push(n.stats.diplomacy)
         governments.set(n.government, (governments.get(n.government) ?? 0) + 1)
+        for (const k of profileKeys) (profiles[k] as number[]).push(n.profile[k])
         const p = n.personality
         ;[p.aggression, p.expansionism, p.diplomacy, p.mercantilism, p.militarism].forEach((v, k) =>
           personality[k].push(v)
@@ -216,6 +235,28 @@ it(
           .map(([k, v]) => `${k} ${v}`)
           .join(', ')
     )
+    const pct = (xs: number[], q: number): number =>
+      [...xs].sort((a, b) => a - b)[Math.floor(q * (xs.length - 1))] ?? 0
+    lines.push(
+      `  nations with a coast: ${(profiles.coast as number[]).filter((c) => c > 0).length} of ${nationCount}; with a river: ${(profiles.river as number[]).filter((c) => c > 0).length}`
+    )
+    lines.push('  what the land gives (10th / 50th / 90th percentile):')
+    for (const k of profileKeys) {
+      const xs = profiles[k] as number[]
+      lines.push(
+        `    ${k.padEnd(12)} ${pct(xs, 0.1).toFixed(2).padStart(8)} ${pct(xs, 0.5).toFixed(2).padStart(8)} ${pct(xs, 0.9).toFixed(2).padStart(8)}`
+      )
+    }
+    for (const [name, xs] of [
+      ['population', stat.pop],
+      ['military', stat.mil],
+      ['economy', stat.eco],
+      ['diplomacy', stat.dip]
+    ] as const) {
+      lines.push(
+        `    ${(name + ' (stat)').padEnd(16)} ${pct(xs, 0.1).toFixed(0).padStart(5)} ${pct(xs, 0.5).toFixed(0).padStart(5)} ${pct(xs, 0.9).toFixed(0).padStart(5)}`
+      )
+    }
     lines.push('  rank correlation of a stat with the land it should follow (0 = unrelated):')
     lines.push(`    population vs food tiles       ${spearman(stat.pop, land.food).toFixed(2)}`)
     lines.push(`    population vs territory tiles  ${spearman(stat.pop, land.area).toFixed(2)}`)

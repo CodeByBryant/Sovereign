@@ -209,11 +209,17 @@ describe('buildStrategicNetwork: a neck of land', () => {
     (x >= 5 && x < 45 && y >= 10 && y < 70) ||
     (x >= 75 && x < 115 && y >= 10 && y < 70) ||
     (x >= 45 && x < 75 && y >= 36 && y < 44)
-  // the neck is too dry to settle, so hubs are on the two lands and the routes cross the neck
+  // the neck and the rims are too dry to settle, so hubs are inland on the two lands and routes cross the neck
   const net = buildStrategicNetwork(
     input({
       elevation: (x, y) => (land(x, y) ? 0.5 : 0.1),
-      biome: (x) => (x >= 45 && x < 75 ? BIOME_INDEX.desert : BIOME_INDEX.grassland)
+      // only the middle of each land is worth settling, so the hubs are well inland of the neck
+      biome: (x, y) =>
+        (x >= 15 && x < 35) || (x >= 85 && x < 105)
+          ? y >= 20 && y < 60
+            ? BIOME_INDEX.grassland
+            : BIOME_INDEX.desert
+          : BIOME_INDEX.desert
     })
   )
 

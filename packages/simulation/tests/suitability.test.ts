@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BIOME_DESIRABILITY,
   SITE_ACCESS_WEIGHT,
+  SITE_COAST_BONUS,
   SITE_RIVER_BONUS,
   siteScoreGrid
 } from '../src/terrain/suitability'
@@ -51,7 +52,7 @@ function score(w: World = {}) {
   })
 }
 
-const MAX = 1 + SITE_RIVER_BONUS + SITE_ACCESS_WEIGHT
+const MAX = 1 + SITE_RIVER_BONUS + SITE_ACCESS_WEIGHT + SITE_COAST_BONUS
 
 describe('siteScoreGrid', () => {
   it('has one score per cell', () => {
@@ -121,6 +122,33 @@ describe('siteScoreGrid', () => {
     expect(river.score[1]).toBeCloseTo(BIOME_DESIRABILITY.grassland / MAX, 6) // the next cell has none
   })
 
+  it('adds a bonus for the sea within a cell of it (a port), and none farther out', () => {
+    // water in the first cell column (x 0 to 3); cells 1 is beside it, cell 3 is two cells farther on
+    const grid = score({ water: (x) => x < 4 })
+    const at = (cx: number): number => grid.score[3 * grid.cols + cx] as number
+    const plain = BIOME_DESIRABILITY.grassland / MAX
+    expect(at(1)).toBeCloseTo((BIOME_DESIRABILITY.grassland + SITE_COAST_BONUS) / MAX, 6)
+    expect(at(2)).toBeCloseTo(plain, 6) // two cells from the water
+    expect(at(5)).toBeCloseTo(plain, 6)
+  })
+
+  it('looks one cell out in every direction for the sea', () => {
+    const edges: Array<[string, (x: number, y: number) => boolean]> = [
+      ['east', (x, y) => x >= 24 && x < 28 && y >= 8 && y < 12],
+      ['north', (x, y) => x >= 20 && x < 24 && y >= 4 && y < 8],
+      ['south', (x, y) => x >= 20 && x < 24 && y >= 12 && y < 16],
+      ['west', (x, y) => x >= 16 && x < 20 && y >= 8 && y < 12]
+    ]
+    for (const [name, water] of edges) {
+      const grid = score({ water })
+      // the land cell at x 20 to 23, y 8 to 11 is cell (5, 2)
+      expect(grid.score[2 * grid.cols + 5], name).toBeCloseTo(
+        (BIOME_DESIRABILITY.grassland + SITE_COAST_BONUS) / MAX,
+        6
+      )
+    }
+  })
+
   it('adds the resource access around the cell centre, up to its weight', () => {
     const resources = slots()
     // fill a large area with grain, timber and stone: full access
@@ -141,7 +169,8 @@ describe('siteScoreGrid', () => {
       resources.ground.type[i] = ResourceType.Stone
     }
     const best = score({ river: () => true, resources })
-    expect(best.score[0]).toBeCloseTo(1, 5)
+    // (no coast in this world, so the best a meadow can reach is a little short of 1)
+    expect(best.score[0]).toBeCloseTo((1 + SITE_RIVER_BONUS + SITE_ACCESS_WEIGHT) / MAX, 5)
     for (const v of best.score) expect(v).toBeLessThanOrEqual(1 + 1e-6)
   })
 

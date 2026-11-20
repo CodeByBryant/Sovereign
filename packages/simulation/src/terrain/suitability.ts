@@ -41,8 +41,10 @@ export const MIN_DESIRABILITY = 0.1
 export const SITE_RIVER_BONUS = 0.2
 /** What the best resource access adds, before scaling. */
 export const SITE_ACCESS_WEIGHT = 0.5
+/** What the sea within a cell of it adds (a port, fish, a way out), before scaling. */
+export const SITE_COAST_BONUS = 0.3
 
-const MAX_RAW = 1 + SITE_RIVER_BONUS + SITE_ACCESS_WEIGHT
+const MAX_RAW = 1 + SITE_RIVER_BONUS + SITE_ACCESS_WEIGHT + SITE_COAST_BONUS
 
 export interface SiteInput {
   width: number
@@ -89,7 +91,28 @@ export function siteScoreGrid(input: SiteInput): SiteGrid {
           }
         }
       }
-      const raw = desirable + (river ? SITE_RIVER_BONUS : 0) + SITE_ACCESS_WEIGHT * access.at(x, y)
+      let coast = false
+      for (
+        let ny = Math.max(0, (cy - 1) * cell);
+        ny < Math.min(height, (cy + 2) * cell) && !coast;
+        ny += 1
+      ) {
+        for (
+          let nx = Math.max(0, (cx - 1) * cell);
+          nx < Math.min(width, (cx + 2) * cell);
+          nx += 1
+        ) {
+          if (input.elevation[ny * width + nx] <= input.seaLevel) {
+            coast = true
+            break
+          }
+        }
+      }
+      const raw =
+        desirable +
+        (river ? SITE_RIVER_BONUS : 0) +
+        (coast ? SITE_COAST_BONUS : 0) +
+        SITE_ACCESS_WEIGHT * access.at(x, y)
       score[cy * cols + cx] = raw / MAX_RAW
     }
   }

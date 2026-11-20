@@ -265,7 +265,7 @@ describe('measureProfile: ground, defence and routes', () => {
 
   it('counts highland, alpine and mountain tiles as high ground', () => {
     const high = measure(territory, {
-      biome: (x, y) =>
+      biome: (_x, y) =>
         y === 5 ? 'mountain' : y === 6 ? 'alpine' : y === 7 ? 'highland' : 'grassland'
     })
     expect(high.highGround).toBe(15)

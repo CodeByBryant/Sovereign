@@ -47,14 +47,15 @@ const FOOD_PER_PERSON = 8
 
 export function deriveStats(profile: NationProfile): NationStats {
   const population = clamp(Math.round(profile.food / FOOD_PER_PERSON), 5, 300)
+  // Each contribution saturates, so one rich seam does not make an army of a hamlet.
   const military = clamp(
     Math.round(
-      0.3 * population +
-        3 * profile.metals +
-        2.5 * profile.horses +
-        0.4 * (profile.timber + profile.stone) +
-        0.6 * profile.defence +
-        0.15 * profile.highGround
+      0.25 * population +
+        1 * Math.min(profile.metals, 60) +
+        1 * Math.min(profile.horses, 40) +
+        0.15 * Math.min(profile.timber + profile.stone, 200) +
+        0.8 * Math.min(profile.defence, 40) +
+        0.05 * Math.min(profile.highGround, 600)
     ),
     5,
     200
@@ -63,9 +64,9 @@ export function deriveStats(profile: NationProfile): NationStats {
     Math.round(
       8 +
         4 * profile.diversity +
-        5 * profile.luxuries +
-        0.15 * profile.coast +
-        30 * profile.traffic +
+        4 * Math.min(profile.luxuries, 25) +
+        0.15 * Math.min(profile.coast, 300) +
+        30 * Math.min(profile.traffic, 1.5) +
         0.1 * population
     ),
     5,
@@ -97,10 +98,11 @@ export function deriveGovernment(
 ): GovernmentType {
   const area = Math.max(1, profile.area)
   const farmland = unit(profile.food / area / 0.9)
-  const popN = unit((stats.population - 90) / 150)
-  const milN = unit((stats.military - 50) / 100)
+  const popN = unit((stats.population - 110) / 100)
+  const milN = unit((stats.military - 40) / 70)
+  const armed = unit((stats.military - 60) / 70)
   const trade = unit(stats.economy / 120)
-  const ports = unit(profile.coast / area / 0.2)
+  const ports = unit(profile.coast / area / 0.1)
   const wealth = unit(profile.luxuries / 12)
   const metal = unit(profile.metals / 15)
   const contacts = unit(profile.contacts / 4)
@@ -108,14 +110,14 @@ export function deriveGovernment(
   const hungry = 1 - farmland
 
   const score: Record<GovernmentType, number> = {
-    tribal: unit(1 - stats.population / 90) * (1 - 0.5 * trade),
-    monarchy: 0.3 + 0.3 * farmland - 0.2 * trade - 0.1 * milN,
-    empire: 0.5 * popN + 0.5 * milN,
-    republic: 0.45 * trade + 0.35 * ports + 0.2 * unit(profile.traffic) - 0.2 * milN,
+    tribal: unit(1 - stats.population / 110) * (1 - 0.4 * trade),
+    monarchy: 0.2 + 0.25 * farmland - 0.2 * trade - 0.1 * milN,
+    empire: 0.5 * popN + 0.5 * armed,
+    republic: 0.35 * trade + 0.5 * ports + 0.2 * unit(profile.traffic / 0.5) - 0.2 * milN,
     oligarchy: 0.5 * wealth + 0.3 * metal + 0.1 * trade - 0.2 * contacts,
     democracy: 0.35 * contacts + 0.35 * trade + 0.2 * wealth - 0.3 * milN - 0.1 * hungry,
-    theocracy: 0.4 * (1 - contacts) * 0.5 + 0.7 * mountain - 0.2 * trade,
-    dictatorship: 0.4 * milN + 0.4 * hungry + 0.1 * unit(profile.defence / 30) - 0.3 * trade
+    theocracy: 0.2 * (1 - contacts) + 0.7 * mountain - 0.2 * trade,
+    dictatorship: 0.6 * milN + 0.4 * hungry + 0.1 * unit(profile.defence / 30) - 0.3 * trade
   }
 
   let best: GovernmentType = GOVERNMENTS[0] as GovernmentType

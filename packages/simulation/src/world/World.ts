@@ -15,6 +15,7 @@ import {
   BIOME_KEYS,
   RESOURCE_CATALOG,
   resourceDef,
+  type NationProfile,
   type NationSnapshot,
   type TerrainFields,
   type WorldSnapshot
@@ -27,6 +28,24 @@ import { stateHasher } from '../serialization/hash'
 import { generateTerrain } from '../terrain/pipeline'
 import { buildRegrowthTable, ResourceStocks, type ResourceLayerName } from './ResourceStocks'
 import { WorldMap } from './WorldMap'
+
+/** The fields of a nation's profile, in the order they are hashed, saved and validated. */
+export const PROFILE_FIELDS = [
+  'area',
+  'food',
+  'timber',
+  'stone',
+  'horses',
+  'metals',
+  'luxuries',
+  'diversity',
+  'coast',
+  'river',
+  'highGround',
+  'defence',
+  'traffic',
+  'contacts'
+] as const satisfies ReadonlyArray<keyof NationProfile>
 
 /** Ownership byte for a tile that belongs to no nation. */
 export const UNCLAIMED = 255
@@ -113,16 +132,26 @@ export class World {
     })
 
     // The nations are placed on the world as generated, so use its effective sea level.
-    const { nations, ownerMap } = spawnNations(
-      terrain.elevation,
-      terrain.biomeIds,
-      terrain.riverMask,
-      terrain.resources,
-      { ...terrainConfig, seaLevel: terrain.seaLevel },
-      config.nations.count,
+    const { nations, ownerMap } = spawnNations({
+      width: terrain.width,
+      height: terrain.height,
+      seaLevel: terrain.seaLevel,
+      elevation: terrain.elevation,
+      biomeIds: terrain.biomeIds,
+      riverMask: terrain.riverMask,
+      riverWidth: terrain.riverWidth,
+      resources: terrain.resources,
+      strategicPoints: terrain.strategicPoints,
+      hubs: terrain.hubs,
+      routes: terrain.routes,
+      routeConfig: config.routes,
+      highlandElevation: config.biomes.highlandElevation,
+      slopeScale: config.resources.features.slopeScale,
+      count: config.nations.count,
       seed,
-      config.nations.minSpacing
-    )
+      minSpacing: config.nations.minSpacing,
+      startArea: config.nations.startArea
+    })
 
     const indexOf = new Map<string, number>()
     nations.forEach((nation, index) => indexOf.set(nation.id, index))
@@ -254,6 +283,7 @@ export class World {
       h.writeFloat64(n.stats.military)
       h.writeFloat64(n.stats.economy)
       h.writeFloat64(n.stats.diplomacy)
+      for (const key of PROFILE_FIELDS) h.writeFloat64(n.profile[key])
       h.writeUint32(n.provinces.size)
       for (const tile of n.provinces) h.writeUint32(tile)
     }
@@ -277,6 +307,7 @@ export class World {
       personality: { ...n.personality },
       capital: n.capital,
       stats: { ...n.stats },
+      profile: { ...n.profile },
       area: n.provinces.size
     }))
     return {

@@ -22,7 +22,7 @@ describe('defaultWorldConfig', () => {
       minLandRatio: 0.25,
       islandMode: false
     })
-    expect(defaultWorldConfig.nations).toEqual({ count: 12, minSpacing: 70 })
+    expect(defaultWorldConfig.nations).toEqual({ count: 12, minSpacing: 70, startArea: 1200 })
     expect(defaultWorldConfig.timestep).toBe(1)
   })
 
@@ -117,6 +117,8 @@ describe('validateWorldConfig', () => {
     ['a negative nation count', (c: WorldConfig) => (c.nations.count = -1)],
     ['a fractional nation count', (c: WorldConfig) => (c.nations.count = 2.5)],
     ['a zero spawn spacing', (c: WorldConfig) => (c.nations.minSpacing = 0)],
+    ['a zero starting area', (c: WorldConfig) => (c.nations.startArea = 0)],
+    ['a fractional starting area', (c: WorldConfig) => (c.nations.startArea = 99.5)],
     ['a zero timestep', (c: WorldConfig) => (c.timestep = 0)],
     ['a NaN timestep', (c: WorldConfig) => (c.timestep = Number.NaN)],
     ['an infinite noise scale', (c: WorldConfig) => (c.elevation.scale = Number.POSITIVE_INFINITY)],

@@ -5,6 +5,7 @@ import { spawnNations } from '../src/nations/NationSpawner'
 import { generateTerrain } from '../src/terrain/pipeline'
 import { World } from '../src/world/World'
 import { hashTerrain } from './support/fieldHash'
+import { spawnInputOf } from './support/spawnInput'
 import { hashNations } from './support/nationHash'
 import { smallTerrainRequest } from './support/terrainRequest'
 import { smallWorldOverrides } from './support/worldOptions'
@@ -73,23 +74,7 @@ describe('World.create', () => {
 
   it('spawns exactly the nations spawnNations gives on the generated terrain at its effective sea level', () => {
     const rescued = World.create({ seed: 2024, config: smallWorldOverrides({ seaLevel: 0.9 }) })
-    const t = rescued.terrain
-    const expected = spawnNations(
-      t.elevation,
-      t.biomeIds,
-      t.riverMask,
-      t.resources,
-      {
-        ...rescued.config.elevation,
-        width: t.width,
-        height: t.height,
-        seaLevel: t.seaLevel,
-        islandMode: rescued.config.map.islandMode
-      },
-      rescued.config.nations.count,
-      rescued.seed,
-      rescued.config.nations.minSpacing
-    ).nations
+    const expected = spawnNations(spawnInputOf(rescued)).nations
     expect(hashNations(rescued.nations)).toBe(hashNations(expected))
   })
 
@@ -596,10 +581,27 @@ describe('what the state hash covers: every field of a nation, and the seed', ()
   })
 })
 
+const PROFILE_KEYS = [
+  'area',
+  'food',
+  'timber',
+  'stone',
+  'horses',
+  'metals',
+  'luxuries',
+  'diversity',
+  'coast',
+  'river',
+  'highGround',
+  'defence',
+  'traffic',
+  'contacts'
+]
+
 describe('what the state hash covers', () => {
   const base = make(7).stateHash()
 
-  it.each([
+  it.each<[string, (w: World) => unknown]>([
     [
       'an elevation value',
       (w: World) => (w.terrain.elevation[100] = (w.terrain.elevation[100] as number) + 0.001)
@@ -652,6 +654,11 @@ describe('what the state hash covers', () => {
       (w: World) => (w.map.ownership[0] = w.map.ownership[0] === 255 ? 0 : 255)
     ],
     ['a nation name', (w: World) => ((w.nations[0] as { name: string }).name += 'x')],
+    ...PROFILE_KEYS.map((key): [string, (w: World) => unknown] => [
+      `a nation profile's ${key}`,
+      (w: World) =>
+        ((w.nations[0] as unknown as { profile: Record<string, number> }).profile[key]! += 1)
+    ]),
     [
       'a nation stat',
       (w: World) => ((w.nations[0] as { stats: { military: number } }).stats.military += 1)

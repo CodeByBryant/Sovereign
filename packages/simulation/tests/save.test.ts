@@ -116,6 +116,14 @@ describe('round trip', () => {
     expect(decoded.stateHash()).toBe(hash)
   })
 
+  it("keeps what each nation's land is like, the profile its stats follow from", () => {
+    const world = make(7)
+    expect(world.nations.length).toBeGreaterThan(0)
+    const decoded = decodeWorld(encodeWorld(world))
+    expect(decoded.nations.map((n) => n.profile)).toEqual(world.nations.map((n) => n.profile))
+    expect(decoded.nations.map((n) => n.stats)).toEqual(world.nations.map((n) => n.stats))
+  })
+
   it('keeps the nations: names, colours, tiles in claim order', () => {
     const world = make(7)
     const decoded = decodeWorld(encodeWorld(world))
@@ -294,6 +302,30 @@ describe('decodeWorld rejects a file that is not a good save', () => {
         nations[0]?.provinces.push(160 * 96 + 5)
       }),
       /not valid/
+    )
+  })
+
+  it.each([
+    ['no profile', (n: Record<string, unknown>) => delete n.profile],
+    ['a profile that is not an object', (n: Record<string, unknown>) => (n.profile = 5)],
+    [
+      'a profile with no food',
+      (n: Record<string, unknown>) => delete (n.profile as Record<string, unknown>).food
+    ],
+    [
+      'a profile with a non-number',
+      (n: Record<string, unknown>) => ((n.profile as Record<string, unknown>).metals = 'lots')
+    ],
+    [
+      'a profile whose area is not whole',
+      (n: Record<string, unknown>) => ((n.profile as Record<string, unknown>).area = 1.5)
+    ]
+  ])('a nation with %s', (_label, edit) => {
+    rejects(
+      withHeader(good, (h) =>
+        edit((h.nations as Array<Record<string, unknown>>)[0] as Record<string, unknown>)
+      ),
+      /nation|profile/
     )
   })
 

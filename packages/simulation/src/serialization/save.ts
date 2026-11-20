@@ -37,7 +37,7 @@ import type {
   TerrainFields
 } from '@sovereign/contracts'
 import { Nation } from '../nations/Nation'
-import { World } from '../world/World'
+import { PROFILE_FIELDS, World } from '../world/World'
 import { utf8Bytes, utf8Decode } from './utf8'
 
 export const SAVE_FORMAT_VERSION = 3
@@ -134,6 +134,7 @@ export function encodeWorld(world: World): Uint8Array {
       capital: n.capital,
       founded: n.founded,
       stats: { ...n.stats },
+      profile: { ...n.profile },
       provinces: [...n.provinces]
     }))
   }
@@ -212,6 +213,7 @@ function nationFromJson(value: unknown, index: number): Nation {
   if (!GOVERNMENTS.includes(government as (typeof GOVERNMENTS)[number])) {
     throw new SaveFormatError(`${where} has a malformed government`)
   }
+  if (!isRecord(value.profile)) throw new SaveFormatError(`${where} has no profile`)
   if (!isRecord(personality) || !isRecord(value.stats)) {
     throw new SaveFormatError(`${where} has a malformed personality or stats`)
   }
@@ -219,7 +221,14 @@ function nationFromJson(value: unknown, index: number): Nation {
     throw new SaveFormatError(`${where} has a malformed tile list`)
   }
   const stats = value.stats
+  const rawProfile = value.profile as Json
+  const profile = {} as Record<(typeof PROFILE_FIELDS)[number], number>
+  for (const key of PROFILE_FIELDS) profile[key] = number(rawProfile, key, `${where} profile`)
+  if (!Number.isInteger(profile.area) || profile.area < 0) {
+    throw new SaveFormatError(`${where} has a profile with a malformed area`)
+  }
   return new Nation({
+    profile,
     id,
     name,
     color: [color[0] as number, color[1] as number, color[2] as number],

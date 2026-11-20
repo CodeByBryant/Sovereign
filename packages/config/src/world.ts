@@ -46,8 +46,10 @@ export type ElevationConfig = Omit<TerrainConfig, 'width' | 'height' | 'seaLevel
 export interface NationsConfig {
   /** Number of nations to spawn, at most 255 (the ownership layer is one byte per tile). */
   count: number
-  /** Minimum tile distance between spawn points. */
+  /** Minimum tile distance between capitals. */
   minSpacing: number
+  /** The number of tiles each nation tries to claim to start with (they grow over the cost of the ground). */
+  startArea: number
 }
 
 export interface WorldConfig {
@@ -740,7 +742,9 @@ export const defaultWorldConfig: WorldConfig = {
     /** Number of nations to spawn. @default 12 */
     count: 12,
     /** Minimum tile distance between spawn points. @default 70 */
-    minSpacing: 70
+    minSpacing: 70,
+    /** Tiles each nation starts with, grown over the cost of the ground. @default 1200 */
+    startArea: 1200
   },
 
   /* ------------------------------------------------------------ */
@@ -836,6 +840,9 @@ export function validateWorldConfig(config: WorldConfig): string[] {
     problems.push('nations.count must be an integer from 0 to 255')
   }
   if (!(nations.minSpacing > 0)) problems.push('nations.minSpacing must be greater than 0')
+  if (!isInteger(nations.startArea) || nations.startArea < 1) {
+    problems.push('nations.startArea must be a whole number of tiles, at least 1')
+  }
   if (!(config.timestep > 0)) problems.push('timestep must be greater than 0')
 
   const noise: Array<

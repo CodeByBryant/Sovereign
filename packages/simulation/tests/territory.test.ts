@@ -55,7 +55,7 @@ describe('growTerritories: one nation', () => {
     const held = new Set<number>([claimed[0][0]])
     for (const t of claimed[0].slice(1)) {
       const [x, y] = xy(t)
-      const next = [t - 1, t + 1, t - W, t + W].filter((n, k) =>
+      const next = [t - 1, t + 1, t - W, t + W].filter((_n, k) =>
         k === 0 ? x > 0 : k === 1 ? x < W - 1 : k === 2 ? y > 0 : y < H - 1
       )
       expect(next.some((n) => held.has(n))).toBe(true)
