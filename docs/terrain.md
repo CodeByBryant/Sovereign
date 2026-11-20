@@ -22,15 +22,28 @@ Multi-octave fractal simplex noise with three additive layers:
 | Continent bias | `continentScale`   | Large landmasses  |
 | Ocean carving  | `oceanScale`       | Deep ocean basins |
 
-Post-processing: power redistribution (`pow(e, redistributionPower)`, default 1.4) compresses lowlands. It uses the engine's own `pow`, not `Math.pow`, whose result differs between JavaScript engines in the last bits.
+The three layers each draw from their own random stream (`elevation`, `continent`, `ocean`). The sum is **not** the elevation: it is only an ordering of the tiles (its values cluster narrowly around the middle, and are not clamped), and it is reshaped by rank in the next stage.
 
-The elevation, continent and ocean layers each draw from their own random stream (`elevation`, `continent`, `ocean`).
+### 1a. Distribution (the rank remap)
+
+The raw field is rescaled to [0, 1] (`scaleToUnit`) and then reshaped by `elevation.profile` with `remapByProfile` ([simulation/determinism.md](simulation/determinism.md), section 6.2): every tile is ranked and receives the elevation the profile gives that rank. Coastlines and ridges do not move; only the values do. The default profile pins the ocean and the mountains the same way on every seed:
+
+| Share of all tiles      | Elevation                       | Becomes            |
+| ----------------------- | ------------------------------- | ------------------ |
+| lowest 19%              | below 0.2035 (0.55 x sea level) | deep ocean         |
+| next 55.5%              | up to 0.37 (sea level)          | ocean              |
+| next 3%                 | up to 0.378                     | shore              |
+| top 3.6% (14% of land)  | above 0.74                      | highland or higher |
+| top 1.9% (7.5% of land) | above 0.78                      | alpine where cold  |
+| top 1.0% (4% of land)   | above 0.85                      | mountain           |
+
+So the land is 25.5% of tiles on every seed. The ocean amounts are exactly what the generator produced before the retune ([ADR 0004](decisions/0004-distribution-aware-terrain.md) explains why it needed reshaping).
 
 Optional **island mode** multiplies by a radial falloff from map centre.
 
 ### 1b. Sea-level rescue
 
-If a seed produces less land than `minLandRatio`, the effective sea level is lowered (never below 0.05) until enough tiles are above water. Every later stage, and the save, uses this effective sea level.
+If a configuration produces less land than `minLandRatio`, the effective sea level is lowered (never below 0.05) until enough tiles are above water. With the default profile and sea level it never fires (land is 25.5%, above the 25% minimum); it exists for custom sea levels. Every later stage, and the save, uses the effective sea level.
 
 ### 2. Water Distance
 
@@ -39,6 +52,8 @@ If a seed produces less land than `minLandRatio`, the effective sea level is low
 Multi-pass BFS from all water tiles. Used by both temperature (continentality) and humidity (coastal influence) to avoid computing it twice.
 
 ### 3. Temperature Field
+
+The generators leave temperature and humidity unclamped (a clamp would create masses of identical tiles that no ranking can separate). Each is rescaled to [0, 1] and then reshaped by rank over **land tiles only** with `temperature.profile` / `humidity.profile`.
 
 **Module:** `TerrainGenerator.generateTemperatureField()`
 
@@ -67,31 +82,50 @@ Minecraft-style noise zero-crossing: rivers appear where `|noise(x,y)| < thresho
 
 | Layer     | Scale  | Threshold | Width |
 | --------- | ------ | --------- | ----- |
-| Primary   | 0.0009 | 0.032     | 4px   |
-| Secondary | 0.004  | 0.02      | 2px   |
+| Primary   | 0.0009 | 0.023     | 4px   |
+| Secondary | 0.004  | 0.0144    | 2px   |
 
 Rivers fade above `mountainCutoff` elevation and taper near shores. Domain warping (`warpStrength: 40`) adds organic curves.
 
-Post-process: humidity boost within `humidityRadius` tiles of rivers.
+Post-process: humidity boost (`humidityBoost`, 0.18) within `humidityRadius` tiles of rivers. It is applied to the humidity **after** the rank remap, in the units it was written for, so land beside a river ends up wetter than its profile alone says. The thresholds were lowered to 72% of their old values in the retune: with elevation spread out, fewer tiles sit in the shore taper, and the old thresholds would have covered 10.5% of land instead of the 7.4% they used to.
 
 ### 6. Biome Classification
 
-**Module:** `buildBiomeMap()` in `biomes.ts`
+**Module:** `determineBiome()` / `classifyBiomes()` in `biomes.ts`
 
-26 biome types classified by elevation/temperature/humidity thresholds:
+26 biomes from elevation, temperature and humidity. In order:
+
+1. **Water and shore**: below sea level is `deep_ocean` (below 0.55 x sea level) or `ocean`; the next `shoreBand` (0.008) is `shore`.
+2. **Elevation gates**: above 0.85 `mountain`; above 0.78 and cold (temperature below 0.45) `alpine`; above 0.74 `highland`.
+3. **The climate table** (`biomes.bands` in the config): the first temperature band whose `maxTemperature` is above the tile's temperature, then the first row whose `maxHumidity` is above its humidity; the last band and the last row of each band catch the rest. A row may name a `lowlandBiome` that replaces it within `lowlandBand` (0.05) of sea level (a very wet temperate tile is `swamp` on low ground, `wetland` elsewhere).
 
 ```
-Water:  deep_ocean, ocean, shore
-Cold:   polar_desert, glacier, tundra, alpine
-Cool:   boreal_forest, taiga, cold_steppe
-Temp:   temperate_desert, steppe, grassland, woodland,
-        temperate_forest, scrubland, swamp
-Hot:    desert, badlands, savanna, tropical_forest,
-        rainforest, wetland, mangrove
-High:   highland, mountain
+polar     (< 0.2):  polar_desert, tundra, taiga, glacier
+cool      (< 0.4):  cold_steppe, taiga, boreal_forest, swamp
+temperate (< 0.7):  temperate_desert, steppe, grassland, woodland, temperate_forest, wetland
+tropical  (>= 0.7): desert, badlands, savanna, chaparral, tropical_forest, rainforest, mangrove
 ```
 
-A low-frequency jitter noise field offsets temp/humidity inputs before lookup, breaking up sharp biome boundaries.
+A low-frequency jitter noise field offsets temperature and humidity before the lookup, breaking up sharp biome boundaries.
+
+**The table is fitted, not guessed.** The temperature profile's knots and every humidity threshold were solved by `tests/probe/fit-climate.probe.ts`: it samples worlds, looks at how land is actually distributed in temperature and humidity, and finds the cut points that give each biome its target share of inland land. Refit it after any change to the field generators. Targets (percent of inland land, that is land that is not shore) and what 10 unseen seeds at 2000 x 2000 produced:
+
+| Biome            | Target | Measured | Biome            | Target | Measured |
+| ---------------- | ------ | -------- | ---------------- | ------ | -------- |
+| grassland        | 9      | 8.2      | tropical_forest  | 4      | 3.7      |
+| tundra           | 7      | 7.9      | mountain         | 4      | 4.5      |
+| taiga            | 7      | 8.0      | alpine           | 3      | 2.7      |
+| highland         | 7      | 8.7      | cold_steppe      | 3      | 2.9      |
+| desert           | 6      | 6.9      | rainforest       | 3      | 2.8      |
+| woodland         | 7.5    | 6.8      | chaparral        | 3      | 2.8      |
+| temperate_forest | 7.5    | 6.7      | temperate_desert | 2.5    | 2.8      |
+| boreal_forest    | 7      | 6.7      | badlands         | 2.5    | 2.6      |
+| steppe           | 6      | 5.1      | swamp            | 1.5    | 1.8      |
+| savanna          | 5      | 5.0      | polar_desert     | 2      | 1.2      |
+| wetland          | 1.5    | 1.1      | glacier          | 0.5    | 0.7      |
+| mangrove         | 0.5    | 0.34     |                  |        |          |
+
+All 26 biomes appear in all 10 worlds; 20 of the 23 climate biomes are within +/-30% of target and the others (polar desert, glacier, mangrove) within 0.5x to 2x. The rare polar and wet biomes live in small, seed-specific regions, so they vary most between seeds.
 
 ### 7. Resources
 
@@ -117,12 +151,12 @@ Priority: Gold > Iron > Fish > biome-default.
 
 Auto-detects geographically significant locations:
 
-| Type           | Detection Method                                         | Score |
-| -------------- | -------------------------------------------------------- | ----- |
-| River Crossing | Low-elevation land adjacent to river, walkable in 4 dirs | 0–10  |
-| Mountain Pass  | Saddle points (local elevation minimum between peaks)    | 0–10  |
-| Strait         | Narrow water gap between two landmasses                  | 0–10  |
-| Peninsula      | High water-to-total ratio in scan circle                 | 0–10  |
+| Type           | Detection Method                                                                                                                                                                        | Score |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| River Crossing | Low-elevation land adjacent to river, walkable in 4 dirs                                                                                                                                | 0–10  |
+| Mountain Pass  | A low point below mountain height with higher ground around it: at least `mountainPassMinRatio` (0.35) of the samples within `mountainPassRadius` (8) rise by `mountainPassRise` (0.02) | 0–10  |
+| Strait         | Narrow water gap between two landmasses                                                                                                                                                 | 0–10  |
+| Peninsula      | High water-to-total ratio in scan circle                                                                                                                                                | 0–10  |
 
 ### Colour is not terrain
 
@@ -136,17 +170,19 @@ The terrain parameters are the sections of `WorldConfig` in `packages/config/src
 
 ```ts
 map:         { width, height, seaLevel, islandMode }   // defaults tuned for 2000 x 2000
-elevation:   { scale, octaves, persistence, lacunarity, continentScale, oceanScale, ... }
-temperature: { scale, octaves, latitudeStrength, elevationCooling, ... }
-humidity:    { scale, octaves, coastalInfluence, elevationDrying }
+elevation:   { scale, octaves, persistence, lacunarity, continentScale, oceanScale, ..., profile }
+temperature: { scale, octaves, latitudeStrength, elevationCooling, ..., profile }
+humidity:    { scale, octaves, coastalInfluence, elevationDrying, profile }
 rivers:      { primaryScale, secondaryScale, thresholds, widths, warpStrength, ... }
-strategic:   { radii, thresholds }
+strategic:   { radii, thresholds, mountainPassRise, mountainPassMinRatio }
 biomeNoise:  { scale, octaves, jitter amounts }
-biomes:      { elevation thresholds, jitter amounts }
+biomes:      { elevation thresholds, jitter amounts, bands (the climate table), lowlandBand }
 resources:   { oreScale, goldRarity, ironRarity, minDensity }
 nations:     { count, minSpacing }
 timestep:    in-game days per tick
 ```
+
+A `profile` is a list of `[quantile, value]` knots (see 1a); `validateWorldConfig` requires it to start at quantile 0, end at 1, strictly increase in quantile, never decrease in value and stay within [0, 1], and checks the climate table's order and biome names.
 
 `resolveWorldConfig(overrides)` merges per-section partial overrides over the defaults and `validateWorldConfig` rejects values the engine cannot use (side lengths 16 to 8192, at most 4096 x 4096 tiles, at most 255 nations, octaves 1 to 8, and so on) before anything is allocated. The seed is **not** configuration: it is an input to `World.create`.
 

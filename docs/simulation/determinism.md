@@ -107,6 +107,18 @@ A Gaussian draw is not provided yet; it will be added (Marsaglia polar, using th
 - **Constants**: `F2 = 0.5 * (sqrt(3) - 1)`, `G2 = (3 - sqrt(3)) / 6`, output scale `70.14805770653952` (range about `[-1, 1]`).
 - Each noise layer takes its own named stream (section 3), so layers are independent. `sin`, `cos` and `atan2` are not provided yet; they will be implemented in the same file, with accuracy tests, when first needed. ESLint bans the platform equivalents in `packages/simulation/src`: `Math.sin/cos/tan/asin/acos/atan/atan2/log/log2/log10/log1p/exp/expm1/pow/hypot/cbrt/sinh/cosh/tanh/asinh/acosh/atanh`, `Math.random`, `Date.now`, `performance.now`, `new Date()` and the `**` operator.
 
+### 6.2 Rank remap
+
+`math/quantile.ts` gives a field the distribution a **profile** describes while keeping where everything is: each tile is ranked among the others and receives the profile's value for its rank, so the map is monotone (a higher tile never ends lower) and coastlines, ridges and latitude bands do not move. The terrain pipeline uses it for elevation, temperature and humidity (`docs/terrain.md`).
+
+- **Profile**: knots `[quantile, value]`; the first at quantile 0, the last at quantile 1, quantiles strictly increasing, values never decreasing (a flat stretch is allowed). Anything else is a `RangeError`.
+- **Histogram**: `HISTOGRAM_BINS = 65536` equal bins over [0, 1]; a value `v` falls in bin `b = floor(v * 65536)`, clamped to `0..65535`. Only tiles where the optional mask is non-zero are counted; every tile is remapped. Non-finite values are a `RangeError`.
+- **Rank**: `below[b]` is the number of counted tiles in bins before `b`; for a tile with value `v` in bin `b`, `fraction = v * 65536 - b` and `q = (below[b] + fraction * count[b]) / total` (`0` if nothing was counted). Equal values therefore share the rank of the first of them.
+- **Value**: the profile is evaluated at `q` by linear interpolation between its two surrounding knots (`v0 + (q - q0) / (q1 - q0) * (v1 - v0)`); `q` below 0 or above 1 gives the end values. The result is rounded to float32.
+- **`scaleToUnit`**: `(v - min) / (max - min)` (a constant field becomes all zeros), used first because the generators leave their fields unclamped (clamping would create masses of identical tiles that no ranking can separate). Monotone, so ranks and ties are unchanged.
+
+Only `+ - * /` and `Math.floor` are used: no sort, no transcendental function, nothing that depends on iteration order. **Reference vectors**, from an independent implementation written from this section in Python: on the 200 000-value LCG input described in `tests/quantile.test.ts`, the FNV-1a 32 of the float32 output bytes is `0x1728a133` for the ocean profile with no mask and `0x124bd9f9` for the temperature profile with every third tile masked out; small vectors are in the test file.
+
 ## 7. State hash
 
 A state hash is a 32-character lowercase hex string (128 bits).
@@ -236,5 +248,7 @@ The seeds `305419896` (`0x12345678`), `3735928559` (`0xdeadbeef`) and `16711936`
 | No browser, React, Pixi or Electron in the engine                   | ESLint (`no-restricted-globals`, `no-restricted-imports`)                                    |
 | No `alea` / `simplex-noise` in the engine; every stream is used     | `tests/no-legacy-rng.test.ts`, `tests/stream-usage.test.ts`                                  |
 | Noise, RNG and math match independent references, bit for bit       | `tests/simplex.test.ts`, `tests/streams.test.ts`, `tests/transcendental*.test.ts`            |
+| The rank remap matches an independent reference, bit for bit        | `tests/quantile.test.ts`                                                                     |
+| All 26 biomes generate, the ocean is pinned, shares stay in band    | `tests/determinism/biome-coverage.test.ts`; the full measurement is `pnpm probe`             |
 | Stream list, hash version and this document stay in sync            | `tests/stream-usage.test.ts`                                                                 |
 | Bit-exact reproducibility of whole worlds, and saves round-tripping | Golden hashes (`tests/determinism/golden.test.ts`), `tests/save.test.ts`, `World.validate()` |
