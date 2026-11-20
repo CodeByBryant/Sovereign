@@ -11,7 +11,9 @@ import { SaveFormatError, decodeWorld, encodeWorld, type World } from '@sovereig
 
 const DB_NAME = 'sovereign'
 // 2: saves are now the engine's own format; version-1 records (a different layout) are dropped.
-const DB_VERSION = 2
+// 3: engine save format 2 (the saved world config gained terrain profiles and a climate table);
+//    records written before it can no longer be loaded and are dropped.
+const DB_VERSION = 3
 const STORE_NAME = 'saves'
 
 /* ------------------------------------------------------------------ */
@@ -39,11 +41,11 @@ function openDB(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
     request.onupgradeneeded = (event) => {
       const db = request.result
-      // Version 1 stored a different, incompatible binary format. Drop those records rather than
-      // leave entries that cannot be loaded.
+      // Versions before 3 stored formats the engine can no longer read. Drop those records rather
+      // than leave entries that cannot be loaded.
       if (
         event.oldVersion > 0 &&
-        event.oldVersion < 2 &&
+        event.oldVersion < 3 &&
         db.objectStoreNames.contains(STORE_NAME)
       ) {
         db.deleteObjectStore(STORE_NAME)

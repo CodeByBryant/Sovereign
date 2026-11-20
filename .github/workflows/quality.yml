@@ -221,7 +221,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         shard:
           - name: world goldens
-            files: tests/determinism/golden.test.ts
+            files: tests/determinism/golden.test.ts tests/determinism/biome-coverage.test.ts
           - name: terrain and math goldens
             files: tests/determinism/terrain-golden.test.ts tests/determinism/transcendental-golden.test.ts
 
@@ -284,7 +284,7 @@ jobs:
     if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     # The development build runs React.StrictMode, which mounts everything twice; this drives a
-    # real Chromium through that and the first world (apps/web/e2e).
+    # real Chromium through that and the first world, with a mouse and then with touch (apps/web/e2e).
 
     steps:
       - name: Checkout
@@ -307,3 +307,6 @@ jobs:
 
       - name: Run the end-to-end test
         run: pnpm --filter @sovereign/web e2e
+
+      - name: Run the mobile (touch) end-to-end test
+        run: pnpm --filter @sovereign/web e2e:mobile

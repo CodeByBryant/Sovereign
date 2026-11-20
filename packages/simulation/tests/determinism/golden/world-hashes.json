@@ -39,7 +39,7 @@
         }
       },
       "steps": 0,
-      "expectedHash": "390f3e50905c969c91c2a75311cfafd2"
+      "expectedHash": "9d566b367abdf3bf07b7c8edb34cb3f5"
     },
     {
       "name": "small world, seed 12345, 100 ticks",
@@ -79,7 +79,7 @@
         }
       },
       "steps": 100,
-      "expectedHash": "08009323b75aa9c7b6002e0db5f04e5e"
+      "expectedHash": "9108675c42d758d8fc397115d9dfd069"
     },
     {
       "name": "text seed \"sovereign\", 30 ticks",
@@ -119,7 +119,7 @@
         }
       },
       "steps": 30,
-      "expectedHash": "7e77c4b75e46ae8fc26c0cc03014b4c0"
+      "expectedHash": "49b500cb3595bd9bdd0b3d5f9d8f70c1"
     },
     {
       "name": "island mode, seed 7",
@@ -159,7 +159,7 @@
         }
       },
       "steps": 10,
-      "expectedHash": "0c8928fb315611e011c488552162da14"
+      "expectedHash": "e5e75f319a0d2cde01af5b524963901c"
     },
     {
       "name": "no nations, seed 3",
@@ -199,16 +199,16 @@
         }
       },
       "steps": 5,
-      "expectedHash": "83967010d382f1cb4cbbe2d7a790222a"
+      "expectedHash": "7d40c9de0d18ce96c3e37779f820f667"
     },
     {
-      "name": "land-ratio rescue (default sea level 0.37), seed 2024",
+      "name": "land-ratio rescue (sea level 0.9 leaves too little land), seed 2024",
       "seed": 2024,
       "config": {
         "map": {
           "width": 160,
           "height": 96,
-          "seaLevel": 0.37,
+          "seaLevel": 0.9,
           "islandMode": false
         },
         "elevation": {
@@ -239,7 +239,7 @@
         }
       },
       "steps": 0,
-      "expectedHash": "9dd8c571359fda217d7c2751ded624b2"
+      "expectedHash": "f9c1c4c901992eb76dc4d8b1d9bcd200"
     },
     {
       "name": "slower clock: timestep 0.25, 40 ticks",
@@ -280,7 +280,7 @@
         "timestep": 0.25
       },
       "steps": 40,
-      "expectedHash": "45c470fa5f43b507360a30c37076b884"
+      "expectedHash": "f91c038066b6970959195fabddc95be8"
     },
     {
       "name": "wider map 320x200, seed 99, 1000 ticks",
@@ -320,7 +320,7 @@
         }
       },
       "steps": 1000,
-      "expectedHash": "33b5e375f6fd95e77ded14d2d263f230"
+      "expectedHash": "aa51059b0c77f6d3632163b3e9bf1a78"
     }
   ]
 }

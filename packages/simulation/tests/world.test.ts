@@ -61,9 +61,10 @@ describe('World.create', () => {
   })
 
   it('places nations on land by the effective sea level when the land-ratio rescue lowered it', () => {
-    // At the default sea level of 0.37 this small world is all ocean, so generation lowers it.
-    const rescued = World.create({ seed: 2024, config: smallWorldOverrides({ seaLevel: 0.37 }) })
-    expect(rescued.terrain.seaLevel).toBeLessThan(0.37)
+    // The default sea level now leaves 25.5% land on every seed, so the rescue only has work to do
+    // when a custom sea level leaves too little: at 0.9 almost nothing is land, so it lowers it.
+    const rescued = World.create({ seed: 2024, config: smallWorldOverrides({ seaLevel: 0.9 }) })
+    expect(rescued.terrain.seaLevel).toBeLessThan(0.9)
     expect(rescued.nations.length).toBeGreaterThan(2)
     for (const n of rescued.nations) {
       expect(rescued.terrain.elevation[n.capital]).toBeGreaterThan(rescued.terrain.seaLevel)
@@ -71,7 +72,7 @@ describe('World.create', () => {
   })
 
   it('spawns exactly the nations spawnNations gives on the generated terrain at its effective sea level', () => {
-    const rescued = World.create({ seed: 2024, config: smallWorldOverrides({ seaLevel: 0.37 }) })
+    const rescued = World.create({ seed: 2024, config: smallWorldOverrides({ seaLevel: 0.9 }) })
     const t = rescued.terrain
     const expected = spawnNations(
       t.elevation,

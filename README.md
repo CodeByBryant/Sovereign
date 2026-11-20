@@ -89,7 +89,7 @@ Everything else (test layout, CI, measured performance) is in [docs/development.
 
 ## Controls
 
-| Input                       | Action                    |
+| Mouse and keyboard          | Action                    |
 | --------------------------- | ------------------------- |
 | Click and drag              | Pan the camera            |
 | Scroll wheel                | Zoom in and out           |
@@ -98,6 +98,25 @@ Everything else (test layout, CI, measured performance) is in [docs/development.
 | `Esc`                       | Close the nation panel    |
 | `I`                         | Toggle the tile inspector |
 | `S`                         | Toggle the toolbar        |
+
+| Touch               | Action                                                                      |
+| ------------------- | --------------------------------------------------------------------------- |
+| One finger drag     | Pan the camera                                                              |
+| Two finger pinch    | Zoom in and out (a two finger drag pans too)                                |
+| Tap a nation        | Open its panel (a bottom sheet on a phone); tap the close button to dismiss |
+| Tap anywhere        | Show that tile in the tile inspector (a phone has no hover)                 |
+| Toolbar `+` and `-` | Zoom in and out; they also work with a mouse                                |
+
+On a phone the toolbar wraps and the panels become bottom sheets. Every button is at least 44 px, and the map respects notches and rounded corners (safe areas).
+
+--------------------------- | ------------------------- |
+| Click and drag | Pan the camera |
+| Scroll wheel | Zoom in and out |
+| `E` `T` `H` `B` `G` `R` `P` | Switch overlay |
+| Click a nation | Open its panel |
+| `Esc` | Close the nation panel |
+| `I` | Toggle the tile inspector |
+| `S` | Toggle the toolbar |
 
 ---
 

@@ -5,6 +5,9 @@ import { defineConfig } from 'vitest/config'
 // `pnpm test` or the determinism suite.
 export default defineConfig({
   test: {
+    // A probe's whole output is what it logs, and the default reporter hides the console output of
+    // passing tests; the verbose reporter prints it.
+    reporters: ['verbose'],
     include: ['tests/probe/**/*.probe.ts'],
     testTimeout: 30 * 60 * 1000
   }

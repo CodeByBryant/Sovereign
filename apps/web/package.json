@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
-    "e2e": "node e2e/strict-mode.e2e.mjs"
+    "e2e": "node e2e/strict-mode.e2e.mjs",
+    "e2e:mobile": "node e2e/mobile.e2e.mjs"
   },
   "dependencies": {
     "@sovereign/config": "workspace:*",

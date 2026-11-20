@@ -12,6 +12,7 @@
  * const config = resolveWorldConfig({ map: { width: 800, height: 600, islandMode: true } })
  * ```
  */
+import { BIOME_KEYS, type QuantileProfile } from '@sovereign/contracts'
 import type {
   BiomeConfig,
   BiomeNoiseConfig,
@@ -142,8 +143,23 @@ export const defaultWorldConfig: WorldConfig = {
     oceanScale: 0.00012,
     /** Subtraction strength for ocean basins (0–1). @default 0.3 */
     oceanStrength: 0.3,
-    /** Power curve for elevation redistribution (>1 flattens lowlands). @default 1.4 */
-    redistributionPower: 1.4
+    /**
+     * Rank-to-elevation profile (quantile of ALL tiles, elevation). Pins the ocean: 19% of tiles are
+     * deep ocean (below 0.55 x sea level), water is 74.5% of tiles (sea level 0.37), the next 3% is
+     * the shore band; the top 14% of land is highland or higher (0.74), the top 7.5% is above
+     * 0.78 and the top 4% is mountain (0.85). Quantiles 0.9643 / 0.9809 / 0.9898 are those land
+     * shares of the 25.5% of tiles that are land.
+     */
+    profile: [
+      [0, 0],
+      [0.19, 0.2035],
+      [0.745, 0.37],
+      [0.775, 0.378],
+      [0.9643, 0.74],
+      [0.9809, 0.78],
+      [0.9898, 0.85],
+      [1, 1]
+    ]
   },
 
   /* ------------------------------------------------------------ */
@@ -177,7 +193,20 @@ export const defaultWorldConfig: WorldConfig = {
     /** How much elevation reduces temperature (0–1). @default 0.55 */
     elevationCooling: 0.55,
     /** Continentality: how much inland tiles amplify temp extremes (0–1). @default 0.3 */
-    continentalStrength: 0.3
+    continentalStrength: 0.3,
+    /**
+     * Rank-to-temperature profile, ranked over land tiles. Fitted (tests/probe/fit-climate.probe.ts)
+     * so the inland lowland divides among the climate bands as intended: about 15% polar (below
+     * 0.2), 17% cool (to 0.4), 40% temperate (to 0.7) and 28% tropical. It ranks all land, and
+     * the elevated tiles, which are cold, fall in the first two bands.
+     */
+    profile: [
+      [0, 0.03],
+      [0.197, 0.2],
+      [0.3604, 0.4],
+      [0.7291, 0.7],
+      [1, 0.97]
+    ]
   },
 
   /* ------------------------------------------------------------ */
@@ -205,7 +234,13 @@ export const defaultWorldConfig: WorldConfig = {
     /** Weight of coast-proximity vs noise (0–1). @default 0.45 */
     coastalInfluence: 0.45,
     /** Drying effect of high elevation (0–1). @default 0.45 */
-    elevationDrying: 0.45
+    elevationDrying: 0.45,
+    /** Rank-to-humidity profile, ranked over land tiles. Evenly spread to start. */
+    profile: [
+      [0, 0.02],
+      [0.5, 0.5],
+      [1, 0.98]
+    ]
   },
 
   /* ------------------------------------------------------------ */
@@ -229,10 +264,10 @@ export const defaultWorldConfig: WorldConfig = {
     primaryScale: 0.0009,
     /** Tributary noise frequency. @default 0.004 */
     secondaryScale: 0.004,
-    /** Width of the primary zero-crossing band (bigger = more river). @default 0.032 */
-    primaryThreshold: 0.032,
-    /** Width of the tributary zero-crossing band. @default 0.02 */
-    secondaryThreshold: 0.02,
+    /** Width of the primary zero-crossing band (bigger = more river). @default 0.023 */
+    primaryThreshold: 0.023,
+    /** Width of the tributary zero-crossing band. @default 0.0144 */
+    secondaryThreshold: 0.0144,
     /** Max rendered pixel width of primary rivers. @default 4 */
     primaryWidth: 4,
     /** Max rendered pixel width of tributaries. @default 2 */
@@ -272,6 +307,10 @@ export const defaultWorldConfig: WorldConfig = {
     riverCrossingRadius: 5,
     /** Saddle-point search radius for mountain passes. @default 8 */
     mountainPassRadius: 8,
+    /** Elevation by which the ground around a pass must rise above it. @default 0.02 */
+    mountainPassRise: 0.02,
+    /** Share of the surrounding samples that must rise by that much. @default 0.35 */
+    mountainPassMinRatio: 0.35,
     /** Max water gap to qualify as a strait (tiles). @default 12 */
     straitMaxWidth: 12,
     /** Min water-to-total ratio in scan circle for peninsula. @default 0.6 */
@@ -333,7 +372,58 @@ export const defaultWorldConfig: WorldConfig = {
     /** Per-tile temperature jitter from biome noise (0–1). @default 0.1 */
     tempJitter: 0.1,
     /** Per-tile humidity jitter from biome noise (0–1). @default 0.1 */
-    humidityJitter: 0.1
+    humidityJitter: 0.1,
+    /** Elevation above sea level within which a row's `lowlandBiome` applies. @default 0.05 */
+    lowlandBand: 0.05,
+    /**
+     * The land climate table, fitted (tests/probe/fit-climate.probe.ts) so each biome covers its
+     * target share of land. Below the highland elevation gates: the first band whose
+     * `maxTemperature` is above the tile's temperature, then the first row whose `maxHumidity`
+     * is above its humidity. The last band and the last row of each band catch the rest.
+     */
+    bands: [
+      {
+        maxTemperature: 0.2,
+        rows: [
+          { maxHumidity: 0.142, biome: 'polar_desert' },
+          { maxHumidity: 0.54, biome: 'tundra' },
+          { maxHumidity: 0.89, biome: 'taiga' },
+          { maxHumidity: 1, biome: 'glacier' }
+        ]
+      },
+      {
+        maxTemperature: 0.4,
+        rows: [
+          { maxHumidity: 0.291, biome: 'cold_steppe' },
+          { maxHumidity: 0.477, biome: 'taiga' },
+          { maxHumidity: 0.9, biome: 'boreal_forest' },
+          { maxHumidity: 1, biome: 'swamp' }
+        ]
+      },
+      {
+        maxTemperature: 0.7,
+        rows: [
+          { maxHumidity: 0.2, biome: 'temperate_desert' },
+          { maxHumidity: 0.353, biome: 'steppe' },
+          { maxHumidity: 0.549, biome: 'grassland' },
+          { maxHumidity: 0.72, biome: 'woodland' },
+          { maxHumidity: 0.927, biome: 'temperate_forest' },
+          { maxHumidity: 1, biome: 'wetland', lowlandBiome: 'swamp' }
+        ]
+      },
+      {
+        maxTemperature: 1,
+        rows: [
+          { maxHumidity: 0.443, biome: 'desert' },
+          { maxHumidity: 0.526, biome: 'badlands' },
+          { maxHumidity: 0.679, biome: 'savanna' },
+          { maxHumidity: 0.766, biome: 'chaparral' },
+          { maxHumidity: 0.883, biome: 'tropical_forest' },
+          { maxHumidity: 0.999, biome: 'rainforest' },
+          { maxHumidity: 1, biome: 'mangrove' }
+        ]
+      }
+    ]
   },
 
   /* ------------------------------------------------------------ */
@@ -399,6 +489,11 @@ function merge<T extends object>(base: T, overrides: Partial<T> | undefined): T 
       const value = overrides[key]
       if (value !== undefined) out[key] = value as T[keyof T]
     }
+  }
+  // Arrays (profiles, the climate table) are copied, so a resolved config never shares them with
+  // the defaults or with the caller's overrides.
+  for (const key of Object.keys(out) as Array<keyof T>) {
+    if (Array.isArray(out[key])) out[key] = JSON.parse(JSON.stringify(out[key])) as T[keyof T]
   }
   return out
 }
@@ -488,7 +583,89 @@ export function validateWorldConfig(config: WorldConfig): string[] {
     if (!(layer.lacunarity >= 1)) problems.push(`${name}.lacunarity must be at least 1`)
   }
 
+  validateProfile('elevation', config.elevation.profile, problems)
+  validateProfile('temperature', config.temperature.profile, problems)
+  validateProfile('humidity', config.humidity.profile, problems)
+  validateBiomeTable(config.biomes, problems)
+  if (!(config.strategic.mountainPassRise > 0)) {
+    problems.push('strategic.mountainPassRise must be greater than 0')
+  }
+  if (!(config.strategic.mountainPassMinRatio > 0 && config.strategic.mountainPassMinRatio <= 1)) {
+    problems.push('strategic.mountainPassMinRatio must be greater than 0 and at most 1')
+  }
+
   return problems
+}
+
+/** Problems with a quantile profile: a monotone map from quantile 0 to 1, with values in [0, 1]. */
+function validateProfile(section: string, profile: QuantileProfile, problems: string[]): void {
+  const name = `${section}.profile`
+  if (!Array.isArray(profile) || profile.length < 2) {
+    problems.push(`${name} needs at least two knots`)
+    return
+  }
+  for (let k = 0; k < profile.length; k += 1) {
+    const knot = profile[k]
+    if (!Array.isArray(knot) || knot.length !== 2) {
+      problems.push(`${name}[${k}] must be a [quantile, value] pair`)
+      return
+    }
+  }
+  if (profile[0][0] !== 0) problems.push(`${name} must start at quantile 0`)
+  if (profile[profile.length - 1][0] !== 1) problems.push(`${name} must end at quantile 1`)
+  for (let k = 1; k < profile.length; k += 1) {
+    if (!(profile[k][0] > profile[k - 1][0])) {
+      problems.push(`${name} quantiles must strictly increase (knot ${k})`)
+    }
+    if (profile[k][1] < profile[k - 1][1]) {
+      problems.push(`${name} values must not decrease (knot ${k})`)
+    }
+  }
+  for (let k = 0; k < profile.length; k += 1) {
+    const value = profile[k][1]
+    if (value < 0 || value > 1) problems.push(`${name} values must be between 0 and 1 (knot ${k})`)
+  }
+}
+
+/** Problems with the climate table: ascending bands and rows that end at 1, with real biomes. */
+function validateBiomeTable(biomes: BiomeConfig, problems: string[]): void {
+  if (!(biomes.lowlandBand >= 0)) problems.push('biomes.lowlandBand must be at least 0')
+  const known = new Set<string>(BIOME_KEYS)
+  const { bands } = biomes
+  if (!Array.isArray(bands) || bands.length === 0) {
+    problems.push('biomes.bands needs at least one temperature band')
+    return
+  }
+  let previousTemperature = 0
+  bands.forEach((band, b) => {
+    const at = `biomes.bands[${b}]`
+    const last = b === bands.length - 1
+    if (!(band.maxTemperature > previousTemperature && band.maxTemperature <= 1)) {
+      problems.push(`${at}.maxTemperature must rise above the band before it and be at most 1`)
+    }
+    if (last && band.maxTemperature !== 1)
+      problems.push(`${at}.maxTemperature of the last band must be 1`)
+    previousTemperature = band.maxTemperature
+    if (!Array.isArray(band.rows) || band.rows.length === 0) {
+      problems.push(`${at} needs at least one row`)
+      return
+    }
+    let previousHumidity = 0
+    band.rows.forEach((row, r) => {
+      const rowAt = `${at}.rows[${r}]`
+      if (!(row.maxHumidity > previousHumidity && row.maxHumidity <= 1)) {
+        problems.push(`${rowAt}.maxHumidity must rise above the row before it and be at most 1`)
+      }
+      if (r === band.rows.length - 1 && row.maxHumidity !== 1) {
+        problems.push(`${rowAt}.maxHumidity of the last row must be 1`)
+      }
+      previousHumidity = row.maxHumidity
+      if (!known.has(row.biome)) problems.push(`${rowAt}.biome "${row.biome}" is not a biome`)
+      if (row.lowlandBiome !== undefined && !known.has(row.lowlandBiome)) {
+        problems.push(`${rowAt}.lowlandBiome "${row.lowlandBiome}" is not a biome`)
+      }
+    })
+  })
 }
 
 /** Throws a `RangeError` listing every problem if `config` is invalid. */

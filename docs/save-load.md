@@ -6,10 +6,10 @@ The **bytes** of a save are the engine's business and are specified in [simulati
 
 `apps/web/src/state/persistence.ts` stores each save as a record in IndexedDB. A 2000 x 2000 world is about 72 MB, far beyond what `localStorage` can hold.
 
-- **Database** `sovereign`, **version 2**, object store `saves` (key `id`).
+- **Database** `sovereign`, **version 3**, object store `saves` (key `id`).
 - **Record** `{ id, blob, meta }`: `blob` is the engine's bytes, `meta` is `{ id, name, seed, tick, createdAt, formatVersion }`.
 - `seed`, `tick` and `formatVersion` are read from the saved bytes; `id` and `createdAt` are metadata made by the host (a clock and a random id are fine here, outside the engine), and never enter the world or its hash.
-- Upgrading from database version 1 drops its records: that was a different, incompatible layout, and an entry that cannot be loaded is worse than no entry.
+- Upgrading from a database older than version 3 drops its records: they were written in layouts the engine can no longer read (version 1 a different format; version 2 engine save format 1, before the terrain profiles), and an entry that cannot be loaded is worse than no entry.
 
 ```ts
 import { saveGame, loadGame, listSaves, deleteSave } from './state/persistence'

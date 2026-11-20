@@ -1,7 +1,7 @@
 /**
  * @module biomes
  * @description 26-biome classification system driven by elevation,
- * temperature and humidity thresholds.
+ * temperature and humidity thresholds (a data table in `BiomeConfig`).
  *
  * Each tile is classified into one of 26 biomes ranging from deep ocean
  * through deserts, forests, alpine zones and mountains.  The classifier
@@ -25,10 +25,12 @@ import type { BiomeConfig } from '@sovereign/config'
 /**
  * Classify a single tile into one of 26 biomes.
  *
- * Elevation gates (ocean → shore → highland → mountain) are checked
- * first, then the tile falls through a temperature×humidity decision
- * tree.  `variation` injects noise-based jitter so biome edges aren't
- * perfectly straight.
+ * Water, shore and the highland, alpine and mountain elevation gates are checked first. Land below
+ * them is looked up in the climate table `config.bands`: the first band whose `maxTemperature` is
+ * above the tile's temperature, then the first row of that band whose `maxHumidity` is above its
+ * humidity (the last band and last row catch the rest). A row may name a `lowlandBiome` that
+ * replaces its biome within `config.lowlandBand` of sea level. `variation` injects noise-based
+ * jitter so biome edges aren't perfectly straight.
  */
 export const determineBiome = (
   elevation: number,
@@ -53,44 +55,27 @@ export const determineBiome = (
   if (elevation > config.alpineElevation && temp < 0.45) return 'alpine'
   if (elevation > config.highlandElevation) return 'highland'
 
-  // --- Polar (temp < 0.2) ---
-  if (temp < 0.2) {
-    if (humid < 0.25) return 'polar_desert'
-    if (humid < 0.55) return 'tundra'
-    if (humid < 0.8) return 'taiga'
-    // High-altitude → glacier; low-altitude wet polar → tundra
-    if (elevation > config.highlandElevation) return 'glacier'
-    return 'tundra'
+  // --- Climate table ---
+  const bands = config.bands
+  let band = bands[bands.length - 1]
+  for (let b = 0; b < bands.length; b += 1) {
+    if (temp < bands[b].maxTemperature) {
+      band = bands[b]
+      break
+    }
   }
-
-  // --- Cool (temp 0.2–0.4) ---
-  if (temp < 0.4) {
-    if (humid < 0.2) return 'cold_steppe'
-    if (humid < 0.45) return 'taiga'
-    if (humid < 0.7) return 'boreal_forest'
-    return 'swamp' // subarctic wetland / bog
+  const rows = band.rows
+  let row = rows[rows.length - 1]
+  for (let r = 0; r < rows.length; r += 1) {
+    if (humid < rows[r].maxHumidity) {
+      row = rows[r]
+      break
+    }
   }
-
-  // --- Temperate (temp 0.4–0.7) ---
-  if (temp < 0.7) {
-    if (humid < 0.18) return 'temperate_desert'
-    if (humid < 0.32) return 'steppe'
-    if (humid < 0.5) return 'grassland'
-    if (humid < 0.68) return 'woodland'
-    if (humid < 0.82) return 'temperate_forest'
-    // Swamp: very wet + low-lying (near sea level)
-    if (elevation < seaLevel + 0.05) return 'swamp'
-    return 'wetland'
+  if (row.lowlandBiome !== undefined && elevation < seaLevel + config.lowlandBand) {
+    return row.lowlandBiome
   }
-
-  // --- Tropical (temp ≥ 0.7) ---
-  if (humid < 0.18) return 'desert'
-  if (humid < 0.3) return 'badlands'
-  if (humid < 0.45) return 'savanna'
-  if (humid < 0.6) return 'chaparral'
-  if (humid < 0.78) return 'tropical_forest'
-  if (humid < 0.9) return 'rainforest'
-  return 'mangrove'
+  return row.biome
 }
 
 /* ------------------------------------------------------------------ */

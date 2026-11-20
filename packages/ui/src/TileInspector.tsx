@@ -28,7 +28,7 @@ const TileInspector: React.FC<Props> = ({ data }) => {
   if (!data) {
     return (
       <aside className="inspector">
-        <div className="inspector__empty">Hover over a tile</div>
+        <div className="inspector__empty">Tap or hover over a tile</div>
       </aside>
     )
   }

@@ -16,7 +16,6 @@
  * const elevImg = gen.generateElevationMap(elev, terrainConfig)
  * ```
  */
-import { pow } from '../math/transcendental'
 import { createSimplexNoise2D } from '../noise/simplex'
 import { createStream } from '../random/streams'
 import type {
@@ -63,7 +62,9 @@ export class TerrainGenerator {
   /* ---------------------------------------------------------------- */
 
   /**
-   * Produce a raw elevation field in [0, 1].
+   * Produce a raw elevation field. It is only an ordering of the tiles: its values cluster narrowly
+   * around the middle (and are not clamped), and `generateTerrain` gives them their real
+   * distribution by rank (`elevation.profile`).
    *
    * Combines three sub-layers:
    * 1. **Base** – fine-grained terrain noise (fBm).
@@ -92,17 +93,12 @@ export class TerrainGenerator {
           { scale: config.oceanScale, octaves: 2, persistence: 0.6, lacunarity: 2 },
           this.oceanNoise
         )
-        const raw = this.clamp01(
+        const raw =
           base * (1 - config.continentStrength) +
-            continent * config.continentStrength -
-            ocean * config.oceanStrength
-        )
-        // Redistribution: exponent > 1 flattens lowlands and steepens highlands
-        const elevation = pow(raw, config.redistributionPower ?? 1.4)
+          continent * config.continentStrength -
+          ocean * config.oceanStrength
         const index = y * width + x
-        elevations[index] = config.islandMode
-          ? elevation * this.islandFalloff(x, y, width, height)
-          : elevation
+        elevations[index] = config.islandMode ? raw * this.islandFalloff(x, y, width, height) : raw
       }
     }
 
@@ -114,7 +110,9 @@ export class TerrainGenerator {
   /* ---------------------------------------------------------------- */
 
   /**
-   * Generate a temperature field in [0, 1].
+   * Generate a temperature field: an ordering of the tiles, not yet a distribution. The values are
+   * left unclamped (clamping would create masses of identical tiles that no ranking can separate);
+   * `generateTerrain` rescales and then reshapes them by rank (`temperature.profile`).
    *
    * Hotter at the equator (centre row), cooler toward poles and high
    * elevations.  Noise prevents lat-bands from looking perfectly straight.
@@ -135,15 +133,14 @@ export class TerrainGenerator {
         const noise = this.sampleLayer(x, y, config, this.temperatureNoise)
         const index = y * width + x
         const elevationCooling = elevation[index] * config.elevationCooling
-        let temp = this.clamp01(
+        let temp =
           latitude * config.latitudeStrength +
-            noise * (1 - config.latitudeStrength) -
-            elevationCooling
-        )
+          noise * (1 - config.latitudeStrength) -
+          elevationCooling
         // Continentality: interior tiles have more extreme temperatures
         if (waterDistance && continentalStrength > 0) {
           const inland = waterDistance[index]
-          temp = this.clamp01(temp + (temp - 0.5) * continentalStrength * inland)
+          temp = temp + (temp - 0.5) * continentalStrength * inland
         }
         temperatures[index] = temp
       }
@@ -157,7 +154,8 @@ export class TerrainGenerator {
   /* ---------------------------------------------------------------- */
 
   /**
-   * Generate a humidity field in [0, 1].
+   * Generate a humidity field: an ordering of the tiles, left unclamped like temperature; see
+   * `generateTemperatureField`.
    *
    * Higher near coasts (via BFS water distance), lower at high
    * elevations.  Noise adds variance so the map isn't purely smooth
@@ -180,11 +178,10 @@ export class TerrainGenerator {
         const noise = this.sampleLayer(x, y, config, this.humidityNoise)
         const coastal = 1 - waterDistance[index]
         const elevationDrying = elevation[index] * config.elevationDrying
-        humidity[index] = this.clamp01(
+        humidity[index] =
           noise * (1 - config.coastalInfluence) +
-            coastal * config.coastalInfluence -
-            elevationDrying
-        )
+          coastal * config.coastalInfluence -
+          elevationDrying
       }
     }
 
@@ -330,9 +327,4 @@ export class TerrainGenerator {
   }
 
   /** Linearly interpolate between two RGB colour tuples. */
-
-  /** Clamp a number to the [0, 1] range. */
-  private clamp01(value: number): number {
-    return Math.min(1, Math.max(0, value))
-  }
 }

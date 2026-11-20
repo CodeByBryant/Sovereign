@@ -4,6 +4,7 @@
  * Depends only on `@sovereign/contracts` and `@sovereign/config`.
  */
 export * from './clock/SimulationClock'
+export * from './math/quantile'
 export * from './math/transcendental'
 export * from './nations/ColorGenerator'
 export * from './nations/FlagGenerator'

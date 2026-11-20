@@ -13,6 +13,7 @@ import { WorldMap } from '@sovereign/simulation'
 import { TileInspector, NationPanel, type InspectorData } from '@sovereign/ui'
 import { FrameLoop } from './host/FrameLoop'
 import { SimulationHost } from './host/SimulationHost'
+import { GestureTracker, type GestureEvent } from './input/GestureTracker'
 import { createWorldWorker } from './host/createWorldWorker'
 import { randomSeed } from './seed'
 import { useGameStore, type ViewMode } from './state/GameStore'
@@ -38,6 +39,18 @@ const VIEW_KEYS: Record<ViewMode, string> = {
   resource: 'R',
   political: 'P'
 }
+
+/** Where a pointer is, in client coordinates: a pointer event, a mouse event or a tap. */
+interface ClientPoint {
+  clientX: number
+  clientY: number
+}
+
+/** The zoom factor of one tap on the on-screen + / - buttons. */
+const ZOOM_BUTTON_STEP = 1.5
+
+/** Whether the page can go fullscreen: not so on an iPhone, where the button would do nothing. */
+const CAN_FULLSCREEN = typeof document !== 'undefined' && document.fullscreenEnabled === true
 
 const MapView: React.FC = () => {
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -110,7 +123,7 @@ const MapView: React.FC = () => {
   /*  Hover handler                                                    */
   /* ---------------------------------------------------------------- */
   const handleHover = useCallback(
-    (e: PointerEvent, canvas: HTMLCanvasElement, renderer: MapRenderer) => {
+    (e: ClientPoint, canvas: HTMLCanvasElement, renderer: MapRenderer) => {
       if (!inspectorEnabled) {
         setInspectorData(null)
         return
@@ -125,7 +138,7 @@ const MapView: React.FC = () => {
   /*  Click handler (nation selection)                                 */
   /* ---------------------------------------------------------------- */
   const handleClick = useCallback(
-    (e: MouseEvent, canvas: HTMLCanvasElement, renderer: MapRenderer) => {
+    (e: ClientPoint, canvas: HTMLCanvasElement, renderer: MapRenderer) => {
       const rect = canvas.getBoundingClientRect()
       const tile = getTileAt(e.clientX - rect.left, e.clientY - rect.top, renderer)
       if (tile && tile.ownerId >= 0 && tile.ownerId < nationsRef.current.length) {
@@ -136,6 +149,18 @@ const MapView: React.FC = () => {
     },
     [getTileAt, selectNation]
   )
+
+  /**
+   * Publish where the camera is as `data-` attributes on the shell, so a test (or an accessibility
+   * tool) can read the view without inspecting pixels. Cheap: three attribute writes per camera change.
+   */
+  const publishCamera = useCallback((camera: Camera) => {
+    const shell = shellRef.current
+    if (!shell) return
+    shell.dataset.cameraZoom = camera.zoom.toFixed(4)
+    shell.dataset.cameraX = camera.x.toFixed(1)
+    shell.dataset.cameraY = camera.y.toFixed(1)
+  }, [])
 
   /* ---------------------------------------------------------------- */
   /*  Canvas / Camera / Renderer bootstrap                             */
@@ -157,6 +182,7 @@ const MapView: React.FC = () => {
       const canvas = renderer.canvas
       rendererRef.current = renderer
       cameraRef.current = camera
+      publishCamera(camera)
       const frameLoop = new FrameLoop(renderer, setFps)
 
       const resize = (): void => renderer.resize()
@@ -165,30 +191,61 @@ const MapView: React.FC = () => {
       window.addEventListener('resize', resize)
 
       /* ------------- Pointer / wheel events ------------- */
-      let isDragging = false
-      let lastX = 0
-      let lastY = 0
+      // One tracker turns the pointer stream (a mouse, one finger, two fingers) into pan, pinch and
+      // tap. A mouse selects with the browser's `click` and inspects on hover, as it always did; a
+      // finger or pen has no hover, so a tap both selects a nation and fills the tile inspector.
+      const tracker = new GestureTracker()
+      let lastPointerType = 'mouse'
+      const local = (x: number, y: number): { x: number; y: number } => {
+        const rect = canvas.getBoundingClientRect()
+        return { x: x - rect.left, y: y - rect.top }
+      }
+
+      const apply = (events: GestureEvent[]): void => {
+        for (const event of events) {
+          if (event.type === 'pan') {
+            camera.pan(event.dx, event.dy)
+            publishCamera(camera)
+          } else if (event.type === 'pinch') {
+            const { width, height } = renderer.getViewportSize()
+            const anchor = local(event.anchor.x, event.anchor.y)
+            camera.pan(event.dx, event.dy)
+            camera.zoomAt(event.scale, anchor.x, anchor.y, width, height)
+            publishCamera(camera)
+          } else if (lastPointerType !== 'mouse') {
+            handleClick({ clientX: event.at.x, clientY: event.at.y }, canvas, renderer)
+            const at = local(event.at.x, event.at.y)
+            setInspectorData(buildInspectorData(at.x, at.y, renderer))
+          }
+        }
+      }
+
+      const releaseCapture = (id: number): void => {
+        if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id)
+      }
 
       const onPointerDown = (e: PointerEvent): void => {
-        isDragging = true
-        lastX = e.clientX
-        lastY = e.clientY
+        lastPointerType = e.pointerType
         canvas.setPointerCapture(e.pointerId)
+        tracker.down(e.pointerId, e.clientX, e.clientY, e.timeStamp)
       }
 
       const onPointerMove = (e: PointerEvent): void => {
-        if (!isDragging) {
-          handleHover(e, canvas, renderer)
+        if (tracker.active === 0) {
+          if (e.pointerType === 'mouse') handleHover(e, canvas, renderer)
           return
         }
-        camera.pan(e.clientX - lastX, e.clientY - lastY)
-        lastX = e.clientX
-        lastY = e.clientY
+        apply(tracker.move(e.pointerId, e.clientX, e.clientY))
       }
 
       const onPointerUp = (e: PointerEvent): void => {
-        isDragging = false
-        canvas.releasePointerCapture(e.pointerId)
+        apply(tracker.up(e.pointerId, e.clientX, e.clientY, e.timeStamp))
+        releaseCapture(e.pointerId)
+      }
+
+      const onPointerCancel = (e: PointerEvent): void => {
+        tracker.cancel(e.pointerId)
+        releaseCapture(e.pointerId)
       }
 
       const onWheel = (e: WheelEvent): void => {
@@ -199,16 +256,19 @@ const MapView: React.FC = () => {
         const anchorY = e.clientY - rect.top
         const scale = 1 + (e.deltaY > 0 ? -1 : 1) * viewConfig.camera.zoomStep
         camera.zoomAt(scale, anchorX, anchorY, width, height)
+        publishCamera(camera)
       }
 
       const onClick = (e: MouseEvent): void => {
-        handleClick(e, canvas, renderer)
+        // a touch or pen tap is handled by the tracker; the browser's synthesised click would repeat it
+        if (lastPointerType === 'mouse') handleClick(e, canvas, renderer)
       }
 
       canvas.addEventListener('pointerdown', onPointerDown)
       canvas.addEventListener('pointermove', onPointerMove)
       canvas.addEventListener('pointerup', onPointerUp)
-      canvas.addEventListener('pointerleave', onPointerUp)
+      canvas.addEventListener('pointercancel', onPointerCancel)
+      canvas.addEventListener('pointerleave', onPointerCancel)
       canvas.addEventListener('wheel', onWheel, { passive: false })
       canvas.addEventListener('click', onClick)
 
@@ -246,6 +306,7 @@ const MapView: React.FC = () => {
           setNations(ready.snapshot.nations)
           renderer.showLayer(useGameStore.getState().view)
           setPhase('playing')
+          publishCamera(camera)
         })
         .catch((error: unknown) => {
           if (cancelled) return
@@ -265,7 +326,8 @@ const MapView: React.FC = () => {
         canvas.removeEventListener('pointerdown', onPointerDown)
         canvas.removeEventListener('pointermove', onPointerMove)
         canvas.removeEventListener('pointerup', onPointerUp)
-        canvas.removeEventListener('pointerleave', onPointerUp)
+        canvas.removeEventListener('pointercancel', onPointerCancel)
+        canvas.removeEventListener('pointerleave', onPointerCancel)
         canvas.removeEventListener('wheel', onWheel)
         canvas.removeEventListener('click', onClick)
         rendererRef.current = null
@@ -332,6 +394,19 @@ const MapView: React.FC = () => {
     return () => document.removeEventListener('fullscreenchange', handler)
   }, [])
 
+  /** Zoom about the middle of the screen: the toolbar's + / - buttons, for devices with no wheel. */
+  const zoomBy = useCallback(
+    (factor: number) => {
+      const camera = cameraRef.current
+      const renderer = rendererRef.current
+      if (!camera || !renderer) return
+      const { width, height } = renderer.getViewportSize()
+      camera.zoomAt(factor, width / 2, height / 2, width, height)
+      publishCamera(camera)
+    },
+    [publishCamera]
+  )
+
   const toggleFullscreen = useCallback(() => {
     if (!shellRef.current) return
     if (!document.fullscreenElement) void shellRef.current.requestFullscreen()
@@ -381,6 +456,28 @@ const MapView: React.FC = () => {
           <div className="toolbar-divider" />
 
           <button
+            className="toolbar-btn toolbar-btn--compact"
+            aria-label="Zoom out"
+            title="Zoom out"
+            onClick={() => zoomBy(1 / ZOOM_BUTTON_STEP)}
+          >
+            <svg viewBox="0 0 16 16">
+              <path d="M3 8h10" stroke="currentColor" strokeWidth="1.8" fill="none" />
+            </svg>
+          </button>
+
+          <button
+            className="toolbar-btn toolbar-btn--compact"
+            aria-label="Zoom in"
+            title="Zoom in"
+            onClick={() => zoomBy(ZOOM_BUTTON_STEP)}
+          >
+            <svg viewBox="0 0 16 16">
+              <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" fill="none" />
+            </svg>
+          </button>
+
+          <button
             className={`toolbar-btn toolbar-btn--compact${inspectorEnabled ? ' toolbar-btn--active' : ''}`}
             onClick={() => useGameStore.getState().toggleInspector()}
             title="Inspector (I)"
@@ -391,19 +488,21 @@ const MapView: React.FC = () => {
             </svg>
           </button>
 
-          <button
-            className="toolbar-btn toolbar-btn--compact"
-            onClick={toggleFullscreen}
-            title="Fullscreen"
-          >
-            <svg viewBox="0 0 16 16">
-              {isFullscreen ? (
-                <path d="M5 1v4H1v2h6V1zm6 0v6h6V5h-4V1zM1 11h4v4H3v-2H1zm10 0h2v2h2v2h-4z" />
-              ) : (
-                <path d="M1 1h5v2H3v3H1zm9 0h5v5h-2V3h-3zM1 10h2v3h3v2H1zm12 3h-3v2h5v-5h-2z" />
-              )}
-            </svg>
-          </button>
+          {CAN_FULLSCREEN && (
+            <button
+              className="toolbar-btn toolbar-btn--compact"
+              onClick={toggleFullscreen}
+              title="Fullscreen"
+            >
+              <svg viewBox="0 0 16 16">
+                {isFullscreen ? (
+                  <path d="M5 1v4H1v2h6V1zm6 0v6h6V5h-4V1zM1 11h4v4H3v-2H1zm10 0h2v2h2v2h-4z" />
+                ) : (
+                  <path d="M1 1h5v2H3v3H1zm9 0h5v5h-2V3h-3zM1 10h2v3h3v2H1zm12 3h-3v2h5v-5h-2z" />
+                )}
+              </svg>
+            </button>
+          )}
         </div>
       )}
 

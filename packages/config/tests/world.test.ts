@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { BIOME_KEYS } from '@sovereign/contracts'
 import {
   assertValidWorldConfig,
   defaultWorldConfig,
@@ -127,7 +128,10 @@ describe('validateWorldConfig', () => {
     ['a zero persistence', (c: WorldConfig) => (c.humidity.persistence = 0)],
     ['a lacunarity below 1', (c: WorldConfig) => (c.temperature.lacunarity = 0.9)],
     ['a fractional octave count', (c: WorldConfig) => (c.humidity.octaves = 2.5)],
-    ['a non-positive noise scale', (c: WorldConfig) => (c.biomeNoise.scale = 0)]
+    ['a non-positive noise scale', (c: WorldConfig) => (c.biomeNoise.scale = 0)],
+    ['a zero pass rise', (c: WorldConfig) => (c.strategic.mountainPassRise = 0)],
+    ['a zero pass ratio', (c: WorldConfig) => (c.strategic.mountainPassMinRatio = 0)],
+    ['a pass ratio above 1', (c: WorldConfig) => (c.strategic.mountainPassMinRatio = 1.01)]
   ])('rejects %s', (_label, edit) => {
     expect(bad(edit).length).toBeGreaterThan(0)
   })
@@ -176,5 +180,155 @@ describe('assertValidWorldConfig', () => {
     c.timestep = 0
     expect(() => assertValidWorldConfig(c)).toThrow(RangeError)
     expect(() => assertValidWorldConfig(c)).toThrow(/map\.width[\s\S]*timestep/)
+  })
+})
+
+describe('terrain distribution profiles', () => {
+  const at = (profile: ReadonlyArray<readonly [number, number]>, q: number): number => {
+    for (let k = 1; k < profile.length; k += 1) {
+      const [q1, v1] = profile[k]
+      if (q <= q1) {
+        const [q0, v0] = profile[k - 1]
+        return v0 + ((q - q0) / (q1 - q0)) * (v1 - v0)
+      }
+    }
+    return profile[profile.length - 1][1]
+  }
+
+  it.each([
+    ['elevation', defaultWorldConfig.elevation.profile],
+    ['temperature', defaultWorldConfig.temperature.profile],
+    ['humidity', defaultWorldConfig.humidity.profile]
+  ])('the default %s profile is a valid monotone map from quantile 0 to 1', (_name, profile) => {
+    expect(profile[0][0]).toBe(0)
+    expect(profile[profile.length - 1][0]).toBe(1)
+    for (let k = 1; k < profile.length; k += 1) {
+      expect(profile[k][0]).toBeGreaterThan(profile[k - 1][0])
+      expect(profile[k][1]).toBeGreaterThanOrEqual(profile[k - 1][1])
+    }
+    for (const [, value] of profile) {
+      expect(value).toBeGreaterThanOrEqual(0)
+      expect(value).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('pins the ocean: water is 74.5% of tiles (deep 19%, shallow 55.5%), shore 3%', () => {
+    const { profile } = defaultWorldConfig.elevation
+    const sea = defaultWorldConfig.map.seaLevel
+    expect(at(profile, 0.19)).toBeCloseTo(defaultWorldConfig.biomes.deepOceanFactor * sea, 10)
+    expect(at(profile, 0.745)).toBeCloseTo(sea, 10)
+    expect(at(profile, 0.775)).toBeCloseTo(sea + defaultWorldConfig.biomes.shoreBand, 10)
+  })
+
+  it('puts the elevated land where the classifier looks for it', () => {
+    // The top 14% of land (25.5% of tiles) is highland or higher; the top 4% is mountain.
+    const { profile } = defaultWorldConfig.elevation
+    const b = defaultWorldConfig.biomes
+    const landTop = (share: number): number => 1 - share * 0.255
+    expect(at(profile, landTop(0.14))).toBeCloseTo(b.highlandElevation, 2)
+    expect(at(profile, landTop(0.075))).toBeCloseTo(b.alpineElevation, 2)
+    expect(at(profile, landTop(0.04))).toBeCloseTo(b.mountainElevation, 2)
+  })
+
+  it('no longer carries the power-curve knob the remap replaced', () => {
+    expect('redistributionPower' in defaultWorldConfig.elevation).toBe(false)
+  })
+
+  const bad = (edit: (c: WorldConfig) => void): string[] => {
+    const c = clone()
+    edit(c)
+    return validateWorldConfig(c)
+  }
+  type Knots = Array<[number, number]>
+
+  it.each([
+    ['a profile of one knot', (k: Knots) => k.splice(1)],
+    ['a profile that does not start at quantile 0', (k: Knots) => (k[0][0] = 0.1)],
+    ['a profile that does not end at quantile 1', (k: Knots) => (k[k.length - 1][0] = 0.9)],
+    ['a repeated quantile', (k: Knots) => (k[1][0] = k[0][0])],
+    ['quantiles going backwards', (k: Knots) => (k[2][0] = k[1][0] - 0.01)],
+    ['values going backwards', (k: Knots) => (k[2][1] = k[1][1] - 0.01)],
+    ['a value above 1', (k: Knots) => (k[k.length - 1][1] = 1.01)],
+    ['a value below 0', (k: Knots) => (k[0][1] = -0.01)],
+    ['a NaN value', (k: Knots) => (k[1][1] = Number.NaN)]
+  ])('rejects %s, in each of the three profiles', (_label, edit) => {
+    for (const section of ['elevation', 'temperature', 'humidity'] as const) {
+      const problems = bad((c) => edit(c[section].profile as Knots))
+      expect(problems.some((p) => p.startsWith(`${section}.profile`))).toBe(true)
+    }
+  })
+
+  it('accepts a flat stretch (a plateau) in a profile', () => {
+    expect(
+      bad((c) => {
+        const k = c.elevation.profile as Knots
+        k[3][1] = k[2][1]
+      })
+    ).toEqual([])
+  })
+
+  it('does not alias the default profiles or bands into a resolved config', () => {
+    const before = JSON.stringify(defaultWorldConfig)
+    const resolved = resolveWorldConfig()
+    ;(resolved.elevation.profile as Knots)[1][1] = 0.5
+    ;(resolved.temperature.profile as Knots).pop()
+    resolved.biomes.bands[0].rows[0].maxHumidity = 0.9
+    resolved.biomes.bands.pop()
+    expect(JSON.stringify(defaultWorldConfig)).toBe(before)
+  })
+
+  it('replaces a whole profile when one is overridden', () => {
+    const profile: Knots = [
+      [0, 0],
+      [1, 1]
+    ]
+    expect(resolveWorldConfig({ elevation: { profile } }).elevation.profile).toEqual(profile)
+  })
+})
+
+describe('the classifier table (biomes.bands)', () => {
+  const bad = (edit: (c: WorldConfig) => void): string[] => {
+    const c = clone()
+    edit(c)
+    return validateWorldConfig(c)
+  }
+
+  it('is a valid table by default and offers every land climate biome', () => {
+    expect(validateWorldConfig(defaultWorldConfig)).toEqual([])
+    const offered = new Set(
+      defaultWorldConfig.biomes.bands.flatMap((band) => band.rows.map((row) => row.biome))
+    )
+    for (const key of BIOME_KEYS) {
+      const elevationOrWater = ['deep_ocean', 'ocean', 'shore', 'alpine', 'highland', 'mountain']
+      if (!elevationOrWater.includes(key)) expect(offered.has(key)).toBe(true)
+    }
+  })
+
+  it.each([
+    ['no bands', (c: WorldConfig) => (c.biomes.bands = [])],
+    ['a band with no rows', (c: WorldConfig) => (c.biomes.bands[0].rows = [])],
+    [
+      'a last band that does not reach temperature 1',
+      (c: WorldConfig) => (c.biomes.bands[3].maxTemperature = 0.95)
+    ],
+    ['bands out of order', (c: WorldConfig) => (c.biomes.bands[1].maxTemperature = 0.1)],
+    ['a band temperature of 0', (c: WorldConfig) => (c.biomes.bands[0].maxTemperature = 0)],
+    [
+      'a last row that does not reach humidity 1',
+      (c: WorldConfig) => (c.biomes.bands[0].rows[3].maxHumidity = 0.9)
+    ],
+    ['rows out of order', (c: WorldConfig) => (c.biomes.bands[0].rows[1].maxHumidity = 0.1)],
+    [
+      'an unknown biome',
+      (c: WorldConfig) => ((c.biomes.bands[0].rows[0] as { biome: string }).biome = 'lava')
+    ],
+    [
+      'an unknown lowland biome',
+      (c: WorldConfig) =>
+        ((c.biomes.bands[2].rows[5] as { lowlandBiome?: string }).lowlandBiome = 'lava')
+    ],
+    ['a negative lowland band', (c: WorldConfig) => (c.biomes.lowlandBand = -0.1)]
+  ])('rejects %s', (_label, edit) => {
+    expect(bad(edit).some((p) => p.startsWith('biomes.'))).toBe(true)
   })
 })

@@ -4,6 +4,7 @@
  */
 export * from './biomes'
 export * from './nation'
+export * from './quantile'
 export * from './resources'
 export * from './strategic'
 export * from './terrain'

@@ -4,9 +4,33 @@
  * Pure data shapes: the generators in `@sovereign/simulation` consume them.
  */
 
+import type { BiomeKey, QuantileProfile } from '@sovereign/contracts'
+
 /* ------------------------------------------------------------------ */
 /*  Config                                                             */
 /* ------------------------------------------------------------------ */
+
+/**
+ * One row of a climate band: the biome chosen when the tile's (jittered) humidity is below
+ * `maxHumidity`. The last row of a band has `maxHumidity` 1 and catches everything above.
+ *
+ * @property lowlandBiome - Chosen instead of `biome` on low ground, within `lowlandBand` of sea
+ *                          level (a very wet temperate tile is a swamp there, a wetland elsewhere).
+ */
+export interface BiomeRow {
+  maxHumidity: number
+  biome: BiomeKey
+  lowlandBiome?: BiomeKey
+}
+
+/**
+ * A temperature band of the classifier: tiles with temperature below `maxTemperature` (and not in
+ * a lower band) are classified by humidity from `rows`. The last band has `maxTemperature` 1.
+ */
+export interface ClimateBand {
+  maxTemperature: number
+  rows: BiomeRow[]
+}
 
 /**
  * Tunable thresholds that shape the biome classification.
@@ -18,6 +42,9 @@
  * @property alpineElevation    - Elevation threshold for alpine (cold + high).
  * @property tempJitter         - Per-tile temperature variation magnitude.
  * @property humidityJitter     - Per-tile humidity variation magnitude.
+ * @property bands              - The temperature x humidity table for land below the highlands:
+ *                                ascending temperature bands, each a list of ascending humidity rows.
+ * @property lowlandBand        - Elevation above sea level within which a row's `lowlandBiome` applies.
  */
 export interface BiomeConfig {
   shoreBand: number
@@ -27,6 +54,8 @@ export interface BiomeConfig {
   alpineElevation: number
   tempJitter: number
   humidityJitter: number
+  bands: ClimateBand[]
+  lowlandBand: number
 }
 
 export interface StrategicConfig {
@@ -34,6 +63,10 @@ export interface StrategicConfig {
   riverCrossingRadius: number
   /** Radius to search for mountain pass saddle points. */
   mountainPassRadius: number
+  /** How much higher the ground around a pass must be than the pass itself (elevation, 0 to 1). */
+  mountainPassRise: number
+  /** Fraction of the sampled ground around a pass that must be higher by `mountainPassRise`. */
+  mountainPassMinRatio: number
   /** Max water width to qualify as a strait. */
   straitMaxWidth: number
   /** Min land-to-water ratio in scan area to count as peninsula. */
@@ -76,8 +109,12 @@ export interface TerrainConfig extends NoiseLayerConfig {
   oceanScale: number
   /** Subtractive strength of ocean layer. */
   oceanStrength: number
-  /** Elevation redistribution power curve (>1 flattens lowlands, steepens highlands). @default 1.4 */
-  redistributionPower?: number
+  /**
+   * Rank-to-elevation profile: after the raw field is built, every tile is ranked and given the
+   * elevation this profile assigns to its rank. It is what pins the ocean amount and how much land
+   * is highland or mountain, whatever the seed. Absolute elevations, so `seaLevel` keeps its meaning.
+   */
+  profile: QuantileProfile
 }
 
 /**
@@ -93,6 +130,8 @@ export interface TemperatureConfig extends NoiseLayerConfig {
   elevationCooling: number
   /** How strongly continental interior amplifies temperature extremes (0–1). @default 0.3 */
   continentalStrength?: number
+  /** Rank-to-temperature profile, ranked over land tiles only. See `TerrainConfig.profile`. */
+  profile: QuantileProfile
 }
 
 /**
@@ -106,6 +145,8 @@ export interface HumidityConfig extends NoiseLayerConfig {
   coastalInfluence: number
   /** Humidity penalty multiplied by elevation (0–1). */
   elevationDrying: number
+  /** Rank-to-humidity profile, ranked over land tiles only. See `TerrainConfig.profile`. */
+  profile: QuantileProfile
 }
 
 /**
