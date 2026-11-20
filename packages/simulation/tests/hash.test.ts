@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { ByteHasher, HASH_SCHEMA_VERSION, stateHasher } from '../src/serialization/hash'
 
 describe('HASH_SCHEMA_VERSION', () => {
-  it('is 1: the first canonical layout of Sovereign state', () => {
-    expect(HASH_SCHEMA_VERSION).toBe(1)
+  it('is 2: two resource slots (type, richness, stock) per tile', () => {
+    expect(HASH_SCHEMA_VERSION).toBe(2)
   })
 })
 
@@ -30,14 +30,14 @@ describe('ByteHasher', () => {
     b.writeFloat64(0)
     b.writeFloat64(0.5)
     b.writeUint8(1)
-    expect(a.digest()).toBe('0cfff52cd59cd936ea6e87ef760fd062')
-    expect(b.digest()).toBe('0cfff52cd59cd936ea6e87ef760fd062')
+    expect(a.digest()).toBe('13a50d16dbb8ff322a31b0a1e892d199')
+    expect(b.digest()).toBe('13a50d16dbb8ff322a31b0a1e892d199')
   })
 
   it('encodes a string as its UTF-8 byte length (uint32, big-endian) then its UTF-8 bytes', () => {
     const h = stateHasher()
     h.writeString('héllo ✓ \u{1F30D}')
-    expect(h.digest()).toBe('1ee750036f11b9738e0e26b0a664f383')
+    expect(h.digest()).toBe('dca4d03e56316b1c0956110c6846b56a')
   })
 
   it('depends on the order of writes', () => {
@@ -95,7 +95,7 @@ describe('bulk array writers', () => {
         -2.5
       )
     )
-    expect(h.digest()).toBe('1ed937ce85b5796f5b83169ca59446ad')
+    expect(h.digest()).toBe('2074957879a0d0c00daadd671ce6e421')
   })
 
   it('writeFloat32Array canonicalizes -0 to +0, like writeFloat64', () => {
@@ -118,17 +118,17 @@ describe('bulk array writers', () => {
   it('writeUint8Array: a uint32 length, then the bytes', () => {
     const h = stateHasher()
     h.writeUint8Array(Uint8Array.of(0, 1, 2, 255, 128))
-    expect(h.digest()).toBe('78258c595e2fc900605bfba5bb578380')
+    expect(h.digest()).toBe('a5285b8a6d19a5c622c9aa16741a2d31')
     const empty = stateHasher()
     empty.writeUint8Array(new Uint8Array(0))
-    expect(empty.digest()).toBe('49bb8cc6d6dea402d80e77656ee6c88e')
+    expect(empty.digest()).toBe('4c619c911067ce59bb35bc3b2e410d53')
   })
 
   it('writes arrays one after another, each self-delimiting', () => {
     const h = stateHasher()
     h.writeUint8Array(Uint8Array.of(0, 1, 2, 255, 128))
     h.writeFloat32Array(Float32Array.of(1.5, -0.25))
-    expect(h.digest()).toBe('56f8fce016eab77aac599e0ca7558b39')
+    expect(h.digest()).toBe('66d4df4e9737599b2ca7bf231541111c')
   })
 
   it('cannot confuse where one array ends and the next begins', () => {
@@ -153,7 +153,7 @@ describe('bulk array writers', () => {
 
 describe('stateHasher', () => {
   it('starts with the versioned header: "SOVH" then the schema version as a uint32', () => {
-    expect(stateHasher().digest()).toBe('0fe9d992d6cf4eba7b27f691dba022c3')
+    expect(stateHasher().digest()).toBe('d48ad70d56ab7785f786d29b03b9781a')
   })
 
   it('differs from a bare ByteHasher, so state hashes are never confused with raw ones', () => {

@@ -129,21 +129,28 @@ All 26 biomes appear in all 10 worlds; 20 of the 23 climate biomes are within +/
 
 ### 7. Resources
 
-**Module:** `generateResources()` in `resources.ts`
+**Modules:** `placeResources()` in `placement.ts`, the feature fields in `features.ts`; the catalogue is `RESOURCE_CATALOG` in `@sovereign/contracts` and the rules are `resources` in `@sovereign/config`.
 
-Each land tile receives a `ResourceType` (0–7) and `resourceDensity` (0–255):
+Resources are placed by geology and ecology, not by thresholding noise. There are **22 resources**; each tile has two slots, a **surface** slot (land: a forest, crop, herd or luxury; water: a fishery) and a **ground** slot (a mineral, or oil and salt, which may also lie under shallow sea). A slot holds a `type`, a `richness` (1 to 255, how big the deposit was) and a `stock` (how much is left).
 
-| Resource     | Source                                             |
-| ------------ | -------------------------------------------------- |
-| Timber       | Forest, boreal_forest, taiga, woodland, rainforest |
-| Stone        | Highland, mountain, alpine, badlands               |
-| Iron         | Mountain/highland/badlands + ore noise > 0.72      |
-| Gold         | Mountain + river-adjacent + ore noise > 0.88       |
-| Fertile Soil | Grassland, savanna, wetland (humidity-weighted)    |
-| Fish         | Shore-adjacent land tiles                          |
-| Fur & Game   | Taiga, boreal_forest (cold forests)                |
+| Slot            | Resources                                                                             |
+| --------------- | ------------------------------------------------------------------------------------- |
+| Surface (land)  | Timber, Grain, Pasture, Horses, Fur and game, Cotton, Spices, Wine, Tea, Ivory        |
+| Surface (water) | Fish, Pearls, Whales                                                                  |
+| Ground          | Stone, Iron, Copper, Coal, Oil, Gold, Silver, Salt, Gems (oil and salt also offshore) |
 
-Priority: Gold > Iron > Fish > biome-default.
+**Placement.** Every resource has a rule (data, `defaultWorldConfig.resources.rules`):
+
+1. **Hard gates** decide which tiles can hold it: biome weights, ranges of elevation, temperature and humidity, a distance to the coast. An offshore deposit (oil, salt) uses only its own coast distance and optional depth range.
+2. **Soft preferences** rank the rest: ridges, basins, slope, height, rivers, the coast, wet and warm ground.
+3. A **regional factor** (smooth `geology`-stream noise, features `regionSize` tiles across) makes whole regions rich or barren, so scarcity is geographic: some landmasses have no coal or oil.
+4. The tiles with the highest score, up to the rule's `share` of the land (or of the water), get the resource. Taking the top share by rank makes the abundance exact on every seed, and since scores are smooth the resource forms patches and veins, not speckle. Resources claim tiles **rarest first**, so a rare resource gets its best sites before a common one takes them. **Richness** comes from how high a tile ranked, so the core of a patch is richest.
+
+The feature fields (`features.ts`) are pure functions of the terrain: `distanceToMask` (4-neighbour breadth-first distance to the coast, a river or the land), `slopeField` and `topographicPosition` (a tile's height against the land around it: a ridge is positive, a basin negative; calibrated to real terrain by `features.ridgeRadius`, `ridgeScale` and `slopeScale`).
+
+**Depletion.** `World.extractResource(layer, tile, amount)` takes stock (never more than is there) and returns what was taken. Renewable resources (the surface ones) regrow from `World.step()`: a drawn-down tile gains `units` every `period` ticks up to its richness (the `regrowth` table); minerals never regrow. Only drawn-down tiles are tracked, so stepping stays cheap. Nothing calls `extractResource` yet; the economy will.
+
+Measured over 10 worlds of 2000 x 2000 (see [decision 0005](decisions/0005-resources-by-geology.md)): every resource is present in every world, shares are exact, 98 to 100% of metals sit on ridges, coal and oil sit 100% in basins, and clustering is 0.85 to 0.97 (the old noise scored 0.29 for fish).
 
 ### 8. Strategic Points
 
@@ -160,7 +167,7 @@ Auto-detects geographically significant locations:
 
 ### Colour is not terrain
 
-The pipeline stops at the fields. Turning them into pixels happens in `@sovereign/renderer` (`packages/renderer/src/palettes`): pure functions from a field value to RGBA for each overlay (elevation: blue → green → brown → white; temperature: blue → red; humidity: tan → teal; biome: the 26-colour palette with the river overlay; strategic and resource: the biome base plus highlights; political: territory colour at 45% with borders darkened 35%, see `apps/web/src/viewConfig.ts`). The browser app gets the tile layers from its worker by transfer and hands them to the PixiJS renderer.
+The pipeline stops at the fields. Turning them into pixels happens in `@sovereign/renderer` (`packages/renderer/src/palettes`): pure functions from a field value to RGBA for each overlay (elevation: blue → green → brown → white; temperature: blue → red; humidity: tan → teal; biome: the 26-colour palette with the river overlay; strategic: the biome base plus highlights; resource: the biome base tinted by each tile's dominant resource (luxury over industrial over basic, ground over surface), fading as the stock is drawn down, or, with a focus, a heat map of one resource; political: territory colour at 45% with borders darkened 35%, see `apps/web/src/viewConfig.ts`). The browser app gets the tile layers from its worker by transfer and hands them to the PixiJS renderer.
 
 ---
 
@@ -177,7 +184,7 @@ rivers:      { primaryScale, secondaryScale, thresholds, widths, warpStrength, .
 strategic:   { radii, thresholds, mountainPassRise, mountainPassMinRatio }
 biomeNoise:  { scale, octaves, jitter amounts }
 biomes:      { elevation thresholds, jitter amounts, bands (the climate table), lowlandBand }
-resources:   { oreScale, goldRarity, ironRarity, minDensity }
+resources:   { features, rules (22 placement rules), regrowth }
 nations:     { count, minSpacing }
 timestep:    in-game days per tick
 ```

@@ -190,9 +190,11 @@ it(
         present.length === 0
           ? 0
           : mean(present.map((w) => w.sameNeighbours[type] / (4 * w.count[type])))
-      const missing = mean(worlds.map((w) => w.missing[type]))
+      // a fishery is at sea, so "none on this landmass" does not apply to it
+      const missing =
+        entry.domain === 'water' ? Number.NaN : mean(worlds.map((w) => w.missing[type]))
       lines.push(
-        `  ${entry.label.padEnd(18)} ${share.toFixed(3).padStart(9)}   ${clustering.toFixed(3).padStart(9)}   ${missing.toFixed(2).padStart(20)}   ${String(present.length).padStart(8)}/${worlds.length}`
+        `  ${entry.label.padEnd(18)} ${share.toFixed(3).padStart(9)}   ${clustering.toFixed(3).padStart(9)}   ${(Number.isNaN(missing) ? 'n/a' : missing.toFixed(2)).padStart(20)}   ${String(present.length).padStart(8)}/${worlds.length}`
       )
     }
     lines.push(
