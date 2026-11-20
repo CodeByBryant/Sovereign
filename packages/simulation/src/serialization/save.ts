@@ -31,7 +31,7 @@ import { Nation } from '../nations/Nation'
 import { World } from '../world/World'
 import { utf8Bytes, utf8Decode } from './utf8'
 
-export const SAVE_FORMAT_VERSION = 1
+export const SAVE_FORMAT_VERSION = 2
 
 const MAGIC = [0x53, 0x4f, 0x56, 0x57] // "SOVW"
 const PREAMBLE = 12
