@@ -48,6 +48,20 @@ export default tseslint.config(
     rules: reactHooks.configs.recommended.rules
   },
   {
+    // Node scripts (browser end-to-end tests): the few globals they use, declared explicitly.
+    // `document` is only touched inside functions that Playwright runs in the page.
+    files: ['**/e2e/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        console: 'readonly',
+        document: 'readonly',
+        fetch: 'readonly',
+        process: 'readonly',
+        setTimeout: 'readonly'
+      }
+    }
+  },
+  {
     // The simulation engine must stay headless and deterministic (docs/simulation/determinism.md).
     files: ['packages/simulation/src/**/*.ts'],
     rules: {
