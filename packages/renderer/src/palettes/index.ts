@@ -10,7 +10,8 @@ import {
   getBiomeColor,
   resourceDef,
   type ResourceSlots,
-  type StrategicPoint
+  type StrategicPoint,
+  type StrategicRoute
 } from '@sovereign/contracts'
 
 type Rgb = readonly [number, number, number]
@@ -145,12 +146,38 @@ export function biomeRgba(
   return rgba
 }
 
-/** The strategic overlay: the base map dimmed, with a diamond marker per strategic point. */
+/** The colour of a route, and how strongly it shows: faint for a quiet route, strong for the busiest. */
+const ROUTE_COLOR: Rgb = [255, 210, 120]
+const ROUTE_ALPHA_MIN = 0.3
+const ROUTE_ALPHA_MAX = 0.85
+
+/** Add the 2 x 2 tiles at (x, y), clipped to the map, to the tiles a route covers. */
+function coverRoute(
+  covered: Set<number>,
+  width: number,
+  height: number,
+  x: number,
+  y: number
+): void {
+  for (let dy = 0; dy <= 1; dy += 1) {
+    for (let dx = 0; dx <= 1; dx += 1) {
+      const px = x + dx
+      const py = y + dy
+      if (px >= 0 && py >= 0 && px < width && py < height) covered.add(py * width + px)
+    }
+  }
+}
+
+/**
+ * The strategic overlay: the base map dimmed, the routes between settlements drawn as lines (brighter the
+ * more traffic they carry), and a diamond marker per strategic point on top.
+ */
 export function strategicRgba(
   base: Uint8ClampedArray,
   width: number,
   height: number,
-  points: readonly StrategicPoint[]
+  points: readonly StrategicPoint[],
+  routes: readonly StrategicRoute[] = []
 ): Uint8ClampedArray {
   const data = new Uint8ClampedArray(base)
 
@@ -159,6 +186,52 @@ export function strategicRgba(
     data[i] = Math.round((data[i] as number) * 0.75)
     data[i + 1] = Math.round((data[i + 1] as number) * 0.75)
     data[i + 2] = Math.round((data[i + 2] as number) * 0.75)
+  }
+
+  let busiest = 0
+  for (const route of routes) busiest = Math.max(busiest, route.traffic)
+  if (busiest > 0) {
+    for (const route of routes) {
+      if (!(route.traffic > 0)) continue
+      const alpha =
+        ROUTE_ALPHA_MIN + (ROUTE_ALPHA_MAX - ROUTE_ALPHA_MIN) * Math.sqrt(route.traffic / busiest)
+      const path = route.path
+      // the tiles the route covers, each blended once however many steps of the line reach it
+      const covered = new Set<number>()
+      if (path.length === 2)
+        coverRoute(covered, width, height, path[0] as number, path[1] as number)
+      for (let k = 0; k + 3 < path.length; k += 2) {
+        // a line from one point to the next (Bresenham), every tile of it stamped
+        let x = path[k] as number
+        let y = path[k + 1] as number
+        const x1 = path[k + 2] as number
+        const y1 = path[k + 3] as number
+        const dx = Math.abs(x1 - x)
+        const dy = -Math.abs(y1 - y)
+        const sx = x < x1 ? 1 : -1
+        const sy = y < y1 ? 1 : -1
+        let err = dx + dy
+        for (;;) {
+          coverRoute(covered, width, height, x, y)
+          if (x === x1 && y === y1) break
+          const e2 = 2 * err
+          if (e2 >= dy) {
+            err += dy
+            x += sx
+          }
+          if (e2 <= dx) {
+            err += dx
+            y += sy
+          }
+        }
+      }
+      for (const tile of covered) {
+        const idx = tile * 4
+        data[idx] = Math.round((data[idx] as number) * (1 - alpha) + ROUTE_COLOR[0] * alpha)
+        data[idx + 1] = Math.round((data[idx + 1] as number) * (1 - alpha) + ROUTE_COLOR[1] * alpha)
+        data[idx + 2] = Math.round((data[idx + 2] as number) * (1 - alpha) + ROUTE_COLOR[2] * alpha)
+      }
+    }
   }
 
   for (const pt of points) {

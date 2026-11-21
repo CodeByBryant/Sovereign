@@ -59,20 +59,26 @@ export interface BiomeConfig {
 }
 
 export interface StrategicConfig {
-  /** Radius to check neighbours for river crossing detection. */
-  riverCrossingRadius: number
-  /** Radius to search for mountain pass saddle points. */
-  mountainPassRadius: number
-  /** How much higher the ground around a pass must be than the pass itself (elevation, 0 to 1). */
-  mountainPassRise: number
-  /** Fraction of the sampled ground around a pass that must be higher by `mountainPassRise`. */
-  mountainPassMinRatio: number
-  /** Max water width to qualify as a strait. */
-  straitMaxWidth: number
-  /** Min land-to-water ratio in scan area to count as peninsula. */
-  peninsulaMinRatio: number
-  /** Radius for peninsula scan. */
-  peninsulaRadius: number
+  /** The longest run of river cells (in route cells) a route may cross and still count as a ford. */
+  fordMaxRun: number
+  /** The longest stretch of open water (in route cells) a sea lane may cross and still count as a strait. */
+  straitMaxCells: number
+  /** How much higher a pass is than the lowest ground on each side of it along the route (elevation, 0 to 1). */
+  passRise: number
+  /** The lowest elevation (0 to 1) a pass can be at: hills and above. */
+  passMinElevation: number
+  /** A pass is the highest point of its route within this many route cells. */
+  passWindow: number
+  /** A land neck is a stretch of route at most this many cells from the sea (width about twice that). */
+  isthmusMaxSeaDistance: number
+  /** The land on each side of a neck is at least this many cells farther from the sea. */
+  isthmusRise: number
+  /** The wider land is looked for this many route cells beyond each end of the neck. */
+  isthmusWindow: number
+  /** Two points of one kind closer than this many cells are one point (the busier wins). */
+  mergeRadius: number
+  /** Routes carrying less than this fraction of the busiest route's traffic have no strategic points. */
+  minTraffic: number
 }
 
 /**
@@ -271,4 +277,40 @@ export interface ResourceRegrowth {
 export interface ResourcePlacementSettings extends ResourcePlacementConfig {
   /** Regrowth by catalogue key, for every renewable resource (the surface ones). Ground resources are finite. */
   regrowth: Record<string, ResourceRegrowth>
+}
+
+/* ------------------------------------------------------------------ */
+/*  Routes                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What it costs to cross the ground, per step of one cell. The cheapest path between two places is a
+ * route, so these numbers decide where roads, passes, fords and sea lanes go.
+ */
+export interface RouteCostConfig {
+  /** The cost of one step over flat, open ground. Everything else is added to it. */
+  base: number
+  /** Extra cost of a steep cell: this much for a cell as steep as `resources.features.slopeScale`. */
+  slope: number
+  /** Extra cost of high ground: this much at the highest peak, scaled from the highland line. */
+  height: number
+  /** Extra cost of a river cell, per unit of river width (so a ford is found where a river is narrow). */
+  river: number
+  /** The cost of one step by boat in coastal water (open water costs more than the land it replaces). */
+  sea: number
+  /** How far from land (in cells) a boat will go; water farther out is not part of any route. */
+  seaReach: number
+  /** Extra cost by biome (added to `base`): swamps, deserts and mountains are slow, grassland is not. */
+  biomes: Record<BiomeKey, number>
+}
+
+/** Where routes between settlements are drawn from, and how they are found. */
+export interface RoutesConfig {
+  /** Side of one route cell, in tiles: routes are found on this coarser grid. */
+  cell: number
+  /** The least distance (tiles) between two hubs, the places routes join. */
+  hubSpacing: number
+  /** The lowest site score (0 to 1) a place needs to be a hub. */
+  hubMinScore: number
+  cost: RouteCostConfig
 }

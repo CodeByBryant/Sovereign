@@ -11,6 +11,7 @@ import type {
   GovernmentType,
   NationData,
   NationPersonality,
+  NationProfile,
   NationStats
 } from '@sovereign/contracts'
 
@@ -39,6 +40,8 @@ export class Nation implements NationData {
   /** Flat tile index of the capital. */
   capital: number
   stats: NationStats
+  /** What the territory is like; stats, government and personality were derived from it. */
+  profile: NationProfile
 
   constructor(opts: {
     id: string
@@ -50,6 +53,7 @@ export class Nation implements NationData {
     capital: number
     provinces?: Set<number>
     stats?: Partial<NationStats>
+    profile: NationProfile
     founded?: number
   }) {
     this.id = opts.id
@@ -61,6 +65,7 @@ export class Nation implements NationData {
     this.capital = opts.capital
     this.provinces = opts.provinces ?? new Set<number>()
     this.founded = opts.founded ?? 0
+    this.profile = opts.profile
     this.stats = {
       population: opts.stats?.population ?? 100,
       military: opts.stats?.military ?? 100,

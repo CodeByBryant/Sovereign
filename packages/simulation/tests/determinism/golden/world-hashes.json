@@ -1,5 +1,5 @@
 {
-  "hashSchemaVersion": 2,
+  "hashSchemaVersion": 3,
   "entries": [
     {
       "name": "small world, seed 1, tick 0",
@@ -32,11 +32,15 @@
         },
         "nations": {
           "count": 8,
-          "minSpacing": 18
+          "minSpacing": 18,
+          "startArea": 150
+        },
+        "routes": {
+          "hubSpacing": 24
         }
       },
       "steps": 0,
-      "expectedHash": "ec02025a8f5743a79a76e89bffb2b75c"
+      "expectedHash": "faefb96557330c28fbcdef00d9ca5ece"
     },
     {
       "name": "small world, seed 12345, 100 ticks",
@@ -69,11 +73,15 @@
         },
         "nations": {
           "count": 8,
-          "minSpacing": 18
+          "minSpacing": 18,
+          "startArea": 150
+        },
+        "routes": {
+          "hubSpacing": 24
         }
       },
       "steps": 100,
-      "expectedHash": "57d6b1a18074a7bb226231b58894e3d7"
+      "expectedHash": "cd3418f1a97c8c90cec8fa44af0b494a"
     },
     {
       "name": "text seed \"sovereign\", 30 ticks",
@@ -106,11 +114,15 @@
         },
         "nations": {
           "count": 8,
-          "minSpacing": 18
+          "minSpacing": 18,
+          "startArea": 150
+        },
+        "routes": {
+          "hubSpacing": 24
         }
       },
       "steps": 30,
-      "expectedHash": "b1a94c9d328d16b34790ade559385bba"
+      "expectedHash": "be0788002db18da6c8c626050933bc99"
     },
     {
       "name": "island mode, seed 7",
@@ -143,11 +155,15 @@
         },
         "nations": {
           "count": 8,
-          "minSpacing": 18
+          "minSpacing": 18,
+          "startArea": 150
+        },
+        "routes": {
+          "hubSpacing": 24
         }
       },
       "steps": 10,
-      "expectedHash": "8f34a660f6e3dd163cf9326688d6c9e3"
+      "expectedHash": "a2f6ab4c65c3f543ee65e03d53901ec3"
     },
     {
       "name": "no nations, seed 3",
@@ -180,11 +196,15 @@
         },
         "nations": {
           "count": 0,
-          "minSpacing": 18
+          "minSpacing": 18,
+          "startArea": 150
+        },
+        "routes": {
+          "hubSpacing": 24
         }
       },
       "steps": 5,
-      "expectedHash": "b619a356be60e038af1f47816ebb8c65"
+      "expectedHash": "ebad290d803f114f4807f5e8f52e8d2f"
     },
     {
       "name": "land-ratio rescue (sea level 0.9 leaves too little land), seed 2024",
@@ -217,11 +237,15 @@
         },
         "nations": {
           "count": 8,
-          "minSpacing": 18
+          "minSpacing": 18,
+          "startArea": 150
+        },
+        "routes": {
+          "hubSpacing": 24
         }
       },
       "steps": 0,
-      "expectedHash": "e2ead197366673d91b4f50b116503752"
+      "expectedHash": "160a33176713af3be41fc9ccd80506e5"
     },
     {
       "name": "slower clock: timestep 0.25, 40 ticks",
@@ -254,12 +278,16 @@
         },
         "nations": {
           "count": 8,
-          "minSpacing": 18
+          "minSpacing": 18,
+          "startArea": 150
         },
-        "timestep": 0.25
+        "timestep": 0.25,
+        "routes": {
+          "hubSpacing": 24
+        }
       },
       "steps": 40,
-      "expectedHash": "7d30ec1d0ab6787b049180f775f49395"
+      "expectedHash": "87de2bde890308a7ceb0e6cad0c62e34"
     },
     {
       "name": "wider map 320x200, seed 99, 1000 ticks",
@@ -292,11 +320,15 @@
         },
         "nations": {
           "count": 12,
-          "minSpacing": 25
+          "minSpacing": 25,
+          "startArea": 150
+        },
+        "routes": {
+          "hubSpacing": 24
         }
       },
       "steps": 1000,
-      "expectedHash": "8e03bc5a0854b5a6df3a36c352653e52"
+      "expectedHash": "2589716890a51df5c48d59c25432cdd9"
     }
   ]
 }

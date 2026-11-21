@@ -14,61 +14,33 @@ Nations are autonomous entities that own territory (provinces), have unique visu
 
 **Module:** `spawnNations()` in `packages/simulation/src/nations/NationSpawner.ts`
 
-### 1. Find Candidates
+A nation is built from the land up. Nothing about it is a free random draw except a small jitter on its government and personality.
 
-Every 4th tile on the map is evaluated for habitability:
+### 1. Capitals (`capitals.ts`)
 
-| Biome            | Desirability |
-| ---------------- | ------------ |
-| Grassland        | 1.0          |
-| Woodland         | 0.9          |
-| Temperate Forest | 0.85         |
-| Steppe           | 0.7          |
-| Tropical Forest  | 0.7          |
-| Savanna          | 0.65         |
-| Scrubland        | 0.6          |
-| Rainforest       | 0.55         |
-| Boreal Forest    | 0.5          |
-| Cold Steppe      | 0.4          |
-| Highland         | 0.35         |
-| Taiga            | 0.35         |
-| Wetland          | 0.3          |
-| Swamp            | 0.25         |
-| Temperate Desert | 0.2          |
-| Badlands         | 0.15         |
+Capitals go on **hubs**, the best places to live that the routes join ([terrain.md](terrain.md), section 8). `chooseCapitals` takes the best site first, never closer than `nations.minSpacing` to a capital already chosen, and prefers sites far from the others (a site's weight times a spread factor from 0.5, at the minimum spacing, to 1, at twice it), so nations spread over the map instead of crowding the best corner. No randomness; ties go to the lower hub index. Fewer than `nations.count` come back if the sites run out.
 
-Tiles adjacent to rivers get a **+0.2 bonus** (river civilizations).
+The site score is shared with the hubs: the biome's desirability (grassland 1.0 down to badlands 0.15; deserts, mountains, ice and tundra are not settled), a river in the cell (+0.2), the sea within a cell (+0.3, a port) and the food, timber and stone within about 12 tiles (up to +0.5), scaled to 0 to 1.
 
-Uninhabitable biomes (ocean, deep ocean, shore, glacier, polar desert, desert, mountain, alpine) are excluded entirely.
+### 2. Starting territory (`territory.ts`)
 
-### 2. Pick Spawn Points
+All nations grow at once from their capitals over the **cost of crossing the ground** (the route cost grid), each step taking the cheapest unclaimed tile any nation can reach, until each has `nations.startArea` tiles (1,200 by default). Territories spread over open ground and stop at mountains, rivers and coasts; where two meet on open ground the border is halfway; a nation that has its area stops and the others go on. Ice (glacier, polar desert) and water cannot be owned. The tiles are kept in claim order.
 
-Everything random here comes from named streams of the world seed: `spawn` for the shuffle and the starting stats, and `names`, `colors` and `flags` for the generators. A nation's tiles are a `Set` kept in **claim order**: JavaScript guarantees insertion order, and the engine never iterates anything else, so the order is part of the world's identity (it is in the save and the hash).
+### 3. The land is measured (`profile.ts`)
 
-Greedy selection from shuffled-and-sorted candidates:
+`measureProfile` turns a territory into a `NationProfile`, a pure function of the tiles and the terrain: the **food** the land yields (the fertility of each biome, +0.3 for a river, +0.15 and a fishery for a coast, grain 1, pasture 0.7), **timber**, **stone**, **horses**, **metals** (iron 1, copper 0.8, coal 0.6), **luxuries**, the number of different **resources**, **coast**, **river** and **high-ground** tiles, the **defence** value of the strategic points inside it, its share of the route network's **traffic**, and its **contacts** (the other capitals within three routes). Resource amounts are the stock left, so a mined-out seam stops counting.
 
-- Sorted by score (descending) after Fisher-Yates shuffle
-- Each pick must be ≥ `minSpacing` tiles from all existing picks
-- Default: 12 nations, 70-tile minimum spacing
+### 4. Stats, government and personality follow (`derive.ts`)
 
-### 3. Claim Territory
+Pure functions of the profile, so the simulation can call them again whenever a territory changes:
 
-Each nation claims a **5×5 area** (radius 2) around its spawn point:
+- **Population** from food; **military** from the people, metals, horses, timber, stone, defensible ground and strongholds; **economy** from the variety of resources, luxuries, ports and trade traffic; **diplomacy** from neighbours, trade and wealth. **No randomness at all** in the stats (a test spawns the same land with two seeds and checks they are identical).
+- **Government** is the best-scoring of the eight for the nation's facts (a small, poor, isolated people are tribal; a populous, armed one an empire; a trading coast a republic; the owners of great wealth an oligarchy; a high, isolated land a theocracy; a poor, hungry, armed one a dictatorship; a wealthy, connected, peaceful one a democracy), with a draw of at most 0.08 breaking close calls.
+- **Personality** follows circumstance (land-poor peoples are hungrier and more expansionist, trade makes merchants, neighbours make diplomats, strongholds and iron make soldiers), nudged a little by the government, with a jitter of at most 0.06 per trait.
 
-- Skips water tiles
-- Skips already-claimed tiles
-- Skips uninhabitable biomes (ocean, shore, glacier, polar desert)
+The numbers are a first design. No economy exists yet to say what a nation needs, so the constants are provisional; what follows from what is the point. Names, colours and flags still come from their own generators (streams `names`, `colors`, `flags`); the jitter comes from the `spawn` stream.
 
-### 4. Create Nation Entity
-
-Each `Nation` instance receives:
-
-- **Name** — procedural (prefix + root + suffix, ~40% get a government title)
-- **Colour** — golden-angle HSL spacing with minimum RGB distance check
-- **Flag** — 6 pattern types (solid, horizontal/vertical stripes, cross, diagonal, quartered)
-- **Government** — random from 8 types (monarchy, republic, democracy, theocracy, empire, tribal, oligarchy, dictatorship)
-- **Personality** — 5 traits, each 0.1–0.9: aggression, expansionism, diplomacy, mercantilism, militarism
-- **Stats** — population, military, economy, diplomacy
+Measured over 10 worlds of 2000 x 2000 (120 nations): every nation has its 1,200 tiles (it was 25), all eight governments occur, population follows food at a rank correlation of 0.77 (it was -0.10), economy follows luxuries at 0.87 (it was -0.06), military follows metals at 0.47 (it was -0.13). See [decision 0006](decisions/0006-routes-and-nations-from-the-land.md).
 
 ---
 
@@ -84,8 +56,9 @@ class Nation {
   government: GovernmentType // 'monarchy' | 'republic' | ...
   personality: NationPersonality
   provinces: Set<number> // Flat tile indices, in claim order
-  capital: number // Spawn tile index
-  stats: NationStats // population, military, economy, diplomacy
+  capital: number // A hub: the best site it started on
+  stats: NationStats // population, military, economy, diplomacy: derived from the profile
+  profile: NationProfile // what its land is like (measured)
 }
 ```
 
@@ -126,9 +99,10 @@ The spawner writes ownership after claiming territory. The political overlay rea
 ## Configuration
 
 ```ts
-defaultConfig.terrain.nations = {
+defaultWorldConfig.nations = {
   count: 12, // Number of nations to spawn
-  minSpacing: 70 // Minimum tile distance between capitals
+  minSpacing: 70, // Minimum tile distance between capitals
+  startArea: 1200 // Tiles each nation starts with
 }
 ```
 

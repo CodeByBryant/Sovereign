@@ -3,7 +3,13 @@
  * @description What a host (UI, CLI) may read of a simulated world: plain, JSON-safe data with no
  * references into the engine's state. Bulk tile layers are read through `TerrainFields` instead.
  */
-import type { FlagPattern, GovernmentType, NationPersonality, NationStats } from './nation'
+import type {
+  FlagPattern,
+  GovernmentType,
+  NationPersonality,
+  NationProfile,
+  NationStats
+} from './nation'
 
 export interface NationSnapshot {
   id: string
@@ -16,6 +22,8 @@ export interface NationSnapshot {
   /** Flat tile index of the capital. */
   capital: number
   stats: NationStats
+  /** What the nation's land is like: the facts its stats follow from. */
+  profile: NationProfile
   /** Number of tiles the nation owns. */
   area: number
 }

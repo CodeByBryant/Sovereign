@@ -15,6 +15,7 @@ import {
   BIOME_KEYS,
   RESOURCE_CATALOG,
   resourceDef,
+  type NationProfile,
   type NationSnapshot,
   type TerrainFields,
   type WorldSnapshot
@@ -27,6 +28,24 @@ import { stateHasher } from '../serialization/hash'
 import { generateTerrain } from '../terrain/pipeline'
 import { buildRegrowthTable, ResourceStocks, type ResourceLayerName } from './ResourceStocks'
 import { WorldMap } from './WorldMap'
+
+/** The fields of a nation's profile, in the order they are hashed, saved and validated. */
+export const PROFILE_FIELDS = [
+  'area',
+  'food',
+  'timber',
+  'stone',
+  'horses',
+  'metals',
+  'luxuries',
+  'diversity',
+  'coast',
+  'river',
+  'highGround',
+  'defence',
+  'traffic',
+  'contacts'
+] as const satisfies ReadonlyArray<keyof NationProfile>
 
 /** Ownership byte for a tile that belongs to no nation. */
 export const UNCLAIMED = 255
@@ -107,21 +126,32 @@ export class World {
       rivers: config.rivers,
       biomes: config.biomes,
       strategic: config.strategic,
+      routes: config.routes,
       resources: config.resources,
       minLandRatio: config.map.minLandRatio
     })
 
     // The nations are placed on the world as generated, so use its effective sea level.
-    const { nations, ownerMap } = spawnNations(
-      terrain.elevation,
-      terrain.biomeIds,
-      terrain.riverMask,
-      terrain.resources,
-      { ...terrainConfig, seaLevel: terrain.seaLevel },
-      config.nations.count,
+    const { nations, ownerMap } = spawnNations({
+      width: terrain.width,
+      height: terrain.height,
+      seaLevel: terrain.seaLevel,
+      elevation: terrain.elevation,
+      biomeIds: terrain.biomeIds,
+      riverMask: terrain.riverMask,
+      riverWidth: terrain.riverWidth,
+      resources: terrain.resources,
+      strategicPoints: terrain.strategicPoints,
+      hubs: terrain.hubs,
+      routes: terrain.routes,
+      routeConfig: config.routes,
+      highlandElevation: config.biomes.highlandElevation,
+      slopeScale: config.resources.features.slopeScale,
+      count: config.nations.count,
       seed,
-      config.nations.minSpacing
-    )
+      minSpacing: config.nations.minSpacing,
+      startArea: config.nations.startArea
+    })
 
     const indexOf = new Map<string, number>()
     nations.forEach((nation, index) => indexOf.set(nation.id, index))
@@ -208,6 +238,23 @@ export class World {
       h.writeFloat64(p.value)
     }
 
+    h.writeUint32(t.hubs.length)
+    for (const hub of t.hubs) {
+      h.writeUint32(hub.x)
+      h.writeUint32(hub.y)
+      h.writeFloat64(hub.weight)
+    }
+
+    h.writeUint32(t.routes.length)
+    for (const route of t.routes) {
+      h.writeUint32(route.from)
+      h.writeUint32(route.to)
+      h.writeFloat64(route.cost)
+      h.writeFloat64(route.traffic)
+      h.writeUint32(route.path.length)
+      for (const v of route.path) h.writeUint32(v)
+    }
+
     h.writeUint32(this.nations.length)
     for (const n of this.nations) {
       h.writeString(n.id)
@@ -236,6 +283,7 @@ export class World {
       h.writeFloat64(n.stats.military)
       h.writeFloat64(n.stats.economy)
       h.writeFloat64(n.stats.diplomacy)
+      for (const key of PROFILE_FIELDS) h.writeFloat64(n.profile[key])
       h.writeUint32(n.provinces.size)
       for (const tile of n.provinces) h.writeUint32(tile)
     }
@@ -259,6 +307,7 @@ export class World {
       personality: { ...n.personality },
       capital: n.capital,
       stats: { ...n.stats },
+      profile: { ...n.profile },
       area: n.provinces.size
     }))
     return {
@@ -325,7 +374,11 @@ export class World {
       if (p.x < 0 || p.x >= t.width || p.y < 0 || p.y >= t.height) {
         problems.push(`strategic point (${p.x}, ${p.y}) is outside the map`)
       }
+      if (!Number.isInteger(p.value) || p.value < 1 || p.value > 10) {
+        problems.push(`strategic point (${p.x}, ${p.y}) has the value ${p.value}, not 1 to 10`)
+      }
     }
+    this.validateRoutes(problems)
 
     if (this.nations.length > UNCLAIMED) {
       problems.push(
@@ -418,5 +471,65 @@ export class World {
         }
       }
     }
+  }
+
+  /** The hubs and the routes between them: positions, references, weights and costs. */
+  private validateRoutes(problems: string[]): void {
+    const t = this.terrain
+    t.hubs.forEach((hub, i) => {
+      if (
+        !Number.isInteger(hub.x) ||
+        !Number.isInteger(hub.y) ||
+        hub.x < 0 ||
+        hub.x >= t.width ||
+        hub.y < 0 ||
+        hub.y >= t.height
+      ) {
+        problems.push(`hub ${i} (${hub.x}, ${hub.y}) is outside the map`)
+      }
+      if (!(hub.weight > 0 && hub.weight <= 1)) {
+        problems.push(`hub ${i} has the weight ${hub.weight}, not above 0 and at most 1`)
+      }
+    })
+    t.routes.forEach((route, i) => {
+      if (
+        !Number.isInteger(route.from) ||
+        !Number.isInteger(route.to) ||
+        route.from < 0 ||
+        route.to >= t.hubs.length ||
+        route.from >= route.to
+      ) {
+        problems.push(
+          `route ${i} joins hubs ${route.from} and ${route.to}, which are not two hubs in order`
+        )
+      }
+      if (
+        !(Number.isFinite(route.cost) && route.cost >= 0) ||
+        !(Number.isFinite(route.traffic) && route.traffic >= 0)
+      ) {
+        problems.push(`route ${i} has a cost or traffic that is not a finite number of 0 or more`)
+      }
+      if (route.path.length < 4 || route.path.length % 2 !== 0) {
+        problems.push(
+          `route ${i} has ${route.path.length} path values, not an even number of at least 4`
+        )
+        return
+      }
+      for (let k = 0; k < route.path.length; k += 2) {
+        const x = route.path[k] as number
+        const y = route.path[k + 1] as number
+        if (
+          !Number.isInteger(x) ||
+          !Number.isInteger(y) ||
+          x < 0 ||
+          x >= t.width ||
+          y < 0 ||
+          y >= t.height
+        ) {
+          problems.push(`route ${i} passes the tile (${x}, ${y}), outside the map`)
+          return
+        }
+      }
+    })
   }
 }

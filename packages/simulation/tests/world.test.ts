@@ -5,6 +5,7 @@ import { spawnNations } from '../src/nations/NationSpawner'
 import { generateTerrain } from '../src/terrain/pipeline'
 import { World } from '../src/world/World'
 import { hashTerrain } from './support/fieldHash'
+import { spawnInputOf } from './support/spawnInput'
 import { hashNations } from './support/nationHash'
 import { smallTerrainRequest } from './support/terrainRequest'
 import { smallWorldOverrides } from './support/worldOptions'
@@ -73,23 +74,7 @@ describe('World.create', () => {
 
   it('spawns exactly the nations spawnNations gives on the generated terrain at its effective sea level', () => {
     const rescued = World.create({ seed: 2024, config: smallWorldOverrides({ seaLevel: 0.9 }) })
-    const t = rescued.terrain
-    const expected = spawnNations(
-      t.elevation,
-      t.biomeIds,
-      t.riverMask,
-      t.resources,
-      {
-        ...rescued.config.elevation,
-        width: t.width,
-        height: t.height,
-        seaLevel: t.seaLevel,
-        islandMode: rescued.config.map.islandMode
-      },
-      rescued.config.nations.count,
-      rescued.seed,
-      rescued.config.nations.minSpacing
-    ).nations
+    const expected = spawnNations(spawnInputOf(rescued)).nations
     expect(hashNations(rescued.nations)).toBe(hashNations(expected))
   })
 
@@ -376,6 +361,62 @@ describe('resources in the world', () => {
   })
 })
 
+describe('validate() of the route network', () => {
+  it('has hubs, routes and strategic points to check in a test world', () => {
+    const world = make(7)
+    expect(world.terrain.hubs.length).toBeGreaterThan(1)
+    expect(world.terrain.routes.length).toBeGreaterThan(0)
+    expect(world.terrain.strategicPoints.length).toBeGreaterThan(0)
+  })
+
+  it.each([
+    ['a hub outside the map', (w: World) => (w.terrain.hubs[0]!.x = w.terrain.width), /hub/],
+    ['a hub with a weight above 1', (w: World) => (w.terrain.hubs[0]!.weight = 1.5), /hub/],
+    ['a hub with a weight of 0', (w: World) => (w.terrain.hubs[0]!.weight = 0), /hub/],
+    ['a route to a hub that is not there', (w: World) => (w.terrain.routes[0]!.to = 999), /route/],
+    [
+      'a route from a hub after its end',
+      (w: World) => (w.terrain.routes[0]!.from = w.terrain.routes[0]!.to),
+      /route/
+    ],
+    [
+      'a route with an odd number of path values',
+      (w: World) => w.terrain.routes[0]!.path.push(3),
+      /route/
+    ],
+    [
+      'a route with a tile outside the map',
+      (w: World) => (w.terrain.routes[0]!.path[0] = w.terrain.width),
+      /route/
+    ],
+    [
+      'a route that is only one tile',
+      (w: World) => (w.terrain.routes[0]!.path.length = 2),
+      /route/
+    ],
+    ['a route with a negative cost', (w: World) => (w.terrain.routes[0]!.cost = -1), /route/],
+    [
+      'a route with a non-finite traffic',
+      (w: World) => (w.terrain.routes[0]!.traffic = Number.NaN),
+      /route/
+    ],
+    [
+      'a strategic point with a value of 0',
+      (w: World) => (w.terrain.strategicPoints[0]!.value = 0),
+      /strategic/
+    ],
+    [
+      'a strategic point with a value above 10',
+      (w: World) => (w.terrain.strategicPoints[0]!.value = 11),
+      /strategic/
+    ]
+  ])('reports %s', (_label, edit, pattern) => {
+    const world = make(7)
+    edit(world)
+    expect(world.validate().join('\n')).toMatch(pattern)
+  })
+})
+
 describe('validate()', () => {
   it('reports a resource type that is not in the catalogue', () => {
     const world = make(7)
@@ -540,10 +581,27 @@ describe('what the state hash covers: every field of a nation, and the seed', ()
   })
 })
 
+const PROFILE_KEYS = [
+  'area',
+  'food',
+  'timber',
+  'stone',
+  'horses',
+  'metals',
+  'luxuries',
+  'diversity',
+  'coast',
+  'river',
+  'highGround',
+  'defence',
+  'traffic',
+  'contacts'
+]
+
 describe('what the state hash covers', () => {
   const base = make(7).stateHash()
 
-  it.each([
+  it.each<[string, (w: World) => unknown]>([
     [
       'an elevation value',
       (w: World) => (w.terrain.elevation[100] = (w.terrain.elevation[100] as number) + 0.001)
@@ -576,10 +634,31 @@ describe('what the state hash covers', () => {
       (w: World) => w.terrain.strategicPoints[0] && (w.terrain.strategicPoints[0].value += 1)
     ],
     [
+      'a strategic point type',
+      (w: World) =>
+        (w.terrain.strategicPoints[0]!.type =
+          w.terrain.strategicPoints[0]!.type === 'isthmus' ? 'strait' : 'isthmus')
+    ],
+    ['a hub position', (w: World) => (w.terrain.hubs[0]!.x += 1)],
+    ['a hub weight', (w: World) => (w.terrain.hubs[0]!.weight += 0.01)],
+    ['a route end', (w: World) => (w.terrain.routes[0]!.to += 1)],
+    ['a route start', (w: World) => (w.terrain.routes[0]!.from += 1)],
+    ['a route cost', (w: World) => (w.terrain.routes[0]!.cost += 1)],
+    ['a route traffic', (w: World) => (w.terrain.routes[0]!.traffic += 1)],
+    ['a route tile', (w: World) => (w.terrain.routes[0]!.path[2]! += 1)],
+    ['the length of a route', (w: World) => w.terrain.routes[0]!.path.push(1, 1)],
+    ['a route being gone', (w: World) => w.terrain.routes.pop()],
+    ['a hub being gone', (w: World) => w.terrain.hubs.pop()],
+    [
       'the ownership layer',
       (w: World) => (w.map.ownership[0] = w.map.ownership[0] === 255 ? 0 : 255)
     ],
     ['a nation name', (w: World) => ((w.nations[0] as { name: string }).name += 'x')],
+    ...PROFILE_KEYS.map((key): [string, (w: World) => unknown] => [
+      `a nation profile's ${key}`,
+      (w: World) =>
+        ((w.nations[0] as unknown as { profile: Record<string, number> }).profile[key]! += 1)
+    ]),
     [
       'a nation stat',
       (w: World) => ((w.nations[0] as { stats: { military: number } }).stats.military += 1)

@@ -6,7 +6,9 @@ import {
   RESOURCE_CATALOG,
   ResourceType,
   getBiomeColor,
-  type ResourceSlots
+  type ResourceSlots,
+  type StrategicPoint,
+  type StrategicRoute
 } from '@sovereign/contracts'
 import {
   biomeRgba,
@@ -79,6 +81,157 @@ describe('overlays', () => {
 
   it('strategic: dims the map and stamps a diamond marker per point, clipped at the edges', () => {
     expect(checksum(strategicRgba(base, f.width, f.height, f.strategicPoints))).toBe('66c4f7b2')
+  })
+
+  describe('strategic routes', () => {
+    const W = 24
+    const H = 16
+    const grey = new Uint8ClampedArray(W * H * 4)
+    for (let i = 0; i < W * H; i += 1) grey.set([100, 100, 100, 255], i * 4)
+    const px = (rgba: Uint8ClampedArray, x: number, y: number): number[] =>
+      Array.from(rgba.slice((y * W + x) * 4, (y * W + x) * 4 + 4))
+    const route = (path: number[], traffic: number): StrategicRoute => ({
+      from: 0,
+      to: 1,
+      cost: 1,
+      traffic,
+      path
+    })
+    const ROUTE = [255, 210, 120]
+    const blend = (alpha: number): number[] =>
+      ROUTE.map((c) => Math.round(75 * (1 - alpha) + c * alpha))
+
+    it('draws no routes when there are none: the dimmed map and its markers, as before', () => {
+      expect(checksum(strategicRgba(base, f.width, f.height, f.strategicPoints, []))).toBe(
+        '66c4f7b2'
+      )
+    })
+
+    it('paints a route as a line two tiles wide along its path, and leaves the rest of the map dimmed', () => {
+      const out = strategicRgba(grey, W, H, [], [route([2, 5, 10, 5], 4)])
+      for (let x = 2; x <= 10; x += 1) {
+        expect(px(out, x, 5).slice(0, 3), `x ${x}`).toEqual(blend(0.85))
+        expect(px(out, x, 6).slice(0, 3), `x ${x} below`).toEqual(blend(0.85))
+      }
+      expect(px(out, 6, 9)).toEqual([75, 75, 75, 255])
+      expect(px(out, 12, 5)).toEqual([75, 75, 75, 255])
+      expect(px(out, 6, 4)).toEqual([75, 75, 75, 255])
+    })
+
+    it('paints a diagonal route without gaps: every column between its ends has a painted tile', () => {
+      const out = strategicRgba(grey, W, H, [], [route([2, 2, 14, 8], 1)])
+      for (let x = 2; x <= 14; x += 1) {
+        const painted = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].some((y) => px(out, x, y)[0] !== 75)
+        expect(painted, `column ${x}`).toBe(true)
+      }
+    })
+
+    it('joins the points of a path: every segment is drawn', () => {
+      const out = strategicRgba(grey, W, H, [], [route([2, 3, 8, 3, 8, 10], 1)])
+      expect(px(out, 5, 3)[0]).not.toBe(75)
+      expect(px(out, 8, 7)[0]).not.toBe(75)
+      expect(px(out, 5, 7)[0]).toBe(75)
+    })
+
+    it('draws a busier route brighter than a quiet one, by the square root of its share of the busiest', () => {
+      const out = strategicRgba(
+        grey,
+        W,
+        H,
+        [],
+        [route([2, 3, 10, 3], 4), route([2, 10, 10, 10], 1)]
+      )
+      expect(px(out, 6, 3).slice(0, 3)).toEqual(blend(0.85))
+      expect(px(out, 6, 10).slice(0, 3)).toEqual(blend(0.3 + (0.85 - 0.3) * 0.5))
+    })
+
+    it('puts a strategic point marker over a route', () => {
+      const point: StrategicPoint = { x: 6, y: 5, type: 'mountain_pass', value: 10 }
+      const without = strategicRgba(grey, W, H, [], [route([2, 5, 10, 5], 1)])
+      const withPoint = strategicRgba(grey, W, H, [point], [route([2, 5, 10, 5], 1)])
+      expect(px(withPoint, 6, 5)).not.toEqual(px(without, 6, 5))
+    })
+
+    it('clips a route that runs off the map, and draws a one-point path as a single stamp', () => {
+      expect(() => strategicRgba(grey, W, H, [], [route([-5, 4, 40, 4], 1)])).not.toThrow()
+      const out = strategicRgba(grey, W, H, [], [route([-5, 4, 40, 4], 1)])
+      expect(px(out, 0, 4)[0]).not.toBe(75)
+      expect(px(out, W - 1, 4)[0]).not.toBe(75)
+      const single = strategicRgba(grey, W, H, [], [route([7, 7], 1)])
+      expect(px(single, 7, 7)[0]).not.toBe(75)
+      expect(px(single, 9, 7)[0]).toBe(75)
+    })
+
+    it('stamps a tile and the ones to its right and below it, and nothing beyond', () => {
+      const out = strategicRgba(grey, W, H, [], [route([5, 5, 6, 5], 1)])
+      for (const [x, y] of [
+        [5, 5],
+        [6, 5],
+        [7, 5],
+        [5, 6],
+        [6, 6],
+        [7, 6]
+      ] as const) {
+        expect(px(out, x, y)[0], `${x},${y}`).not.toBe(75)
+      }
+      expect(px(out, 4, 5)[0]).toBe(75)
+      expect(px(out, 8, 5)[0]).toBe(75)
+      expect(px(out, 5, 4)[0]).toBe(75)
+      expect(px(out, 5, 7)[0]).toBe(75)
+    })
+
+    it('draws a shallow diagonal along the straight line between its ends', () => {
+      // (0, 0) to (5, 2): the line is at y = 0, 0, 1, 1, 2, 2 for x = 0 to 5
+      const out = strategicRgba(grey, W, H, [], [route([0, 0, 5, 2], 1)])
+      const line = [
+        [0, 0],
+        [1, 0],
+        [2, 1],
+        [3, 1],
+        [4, 2],
+        [5, 2]
+      ]
+      const covered = new Set<string>()
+      for (const [x, y] of line)
+        for (const [dx, dy] of [
+          [0, 0],
+          [1, 0],
+          [0, 1],
+          [1, 1]
+        ])
+          covered.add(`${x! + dx!},${y! + dy!}`)
+      for (let y = 0; y < 6; y += 1) {
+        for (let x = 0; x < 9; x += 1) {
+          expect(px(out, x, y)[0] !== 75, `${x},${y}`).toBe(covered.has(`${x},${y}`))
+        }
+      }
+    })
+
+    it('does not wrap a route that leaves the right edge onto the next row', () => {
+      const out = strategicRgba(grey, W, H, [], [route([20, 4, 30, 4], 1)])
+      expect(px(out, 3, 5)[0]).toBe(75) // where column 27 of row 4 would land if it wrapped
+      expect(px(out, 23, 4)[0]).not.toBe(75)
+    })
+
+    it('draws nothing for a route with no traffic beside a busy one', () => {
+      const out = strategicRgba(
+        grey,
+        W,
+        H,
+        [],
+        [route([2, 3, 10, 3], 4), route([2, 10, 10, 10], 0)]
+      )
+      expect(px(out, 6, 3)[0]).not.toBe(75)
+      expect(px(out, 6, 10)).toEqual([75, 75, 75, 255])
+    })
+
+    it('never modifies the base image, and ignores routes with no traffic', () => {
+      const copy = new Uint8ClampedArray(grey)
+      strategicRgba(grey, W, H, [], [route([2, 5, 10, 5], 1)])
+      expect(grey).toEqual(copy)
+      const quiet = strategicRgba(grey, W, H, [], [route([2, 5, 10, 5], 0)])
+      expect(px(quiet, 6, 5)).toEqual([75, 75, 75, 255])
+    })
   })
 
   it('resource: tints tiles that have a resource and leaves the others alone', () => {

@@ -18,6 +18,7 @@ import type {
   BiomeNoiseConfig,
   HumidityConfig,
   ResourcePlacementSettings,
+  RoutesConfig,
   RiverConfig,
   StrategicConfig,
   TemperatureConfig,
@@ -45,8 +46,10 @@ export type ElevationConfig = Omit<TerrainConfig, 'width' | 'height' | 'seaLevel
 export interface NationsConfig {
   /** Number of nations to spawn, at most 255 (the ownership layer is one byte per tile). */
   count: number
-  /** Minimum tile distance between spawn points. */
+  /** Minimum tile distance between capitals. */
   minSpacing: number
+  /** The number of tiles each nation tries to claim to start with (they grow over the cost of the ground). */
+  startArea: number
 }
 
 export interface WorldConfig {
@@ -58,6 +61,8 @@ export interface WorldConfig {
   rivers: RiverConfig
   biomes: BiomeConfig
   strategic: StrategicConfig
+  /** Where routes between settlements go (the cheapest paths over the terrain). */
+  routes: RoutesConfig
   /** Where each resource is found, how rich it is and how it regrows. */
   resources: ResourcePlacementSettings
   nations: NationsConfig
@@ -296,28 +301,76 @@ export const defaultWorldConfig: WorldConfig = {
   /* ------------------------------------------------------------ */
 
   /**
-   * Detection radii for strategic feature identification.
+   * What counts as a strategic point on a route: a pass over a ridge, a ford across a river, a strait
+   * between landmasses, a neck of land. Distances are in route cells (`routes.cell` tiles each).
    *
-   * @example Wider strait detection
+   * @example Count wider water as a strait
    * ```ts
-   * defaultWorldConfig.strategic.straitMaxWidth = 20
+   * defaultWorldConfig.strategic.straitMaxCells = 12
    * ```
    */
   strategic: {
-    /** Search radius for river crossing candidates (tiles). @default 5 */
-    riverCrossingRadius: 5,
-    /** Saddle-point search radius for mountain passes. @default 8 */
-    mountainPassRadius: 8,
-    /** Elevation by which the ground around a pass must rise above it. @default 0.02 */
-    mountainPassRise: 0.02,
-    /** Share of the surrounding samples that must rise by that much. @default 0.35 */
-    mountainPassMinRatio: 0.35,
-    /** Max water gap to qualify as a strait (tiles). @default 12 */
-    straitMaxWidth: 12,
-    /** Min water-to-total ratio in scan circle for peninsula. @default 0.6 */
-    peninsulaMinRatio: 0.6,
-    /** Scan radius for peninsula detection (tiles). @default 10 */
-    peninsulaRadius: 10
+    fordMaxRun: 6,
+    straitMaxCells: 8,
+    passRise: 0.02,
+    passMinElevation: 0.55,
+    passWindow: 6,
+    isthmusMaxSeaDistance: 2,
+    isthmusRise: 2,
+    isthmusWindow: 6,
+    mergeRadius: 3,
+    minTraffic: 0.02
+  },
+
+  /* ------------------------------------------------------------ */
+  /*  Routes                                                       */
+  /* ------------------------------------------------------------ */
+
+  /**
+   * The route network: hubs (the best places to live, at least `hubSpacing` apart) are joined by the
+   * cheapest paths over the terrain. Strategic points are where those paths have to go: over a pass,
+   * through a ford, along a land neck, across a strait. See docs/terrain.md.
+   */
+  routes: {
+    cell: 4,
+    hubSpacing: 60,
+    hubMinScore: 0.3,
+    cost: {
+      base: 1,
+      slope: 6,
+      height: 2,
+      river: 3,
+      sea: 5,
+      seaReach: 12,
+      biomes: {
+        deep_ocean: 0,
+        ocean: 0,
+        shore: 0.2,
+        polar_desert: 1,
+        glacier: 2.5,
+        tundra: 0.5,
+        alpine: 1.5,
+        boreal_forest: 0.4,
+        taiga: 0.5,
+        cold_steppe: 0.2,
+        temperate_desert: 0.6,
+        steppe: 0,
+        grassland: 0,
+        woodland: 0.2,
+        temperate_forest: 0.4,
+        chaparral: 0.2,
+        swamp: 2,
+        desert: 1,
+        badlands: 0.8,
+        savanna: 0.1,
+        tropical_forest: 0.8,
+        rainforest: 1.2,
+        wetland: 1.5,
+        mangrove: 2,
+        highland: 0.6,
+        mountain: 3
+      }
+    }
   },
 
   /* ------------------------------------------------------------ */
@@ -689,7 +742,9 @@ export const defaultWorldConfig: WorldConfig = {
     /** Number of nations to spawn. @default 12 */
     count: 12,
     /** Minimum tile distance between spawn points. @default 70 */
-    minSpacing: 70
+    minSpacing: 70,
+    /** Tiles each nation starts with, grown over the cost of the ground. @default 1200 */
+    startArea: 1200
   },
 
   /* ------------------------------------------------------------ */
@@ -735,6 +790,7 @@ export function resolveWorldConfig(overrides: WorldConfigOverrides = {}): WorldC
     rivers: merge(d.rivers, overrides.rivers),
     biomes: merge(d.biomes, overrides.biomes),
     strategic: merge(d.strategic, overrides.strategic),
+    routes: merge(d.routes, overrides.routes),
     resources: merge(d.resources, overrides.resources),
     nations: merge(d.nations, overrides.nations),
     timestep: overrides.timestep ?? d.timestep
@@ -784,6 +840,9 @@ export function validateWorldConfig(config: WorldConfig): string[] {
     problems.push('nations.count must be an integer from 0 to 255')
   }
   if (!(nations.minSpacing > 0)) problems.push('nations.minSpacing must be greater than 0')
+  if (!isInteger(nations.startArea) || nations.startArea < 1) {
+    problems.push('nations.startArea must be a whole number of tiles, at least 1')
+  }
   if (!(config.timestep > 0)) problems.push('timestep must be greater than 0')
 
   const noise: Array<
@@ -810,14 +869,60 @@ export function validateWorldConfig(config: WorldConfig): string[] {
   validateProfile('humidity', config.humidity.profile, problems)
   validateBiomeTable(config.biomes, problems)
   validateResourcePlacement(config.resources, problems)
-  if (!(config.strategic.mountainPassRise > 0)) {
-    problems.push('strategic.mountainPassRise must be greater than 0')
-  }
-  if (!(config.strategic.mountainPassMinRatio > 0 && config.strategic.mountainPassMinRatio <= 1)) {
-    problems.push('strategic.mountainPassMinRatio must be greater than 0 and at most 1')
-  }
+  validateRoutes(config.routes, problems)
+  validateStrategic(config.strategic, problems)
 
   return problems
+}
+
+/** Problems with the strategic point settings. */
+function validateStrategic(strategic: StrategicConfig, problems: string[]): void {
+  const at = 'strategic'
+  for (const name of [
+    'fordMaxRun',
+    'straitMaxCells',
+    'passWindow',
+    'isthmusMaxSeaDistance',
+    'isthmusRise',
+    'isthmusWindow',
+    'mergeRadius'
+  ] as const) {
+    if (!isInteger(strategic[name]) || strategic[name] < 1) {
+      problems.push(`${at}.${name} must be a whole number of at least 1`)
+    }
+  }
+  if (!(strategic.passRise > 0)) problems.push(`${at}.passRise must be greater than 0`)
+  if (!(strategic.passMinElevation >= 0 && strategic.passMinElevation <= 1)) {
+    problems.push(`${at}.passMinElevation must be from 0 to 1`)
+  }
+  if (!(strategic.minTraffic >= 0 && strategic.minTraffic <= 1)) {
+    problems.push(`${at}.minTraffic must be from 0 to 1`)
+  }
+}
+
+/** Problems with the route settings. */
+function validateRoutes(routes: RoutesConfig, problems: string[]): void {
+  const at = 'routes'
+  if (!isInteger(routes.cell) || routes.cell < 1) {
+    problems.push(`${at}.cell must be a whole number of at least 1`)
+  }
+  if (!(routes.hubSpacing >= routes.cell)) {
+    problems.push(`${at}.hubSpacing must be at least one cell (${at}.cell)`)
+  }
+  if (!(routes.hubMinScore >= 0 && routes.hubMinScore <= 1)) {
+    problems.push(`${at}.hubMinScore must be from 0 to 1`)
+  }
+  const { cost } = routes
+  if (!(cost.base > 0)) problems.push(`${at}.cost.base must be greater than 0`)
+  if (!(cost.sea > 0)) problems.push(`${at}.cost.sea must be greater than 0`)
+  for (const name of ['slope', 'height', 'river', 'seaReach'] as const) {
+    if (!(cost[name] >= 0)) problems.push(`${at}.cost.${name} must be 0 or more`)
+  }
+  for (const key of BIOME_KEYS) {
+    if (!(cost.biomes[key] >= 0)) {
+      problems.push(`${at}.cost.biomes.${key} must be 0 or more`)
+    }
+  }
 }
 
 /** Problems with a quantile profile: a monotone map from quantile 0 to 1, with values in [0, 1]. */

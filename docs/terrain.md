@@ -152,22 +152,32 @@ The feature fields (`features.ts`) are pure functions of the terrain: `distanceT
 
 Measured over 10 worlds of 2000 x 2000 (see [decision 0005](decisions/0005-resources-by-geology.md)): every resource is present in every world, shares are exact, 98 to 100% of metals sit on ridges, coal and oil sit 100% in basins, and clustering is 0.85 to 0.97 (the old noise scored 0.29 for fish).
 
-### 8. Strategic Points
+### 8. Routes and strategic points
 
-**Module:** `detectStrategicPoints()` in `strategic.ts`
+**Modules:** `cost.ts`, `routes.ts`, `suitability.ts` and `strategic.ts` in `terrain/`.
 
-Auto-detects geographically significant locations:
+Strategic points are the places a **route network** has to go through, not local scans. The network is built in three steps:
 
-| Type           | Detection Method                                                                                                                                                                        | Score |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| River Crossing | Low-elevation land adjacent to river, walkable in 4 dirs                                                                                                                                | 0–10  |
-| Mountain Pass  | A low point below mountain height with higher ground around it: at least `mountainPassMinRatio` (0.35) of the samples within `mountainPassRadius` (8) rise by `mountainPassRise` (0.02) | 0–10  |
-| Strait         | Narrow water gap between two landmasses                                                                                                                                                 | 0–10  |
-| Peninsula      | High water-to-total ratio in scan circle                                                                                                                                                | 0–10  |
+1. **Cost grid** (`buildCostGrid`): the ground on a coarse grid of cells (`routes.cell`, 4 tiles). A land cell costs the base cost plus the mean extra cost of its land tiles (the biome, how steep it is, how high) plus the widest river in it (`routes.cost`), so a ford is found where a river is narrow. Water within `seaReach` cells of land is a sea lane at the sea cost; farther out it is closed, so a boat crosses a strait and never an ocean.
+2. **Hubs** (`pickHubs`): the best places to live, by the shared site score (`siteScoreGrid`: the biome, a river, a coast, and the food, timber and stone within reach), best first and at least `routes.hubSpacing` tiles apart.
+3. **Routes** (`findRoutes`): one multi-source Dijkstra over the cost grid (a deterministic heap, ties by cell index) gives every cell its nearest hub. Where two hubs' territories touch, the cheapest meeting is the route between them (the natural-neighbour graph of the hubs in travel cost). **Traffic** is betweenness: every pair of hubs adds the product of their weights to each route on its shortest path.
+
+A route is then read cell by cell (`routeFeatures`), and each feature becomes a strategic point, valued 1 to 10 from the traffic of its route (the square root of its share of the busiest) and how narrow or high it is:
+
+| Type           | Where a route...                                                                                                                                     |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| River crossing | crosses a river (a run of river cells of at most `fordMaxRun`); the point is the narrowest river tile of the narrowest cell                          |
+| Mountain pass  | is at its highest in a window of `passWindow` cells, at least `passMinElevation` high, with lower ground by `passRise` on both sides along the route |
+| Strait         | crosses water between two shores, at most `straitMaxCells` wide; the point is in the middle                                                          |
+| Isthmus        | runs over land within `isthmusMaxSeaDistance` cells of the sea, between land at least `isthmusRise` cells farther from it; the point is mid-neck     |
+
+Two points of one kind closer than `mergeRadius` cells are one (the more valuable wins), and routes with under `minTraffic` of the busiest route's traffic have no points. The terrain carries the points, the hubs and the routes (each a list of tiles), all hashed and saved.
+
+Measured over 10 worlds of 2000 x 2000: about 160 points per world (the scans gave about 1,580, 92% of them river crossings: now about 50 fords, 50 passes, 50 necks and 10 straits), a median 38 tiles to the next point (was 6.7), about 190 hubs and 480 routes, and creation about 6.5 s (the same as before: routes cost about 0.5 s, and the new nation code is cheaper than the old). See [decision 0006](decisions/0006-routes-and-nations-from-the-land.md).
 
 ### Colour is not terrain
 
-The pipeline stops at the fields. Turning them into pixels happens in `@sovereign/renderer` (`packages/renderer/src/palettes`): pure functions from a field value to RGBA for each overlay (elevation: blue → green → brown → white; temperature: blue → red; humidity: tan → teal; biome: the 26-colour palette with the river overlay; strategic: the biome base plus highlights; resource: the biome base tinted by each tile's dominant resource (luxury over industrial over basic, ground over surface), fading as the stock is drawn down, or, with a focus, a heat map of one resource; political: territory colour at 45% with borders darkened 35%, see `apps/web/src/viewConfig.ts`). The browser app gets the tile layers from its worker by transfer and hands them to the PixiJS renderer.
+The pipeline stops at the fields. Turning them into pixels happens in `@sovereign/renderer` (`packages/renderer/src/palettes`): pure functions from a field value to RGBA for each overlay (elevation: blue → green → brown → white; temperature: blue → red; humidity: tan → teal; biome: the 26-colour palette with the river overlay; strategic: the biome base dimmed, the route network drawn as lines (brighter with traffic) and a marker per strategic point; resource: the biome base tinted by each tile's dominant resource (luxury over industrial over basic, ground over surface), fading as the stock is drawn down, or, with a focus, a heat map of one resource; political: territory colour at 45% with borders darkened 35%, see `apps/web/src/viewConfig.ts`). The browser app gets the tile layers from its worker by transfer and hands them to the PixiJS renderer.
 
 ---
 
@@ -181,11 +191,12 @@ elevation:   { scale, octaves, persistence, lacunarity, continentScale, oceanSca
 temperature: { scale, octaves, latitudeStrength, elevationCooling, ..., profile }
 humidity:    { scale, octaves, coastalInfluence, elevationDrying, profile }
 rivers:      { primaryScale, secondaryScale, thresholds, widths, warpStrength, ... }
-strategic:   { radii, thresholds, mountainPassRise, mountainPassMinRatio }
+routes:      { cell, hubSpacing, hubMinScore, cost { base, slope, height, river, sea, seaReach, biomes } }
+strategic:   { fordMaxRun, straitMaxCells, passRise, passMinElevation, passWindow, isthmus*, mergeRadius, minTraffic }
 biomeNoise:  { scale, octaves, jitter amounts }
 biomes:      { elevation thresholds, jitter amounts, bands (the climate table), lowlandBand }
 resources:   { features, rules (22 placement rules), regrowth }
-nations:     { count, minSpacing }
+nations:     { count, minSpacing, startArea }
 timestep:    in-game days per tick
 ```
 

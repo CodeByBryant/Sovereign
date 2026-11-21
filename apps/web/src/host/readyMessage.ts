@@ -46,7 +46,7 @@ export function buildReady(world: World, style: PoliticalStyle): Built {
     temperature: temperatureRgba(t.temperature),
     humidity: humidityRgba(t.humidity),
     biome,
-    strategic: strategicRgba(biome, width, height, t.strategicPoints),
+    strategic: strategicRgba(biome, width, height, t.strategicPoints, t.routes),
     resource: resourceRgba(biome, t.resources),
     political: politicalRgba(
       biome,

@@ -16,6 +16,7 @@ export function hashNations(nations: readonly Nation[]): string {
     for (const v of Object.values(n.personality)) h.writeFloat64(v)
     h.writeUint32(n.capital)
     for (const v of Object.values(n.stats)) h.writeUint32(v)
+    for (const v of Object.values(n.profile)) h.writeFloat64(v)
     h.writeUint32(n.provinces.size)
     for (const tile of n.provinces) h.writeUint32(tile)
   }

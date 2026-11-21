@@ -28,20 +28,20 @@ Sovereign is heading toward a deep grand-strategy simulation: individual rulers,
 - **26 biomes**, from deep ocean and glaciers to rainforest and volcanic peaks, with organic boundaries
 - **Rivers** that follow noise zero-crossings: primary and secondary waterways, tapered at the shore
 - **22 resources in two slots per tile** (surface and ground), placed by geology and ecology rather than noise: timber, grain, pasture, horses, fur, cotton, spices, wine, tea, ivory, stone, iron, copper, coal, oil, gold, silver, salt, gems, fish, pearls and whales. Metals follow ridges, oil and coal sit in basins, whole landmasses can lack some, and stocks can be drawn down (minerals for good, the renewable ones grow back)
-- **Strategic locations**: river crossings, mountain passes, straits and peninsulas, scored 0 to 10
-- **Nations**: 12 placed on habitable land, each with a name, colour, flag, government, personality and starting territory
+- **A route network** between the best places to live, and **strategic locations** read off it: the passes, fords, straits and land necks its routes have to go through, scored 1 to 10 by how much traffic needs them
+- **Nations**: 12 placed on the best sites, each growing a starting territory over the terrain (borders follow mountains and rivers); its stats, government and personality are computed from what its land is like, not rolled
 
 ### Seven map overlays
 
-| Key | Overlay     | Shows                              |
-| --- | ----------- | ---------------------------------- |
-| `E` | Elevation   | Height (blue, green, brown, white) |
-| `T` | Temperature | Heat (blue to red)                 |
-| `H` | Humidity    | Moisture (tan to teal)             |
-| `B` | Biome       | The 26-biome palette (default)     |
-| `G` | Strategic   | Biome plus strategic points        |
-| `R` | Resource    | Biome plus resource deposits       |
-| `P` | Political   | Territory colours and borders      |
+| Key | Overlay     | Shows                                                    |
+| --- | ----------- | -------------------------------------------------------- |
+| `E` | Elevation   | Height (blue, green, brown, white)                       |
+| `T` | Temperature | Heat (blue to red)                                       |
+| `H` | Humidity    | Moisture (tan to teal)                                   |
+| `B` | Biome       | The 26-biome palette (default)                           |
+| `G` | Strategic   | Routes, and the passes, fords, straits and necks on them |
+| `R` | Resource    | Biome plus resource deposits                             |
+| `P` | Political   | Territory colours and borders                            |
 
 Click a nation's territory for its panel; the tile inspector (`I`) describes whatever is under the cursor, including what each of its two resource slots holds and how much is left. In the resource view a legend lists all 22 resources by tier; pick one to see only where it is (a heat map), or "All resources" to see each tile's dominant one.
 

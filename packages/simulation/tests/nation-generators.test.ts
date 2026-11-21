@@ -2,61 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { ColorGenerator } from '../src/nations/ColorGenerator'
 import { FlagGenerator } from '../src/nations/FlagGenerator'
 import { NameGenerator } from '../src/nations/NameGenerator'
-import { pickSpawnPoints } from '../src/nations/NationSpawner'
-import type { RandomSource } from '../src/random/RandomSource'
-import { createStream } from '../src/random/streams'
-
-/** A RandomSource that never reorders anything: `integer(min, max)` always answers `max`. */
-const noShuffle: RandomSource = {
-  nextUint32: () => 0,
-  float: () => 0,
-  integer: (_min, max) => max,
-  boolean: () => false,
-  choose: (items) => items[0] as never
-}
-
-describe('pickSpawnPoints', () => {
-  const width = 100
-  const at = (x: number, y: number, score: number): { index: number; score: number } => ({
-    index: y * width + x,
-    score
-  })
-
-  it('accepts a candidate at exactly the minimum distance (strictly closer is too close)', () => {
-    const picked = pickSpawnPoints([at(0, 0, 1), at(5, 0, 0.9)], 2, 5, width, noShuffle)
-    expect(picked).toEqual([0, 5])
-  })
-
-  it('rejects a candidate just inside the minimum distance', () => {
-    const picked = pickSpawnPoints([at(0, 0, 1), at(4, 0, 0.9)], 2, 5, width, noShuffle)
-    expect(picked).toEqual([0])
-  })
-
-  it('measures distance in two dimensions (3-4-5), not along one axis', () => {
-    expect(pickSpawnPoints([at(0, 0, 1), at(3, 4, 0.9)], 2, 5, width, noShuffle)).toEqual([0, 403])
-    expect(pickSpawnPoints([at(0, 0, 1), at(3, 4, 0.9)], 2, 5.1, width, noShuffle)).toEqual([0])
-  })
-
-  it('prefers higher scores, and stops at the requested count', () => {
-    const picked = pickSpawnPoints(
-      [at(0, 0, 0.2), at(50, 0, 0.9), at(0, 50, 0.5), at(50, 50, 0.7)],
-      2,
-      10,
-      width,
-      noShuffle
-    )
-    expect(picked).toEqual([50, 50 * width + 50])
-  })
-
-  it('breaks ties by the random shuffle, so different streams can pick different spots', () => {
-    const tied = [at(0, 0, 1), at(30, 0, 1), at(60, 0, 1), at(90, 0, 1)]
-    const picks = new Set<string>()
-    for (let seed = 1; seed <= 30; seed += 1) {
-      picks.add(pickSpawnPoints(tied, 1, 10, width, createStream(seed, 'spawn')).join())
-    }
-    expect(picks.size).toBeGreaterThan(1)
-  })
-})
 
 describe('ColorGenerator', () => {
   it('keeps nation colours visibly apart (RGB distance of at least 50)', () => {

@@ -11,7 +11,7 @@
  * bytes 4..7    format version, uint32 big-endian
  * bytes 8..11   header length N, uint32 big-endian
  * bytes 12..    header: N bytes of UTF-8 JSON (seed, tick, size, sea level, config, strategic
- *               points, nations with their tiles)
+ *               points, route hubs, routes, nations with their tiles)
  * then          thirteen tile layers, each width*height long, in this order:
  *               elevation, temperature, humidity (float32, little-endian),
  *               biome ids, river mask, river width,
@@ -30,15 +30,17 @@ import {
 } from '@sovereign/config'
 import type {
   ResourceSlots,
+  RouteHub,
   StrategicPoint,
+  StrategicRoute,
   StrategicType,
   TerrainFields
 } from '@sovereign/contracts'
 import { Nation } from '../nations/Nation'
-import { World } from '../world/World'
+import { PROFILE_FIELDS, World } from '../world/World'
 import { utf8Bytes, utf8Decode } from './utf8'
 
-export const SAVE_FORMAT_VERSION = 3
+export const SAVE_FORMAT_VERSION = 4
 
 const MAGIC = [0x53, 0x4f, 0x56, 0x57] // "SOVW"
 const PREAMBLE = 12
@@ -67,7 +69,7 @@ const STRATEGIC_TYPES: readonly StrategicType[] = [
   'river_crossing',
   'mountain_pass',
   'strait',
-  'peninsula'
+  'isthmus'
 ]
 
 /** Thrown for any save that cannot be read; the message says what is wrong. */
@@ -109,6 +111,14 @@ export function encodeWorld(world: World): Uint8Array {
       type: p.type,
       value: p.value
     })),
+    hubs: t.hubs.map((hub) => ({ x: hub.x, y: hub.y, weight: hub.weight })),
+    routes: t.routes.map((route) => ({
+      from: route.from,
+      to: route.to,
+      cost: route.cost,
+      traffic: route.traffic,
+      path: [...route.path]
+    })),
     nations: world.nations.map((n) => ({
       id: n.id,
       name: n.name,
@@ -124,6 +134,7 @@ export function encodeWorld(world: World): Uint8Array {
       capital: n.capital,
       founded: n.founded,
       stats: { ...n.stats },
+      profile: { ...n.profile },
       provinces: [...n.provinces]
     }))
   }
@@ -202,6 +213,7 @@ function nationFromJson(value: unknown, index: number): Nation {
   if (!GOVERNMENTS.includes(government as (typeof GOVERNMENTS)[number])) {
     throw new SaveFormatError(`${where} has a malformed government`)
   }
+  if (!isRecord(value.profile)) throw new SaveFormatError(`${where} has no profile`)
   if (!isRecord(personality) || !isRecord(value.stats)) {
     throw new SaveFormatError(`${where} has a malformed personality or stats`)
   }
@@ -209,7 +221,14 @@ function nationFromJson(value: unknown, index: number): Nation {
     throw new SaveFormatError(`${where} has a malformed tile list`)
   }
   const stats = value.stats
+  const rawProfile = value.profile as Json
+  const profile = {} as Record<(typeof PROFILE_FIELDS)[number], number>
+  for (const key of PROFILE_FIELDS) profile[key] = number(rawProfile, key, `${where} profile`)
+  if (!Number.isInteger(profile.area) || profile.area < 0) {
+    throw new SaveFormatError(`${where} has a profile with a malformed area`)
+  }
   return new Nation({
+    profile,
     id,
     name,
     color: [color[0] as number, color[1] as number, color[2] as number],
@@ -243,6 +262,42 @@ function nationFromJson(value: unknown, index: number): Nation {
       diplomacy: number(stats, 'diplomacy', where)
     }
   })
+}
+
+function hubFromJson(value: unknown): RouteHub {
+  if (
+    !isRecord(value) ||
+    !Number.isInteger(value.x) ||
+    !Number.isInteger(value.y) ||
+    typeof value.weight !== 'number' ||
+    !Number.isFinite(value.weight)
+  ) {
+    throw new SaveFormatError('the header has a malformed hub')
+  }
+  return { x: value.x as number, y: value.y as number, weight: value.weight }
+}
+
+function routeFromJson(value: unknown): StrategicRoute {
+  if (
+    !isRecord(value) ||
+    !Number.isInteger(value.from) ||
+    !Number.isInteger(value.to) ||
+    typeof value.cost !== 'number' ||
+    !Number.isFinite(value.cost) ||
+    typeof value.traffic !== 'number' ||
+    !Number.isFinite(value.traffic) ||
+    !Array.isArray(value.path) ||
+    !value.path.every((v) => typeof v === 'number' && Number.isInteger(v))
+  ) {
+    throw new SaveFormatError('the header has a malformed route')
+  }
+  return {
+    from: value.from as number,
+    to: value.to as number,
+    cost: value.cost,
+    traffic: value.traffic,
+    path: [...(value.path as number[])]
+  }
 }
 
 function strategicPointFromJson(value: unknown): StrategicPoint {
@@ -306,6 +361,8 @@ function decode(bytes: Uint8Array): World {
     'seaLevel',
     'config',
     'strategicPoints',
+    'hubs',
+    'routes',
     'nations'
   ]) {
     if (header[field] === undefined) throw new SaveFormatError(`the header is missing "${field}"`)
@@ -352,8 +409,12 @@ function decode(bytes: Uint8Array): World {
   if (!Array.isArray(header.strategicPoints)) {
     throw new SaveFormatError('the header strategicPoints is not a list')
   }
+  if (!Array.isArray(header.hubs)) throw new SaveFormatError('the header hubs is not a list')
+  if (!Array.isArray(header.routes)) throw new SaveFormatError('the header routes is not a list')
   const nations = header.nations.map((n, i) => nationFromJson(n, i))
   const strategicPoints = header.strategicPoints.map(strategicPointFromJson)
+  const hubs = header.hubs.map(hubFromJson)
+  const routes = header.routes.map(routeFromJson)
 
   const tiles = width * height
   let at = layersAt
@@ -390,7 +451,9 @@ function decode(bytes: Uint8Array): World {
     riverMask,
     riverWidth,
     resources,
-    strategicPoints
+    strategicPoints,
+    hubs,
+    routes
   }
   return World.restore({ seed, config, tick, terrain, nations, ownership })
 }

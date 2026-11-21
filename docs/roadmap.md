@@ -15,7 +15,7 @@
 
 ## Done: the restructure (R)
 
-A pnpm workspace with enforced package boundaries; a deterministic engine (own PRNG and noise, own `ln`/`exp`/`pow`, versioned state hash, save format, lint bans, goldens identical on Node, Chromium and QuickJS); a PixiJS renderer; the browser app with the engine in a worker; a real Electron shell; the simulator CLI; and CI with determinism on Linux and Windows. What exists is terrain, rivers, biomes, resources, strategic points and nations with a small starting territory. **Nothing simulates yet:** `World.step()` is an empty list, on purpose.
+A pnpm workspace with enforced package boundaries; a deterministic engine (own PRNG and noise, own `ln`/`exp`/`pow`, versioned state hash, save format, lint bans, goldens identical on Node, Chromium and QuickJS); a PixiJS renderer; the browser app with the engine in a worker; a real Electron shell; the simulator CLI; and CI with determinism on Linux and Windows. What exists is terrain, rivers, biomes, resources, a route network with the strategic points along it, and nations whose starting territory, stats, government and personality follow from their land. **Nothing simulates yet:** `World.step()` is an empty list, on purpose.
 
 ## Phases
 

@@ -40,5 +40,22 @@ export function hashTerrain(t: HashableTerrain): string {
     h.writeString(p.type)
     h.writeFloat64(p.value)
   }
+  h.writeString('hubs')
+  h.writeUint32(t.hubs.length)
+  for (const hub of t.hubs) {
+    h.writeUint32(hub.x)
+    h.writeUint32(hub.y)
+    h.writeFloat64(hub.weight)
+  }
+  h.writeString('routes')
+  h.writeUint32(t.routes.length)
+  for (const route of t.routes) {
+    h.writeUint32(route.from)
+    h.writeUint32(route.to)
+    h.writeFloat64(route.cost)
+    h.writeFloat64(route.traffic)
+    h.writeUint32(route.path.length)
+    for (const v of route.path) h.writeUint32(v)
+  }
   return h.digest()
 }

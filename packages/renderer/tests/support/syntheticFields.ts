@@ -58,7 +58,7 @@ export function syntheticFields(width = 64, height = 40): SyntheticFields {
     { x: 0, y: 0, type: 'river_crossing', value: 10 },
     { x: width - 1, y: height - 1, type: 'strait', value: 3 },
     { x: 20, y: 12, type: 'mountain_pass', value: 7 },
-    { x: 41, y: 25, type: 'peninsula', value: 1 },
+    { x: 41, y: 25, type: 'isthmus', value: 1 },
     { x: width - 2, y: 3, type: 'mountain_pass', value: 5 }
   ]
   return {

@@ -35,13 +35,13 @@ describe('SAVE_FORMAT_VERSION and layout', () => {
   const bytes = encodeWorld(make(7))
   const view = new DataView(bytes.buffer, bytes.byteOffset)
 
-  it('is version 3', () => {
-    expect(SAVE_FORMAT_VERSION).toBe(3)
+  it('is version 4', () => {
+    expect(SAVE_FORMAT_VERSION).toBe(4)
   })
 
   it('starts with the magic "SOVW", the version (uint32, big-endian) and the header length', () => {
     expect([...bytes.subarray(0, 4)]).toEqual(MAGIC)
-    expect(view.getUint32(4, false)).toBe(3)
+    expect(view.getUint32(4, false)).toBe(4)
     expect(view.getUint32(8, false)).toBeGreaterThan(0)
   })
 
@@ -116,6 +116,14 @@ describe('round trip', () => {
     expect(decoded.stateHash()).toBe(hash)
   })
 
+  it("keeps what each nation's land is like, the profile its stats follow from", () => {
+    const world = make(7)
+    expect(world.nations.length).toBeGreaterThan(0)
+    const decoded = decodeWorld(encodeWorld(world))
+    expect(decoded.nations.map((n) => n.profile)).toEqual(world.nations.map((n) => n.profile))
+    expect(decoded.nations.map((n) => n.stats)).toEqual(world.nations.map((n) => n.stats))
+  })
+
   it('keeps the nations: names, colours, tiles in claim order', () => {
     const world = make(7)
     const decoded = decodeWorld(encodeWorld(world))
@@ -153,7 +161,7 @@ describe('decodeWorld rejects a file that is not a good save', () => {
     rejects(bad, /not a Sovereign save/)
   })
 
-  it.each([0, 1, 2, 4, 99])('a file of unsupported format version %d', (version) => {
+  it.each([0, 1, 2, 3, 5, 99])('a file of unsupported format version %d', (version) => {
     const bad = good.slice()
     new DataView(bad.buffer).setUint32(4, version, false)
     rejects(bad, /unsupported save format version/)
@@ -174,15 +182,83 @@ describe('decodeWorld rejects a file that is not a good save', () => {
     rejects(bad, /header/)
   })
 
-  it.each(['seed', 'tick', 'width', 'height', 'seaLevel', 'config', 'strategicPoints', 'nations'])(
-    'a header with no "%s"',
-    (field) => {
-      rejects(
-        withHeader(good, (h) => delete h[field]),
-        /header/
-      )
-    }
-  )
+  it.each([
+    'seed',
+    'tick',
+    'width',
+    'height',
+    'seaLevel',
+    'config',
+    'strategicPoints',
+    'hubs',
+    'routes',
+    'nations'
+  ])('a header with no "%s"', (field) => {
+    rejects(
+      withHeader(good, (h) => delete h[field]),
+      /header/
+    )
+  })
+
+  it.each([
+    ['a hub that is not an object', (h: Record<string, unknown>) => ((h.hubs as unknown[])[0] = 7)],
+    [
+      'a hub with a fractional position',
+      (h: Record<string, unknown>) =>
+        (((h.hubs as Array<Record<string, unknown>>)[0] as Record<string, unknown>).x = 1.5)
+    ],
+    [
+      'a hub with no weight',
+      (h: Record<string, unknown>) =>
+        delete ((h.hubs as Array<Record<string, unknown>>)[0] as Record<string, unknown>).weight
+    ],
+    ['hubs that are not a list', (h: Record<string, unknown>) => (h.hubs = {})]
+  ])('a header with %s', (_label, edit) => {
+    rejects(withHeader(good, edit), /hub/)
+  })
+
+  it.each([
+    [
+      'a route that is not an object',
+      (h: Record<string, unknown>) => ((h.routes as unknown[])[0] = 7)
+    ],
+    [
+      'a route with no cost',
+      (h: Record<string, unknown>) =>
+        delete ((h.routes as Array<Record<string, unknown>>)[0] as Record<string, unknown>).cost
+    ],
+    [
+      'a route with a fractional hub index',
+      (h: Record<string, unknown>) =>
+        (((h.routes as Array<Record<string, unknown>>)[0] as Record<string, unknown>).from = 0.5)
+    ],
+    [
+      'a route whose path is not a list of numbers',
+      (h: Record<string, unknown>) =>
+        (((h.routes as Array<Record<string, unknown>>)[0] as Record<string, unknown>).path = ['a'])
+    ],
+    [
+      'a route whose path has a fractional tile',
+      (h: Record<string, unknown>) =>
+        (((h.routes as Array<Record<string, unknown>>)[0] as Record<string, unknown>).path = [
+          1, 2.5, 3, 4
+        ])
+    ],
+    ['routes that are not a list', (h: Record<string, unknown>) => (h.routes = 'none')]
+  ])('a header with %s', (_label, edit) => {
+    rejects(withHeader(good, edit), /route/)
+  })
+
+  it('a header whose hubs and routes disagree: a route to a hub that does not exist', () => {
+    rejects(
+      withHeader(
+        good,
+        (h) =>
+          (((h.routes as Array<Record<string, unknown>>)[0] as Record<string, unknown>).to = 9999)
+      ),
+      /route/
+    )
+  })
 
   it('a header whose size disagrees with its config', () => {
     rejects(
@@ -226,6 +302,30 @@ describe('decodeWorld rejects a file that is not a good save', () => {
         nations[0]?.provinces.push(160 * 96 + 5)
       }),
       /not valid/
+    )
+  })
+
+  it.each([
+    ['no profile', (n: Record<string, unknown>) => delete n.profile],
+    ['a profile that is not an object', (n: Record<string, unknown>) => (n.profile = 5)],
+    [
+      'a profile with no food',
+      (n: Record<string, unknown>) => delete (n.profile as Record<string, unknown>).food
+    ],
+    [
+      'a profile with a non-number',
+      (n: Record<string, unknown>) => ((n.profile as Record<string, unknown>).metals = 'lots')
+    ],
+    [
+      'a profile whose area is not whole',
+      (n: Record<string, unknown>) => ((n.profile as Record<string, unknown>).area = 1.5)
+    ]
+  ])('a nation with %s', (_label, edit) => {
+    rejects(
+      withHeader(good, (h) =>
+        edit((h.nations as Array<Record<string, unknown>>)[0] as Record<string, unknown>)
+      ),
+      /nation|profile/
     )
   })
 

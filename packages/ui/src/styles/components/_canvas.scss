@@ -483,6 +483,34 @@
     gap: var(--space-2);
   }
 
+  &__facts {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+
+  &__fact {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    font-size: 0.78rem;
+  }
+
+  &__fact-label {
+    color: $color-text-muted;
+  }
+
+  &__fact-value {
+    color: $color-text;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  &__fact-note {
+    color: $color-text-muted;
+    font-size: 0.7rem;
+  }
+
   &__stat-row {
     display: grid;
     grid-template-columns: 22px 1fr auto;

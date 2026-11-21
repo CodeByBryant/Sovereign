@@ -2,7 +2,8 @@
  * @module pipeline
  * @description The whole terrain generation pipeline as one pure, headless function: elevation,
  * the land-ratio sea level rescue, water distance, temperature, humidity, rivers, biomes,
- * resources (two slots per tile, placed by geology and ecology rules) and strategic points. It produces fields only; turning them into pixels is the
+ * resources (two slots per tile, placed by geology and ecology rules), and the route network with the
+ * strategic points along it. It produces fields only; turning them into pixels is the
  * renderer's job, and running it off the UI thread is the host's.
  */
 import type {
@@ -10,6 +11,7 @@ import type {
   BiomeNoiseConfig,
   HumidityConfig,
   ResourcePlacementConfig,
+  RoutesConfig,
   RiverConfig,
   StrategicConfig,
   TemperatureConfig,
@@ -21,7 +23,7 @@ import { normalizeSeed } from '../random/seed'
 import { classifyBiomes } from './biomes'
 import { placeResources } from './placement'
 import { RiverGenerator } from './rivers'
-import { detectStrategicPoints } from './strategic'
+import { buildStrategicNetwork } from './strategic'
 import { TerrainGenerator } from './TerrainGenerator'
 
 /** Everything the pipeline needs; the seed and the world-generation config sections. */
@@ -35,6 +37,8 @@ export interface TerrainRequest {
   rivers: RiverConfig
   biomes: BiomeConfig
   strategic: StrategicConfig
+  /** Where routes between settlements go; strategic points are found along them. */
+  routes: RoutesConfig
   /** Where each resource is found (the regrowth table is the World's business, not the terrain's). */
   resources: ResourcePlacementConfig
   /** Minimum land-to-total tile ratio. Sea level auto-lowers if needed. */
@@ -139,13 +143,20 @@ export function generateTerrain(request: TerrainRequest): TerrainFields {
     riverMask: riverData.riverMask,
     config: resources
   })
-  const strategicData = detectStrategicPoints(
+  const network = buildStrategicNetwork({
+    width: adjusted.width,
+    height: adjusted.height,
+    seaLevel: adjusted.seaLevel,
     elevation,
-    riverData.riverMask,
-    adjusted,
-    biomes,
+    biomeIds,
+    riverMask: riverData.riverMask,
+    riverWidth: riverData.riverWidth,
+    resources: resourceSlots,
+    highlandElevation: biomes.highlandElevation,
+    slopeScale: resources.features.slopeScale,
+    routes: request.routes,
     strategic
-  )
+  })
 
   return {
     width: adjusted.width,
@@ -158,6 +169,8 @@ export function generateTerrain(request: TerrainRequest): TerrainFields {
     riverMask: riverData.riverMask,
     riverWidth: riverData.riverWidth,
     resources: resourceSlots,
-    strategicPoints: strategicData.points
+    strategicPoints: network.points,
+    hubs: network.hubs,
+    routes: network.routes
   }
 }
