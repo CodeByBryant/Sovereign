@@ -223,7 +223,7 @@ jobs:
           - name: world goldens
             files: tests/determinism/golden.test.ts tests/determinism/biome-coverage.test.ts
           - name: terrain and math goldens
-            files: tests/determinism/terrain-golden.test.ts tests/determinism/transcendental-golden.test.ts tests/determinism/resource-coverage.test.ts tests/determinism/routes-nations.test.ts
+            files: tests/determinism/terrain-golden.test.ts tests/determinism/transcendental-golden.test.ts tests/determinism/resource-coverage.test.ts tests/determinism/routes-nations.test.ts tests/determinism/provinces-expansion.test.ts
 
     defaults:
       run:

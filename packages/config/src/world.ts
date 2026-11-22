@@ -381,7 +381,7 @@ export const defaultWorldConfig: WorldConfig = {
 
   /**
    * Provinces: the land cut into the cells of seeds (about `spacing` tiles apart, on cheap ground) in travel
-   * cost, so borders fall on mountains, rivers and coasts. Small ones merge into a neighbour. Nations own
+   * cost, so borders are pulled toward barriers. Small ones merge into a neighbour. Nations own
    * and grow by provinces. See docs/terrain.md.
    */
   provinces: {

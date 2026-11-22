@@ -4,11 +4,11 @@ A save is the exact state of a `World` as bytes. The engine produces and reads i
 
 This is separate from the state **hash** ([determinism.md](determinism.md), section 7): a hash is a fingerprint, a save is the data. Decoding a save and hashing the result gives the hash of the world that was saved, on any engine.
 
-## Layout (version 4)
+## Layout (version 5)
 
 ```text
 bytes 0..3    magic "SOVW" (0x53 0x4f 0x56 0x57)
-bytes 4..7    format version, uint32 big-endian (4)
+bytes 4..7    format version, uint32 big-endian (5)
 bytes 8..11   header length N, uint32 big-endian
 bytes 12..    header: N bytes of UTF-8 JSON
 then          thirteen tile layers, each width * height long, in this order:
@@ -19,7 +19,7 @@ then          thirteen tile layers, each width * height long, in this order:
                 ownership                                  one byte each
 ```
 
-The header is a JSON object with `seed` (the normalized uint32), `tick`, `width`, `height`, `seaLevel` (the effective one), `config` (the full resolved world config), `strategicPoints` (`x`, `y`, `type`, `value`), `hubs` (`x`, `y`, `weight`), `routes` (`from`, `to`, `cost`, `traffic` and `path`, the tiles as x, y pairs) and `nations` (every field of a nation, including its `profile`, with its `provinces` as a list of tile indices in claim order). There is no layer length table: the layers' sizes follow from the config, and the file must be exactly the right size.
+The header is a JSON object with `seed` (the normalized uint32), `tick`, `width`, `height`, `seaLevel` (the effective one), `config` (the full resolved world config), `strategicPoints` (`x`, `y`, `type`, `value`), `hubs` (`x`, `y`, `weight`), `routes` (`from`, `to`, `cost`, `traffic` and `path`, the tiles as x, y pairs) and `nations` (every field of a nation, including its `profile` and its `expansionPoints`, with its `provinces` as a list of province ids in claim order). There is no layer length table: the layers' sizes follow from the config, and the file must be exactly the right size.
 
 Encoding is deterministic: the same world always encodes to the same bytes, and `encode(decode(bytes))` equals `bytes`. Float layers are copied as raw little-endian bytes, so saving and loading are refused on a big-endian host rather than writing a file other machines would misread.
 
@@ -32,7 +32,9 @@ Each of these is a `SaveFormatError`:
 - a malformed seed (not a uint32) or tick (not a non-negative safe integer), a header `width`/`height` that disagrees with the config, an invalid config (checked **before** any array is sized, so a hostile file cannot ask for gigabytes);
 - tile layers that are not exactly the expected number of bytes (too short or too long);
 - a nation, strategic point, hub or route with a malformed field (a nation without its profile, a route whose path is not whole numbers);
-- layer data that decodes to a world that fails `World.validate()`: a non-finite value, a biome id that does not exist, a hub outside the map, a route that joins hubs that are not there or runs off the map, a strategic point with a value outside 1 to 10, a resource type outside the catalogue, a resource in the wrong slot (a mineral in the surface slot), a stock above its richness, an ownership byte that names no nation, a nation tile that disagrees with the ownership layer, a capital that is not one of the nation's tiles, a tile outside the map.
+- layer data that decodes to a world that fails `World.validate()`: a non-finite value, a biome id that does not exist, a hub outside the map, a route that joins hubs that are not there or runs off the map, a strategic point with a value outside 1 to 10, a resource type outside the catalogue, a resource in the wrong slot (a mineral in the surface slot), a stock above its richness, an ownership byte that names no nation, a province id that is not on the map or that two nations hold, an ownership byte that disagrees with the province its tile is in, a capital that is not in one of the nation's provinces, a profile that is not the sum of the nation's provinces, stats that are not those of the profile, expansion points that are not a finite number of 0 or more.
+
+The provinces themselves (the cut of the land and what each is like) are **not in the file**: they are a pure function of the terrain and the config and are rebuilt on load, so a file cannot disagree with its own terrain about them.
 
 `encodeWorld` in turn refuses to save a world that does not pass `validate()`, because JSON would turn a NaN into `null` and silently corrupt the file.
 
@@ -45,3 +47,5 @@ Any change to the layout bumps `SAVE_FORMAT_VERSION`. Older versions are not mig
 **Version 3** (from version 2): every tile has two resource slots, a surface and a ground one, each with a type, a richness and a stock (six byte layers instead of the two of version 1 and 2), and the header's `config` has a `resources` section holding the placement rules and the regrowth table in place of `oreScale`, `goldRarity`, `ironRarity` and `minDensity`. A world's stocks are saved, so a half-depleted deposit comes back half-depleted; the list of tiles waiting to regrow is not saved, it is rebuilt on load from the layers. A version 2 file is refused as an unsupported version.
 
 **Version 4** (from version 3): the world has a route network and its nations have a profile. The header gained `hubs` and `routes`, the `strategicPoints` types changed (`peninsula` is gone, `isthmus` was added) and are found along the routes, every nation carries the `profile` of its land (what its stats, government and personality were derived from), and the config gained `routes`, `strategic` was rebuilt and `nations.startArea` was added. A version 3 file is refused as an unsupported version.
+
+**Version 5** (from version 4): nations own provinces. A nation's `provinces` is a list of province ids (it was a list of tile indices), in claim order, and every nation has `expansionPoints`; the config gained `provinces` and `expansion`. The province layer is derived and not saved. A version 4 file is refused as an unsupported version.
