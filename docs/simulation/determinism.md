@@ -162,7 +162,17 @@ output: hex(h1) hex(h2) hex(h3) hex(h4), each as 8 lowercase hex digits (uint32)
 
 A state hash begins with the four ASCII bytes `SOVH`, then `writeUint32(HASH_SCHEMA_VERSION)`. Any change to the field list, order or encoding of what is hashed requires bumping `HASH_SCHEMA_VERSION` and regenerating the golden hashes with a rationale in the PR. Old versions stay documented here rather than being edited in place, so a reader can tell what an older golden entry actually hashed.
 
-#### Version 3 (current)
+#### Version 4 (current)
+
+The canonical layout of a world, written in this order (`World.stateHash()`), after the `SOVH` header and version:
+
+1. `writeUint32(seed)` (the normalized engine seed), `writeFloat64(tick)`, `writeFloat64(timestep)`, `writeUint32(width)`, `writeUint32(height)`, `writeFloat64(seaLevel)` (the effective sea level after the land-ratio rescue).
+2. The tile layers, each as one array writer (so each carries its length): `elevation`, `temperature`, `humidity` as `writeFloat32Array`; `biomeIds`, `riverMask`, `riverWidth`, then the six resource arrays (`surface.type`, `surface.richness`, `surface.stock`, `ground.type`, `ground.richness`, `ground.stock`, in that order), then `ownership`, all as `writeUint8Array`. A resource's stock is state (it changes by extraction and regrowth), so it is hashed along with the static type and richness.
+   Then the province cut, which is derived from the terrain but fingerprinted so that an engine that cuts it differently is caught: `writeUint32(province count)`, then for each province `area` (uint32) and `seed` (uint32, the tile it was seeded from).
+3. Strategic points: `writeUint32(count)`, then for each `x` (uint32), `y` (uint32), `type` (string), `value` (float64). Then the route hubs: `writeUint32(count)`, then for each `x` (uint32), `y` (uint32), `weight` (float64). Then the routes: `writeUint32(count)`, then for each `from` (uint32), `to` (uint32), `cost` (float64), `traffic` (float64), `writeUint32(path length)` and each path value as uint32.
+4. Nations: `writeUint32(count)`, then for each: `id` (string), `name` (string), the colour as three `writeUint8`, the flag `type` (string), `background` and `accent` (three float64 each), a `writeUint8` of 0 or 1 for whether there is a `detail` colour (and, if 1, its three float64), `government` (string), the personality (`aggression`, `expansionism`, `diplomacy`, `mercantilism`, `militarism`, float64 each, in that order), `capital` (uint32), `founded` (float64), the stats (`population`, `military`, `economy`, `diplomacy`, float64 each, in that order), the profile of its land (`area`, `food`, `timber`, `stone`, `horses`, `metals`, `luxuries`, `diversity`, `coast`, `river`, `highGround`, `defence`, `traffic`, `contacts`, float64 each, in that order), then `expansionPoints` (float64), then `writeUint32(province count)` and each owned province id as uint32 **in the order the provinces were claimed**.
+
+#### Version 3 (superseded by version 4)
 
 The canonical layout of a world, written in this order (`World.stateHash()`), after the `SOVH` header and version:
 
@@ -170,6 +180,8 @@ The canonical layout of a world, written in this order (`World.stateHash()`), af
 2. The tile layers, each as one array writer (so each carries its length): `elevation`, `temperature`, `humidity` as `writeFloat32Array`; `biomeIds`, `riverMask`, `riverWidth`, then the six resource arrays (`surface.type`, `surface.richness`, `surface.stock`, `ground.type`, `ground.richness`, `ground.stock`, in that order), then `ownership`, all as `writeUint8Array`. A resource's stock is state (it changes by extraction and regrowth), so it is hashed along with the static type and richness.
 3. Strategic points: `writeUint32(count)`, then for each `x` (uint32), `y` (uint32), `type` (string), `value` (float64). Then the route hubs: `writeUint32(count)`, then for each `x` (uint32), `y` (uint32), `weight` (float64). Then the routes: `writeUint32(count)`, then for each `from` (uint32), `to` (uint32), `cost` (float64), `traffic` (float64), `writeUint32(path length)` and each path value as uint32.
 4. Nations: `writeUint32(count)`, then for each: `id` (string), `name` (string), the colour as three `writeUint8`, the flag `type` (string), `background` and `accent` (three float64 each), a `writeUint8` of 0 or 1 for whether there is a `detail` colour (and, if 1, its three float64), `government` (string), the personality (`aggression`, `expansionism`, `diplomacy`, `mercantilism`, `militarism`, float64 each, in that order), `capital` (uint32), `founded` (float64), the stats (`population`, `military`, `economy`, `diplomacy`, float64 each, in that order), the profile of its land (`area`, `food`, `timber`, `stone`, `horses`, `metals`, `luxuries`, `diversity`, `coast`, `river`, `highGround`, `defence`, `traffic`, `contacts`, float64 each, in that order), then `writeUint32(tile count)` and each owned tile index as uint32 **in the order the tiles were claimed**.
+
+Version 4 differs in two places: the province fingerprint after the layers, and a nation's tile list became a list of province ids preceded by its expansion points.
 
 #### Version 2 (superseded by version 3)
 
@@ -199,7 +211,7 @@ They are regression pins: the correctness of what is under them (RNG, noise, mat
 
 ## 9. Test vectors
 
-Produced by an independent reference implementation written from this document alone (Python integers and masks), and reproduced by the engine's tests. Hex values are lowercase. "Header" is `SOVH` and `writeUint32(3)` (schema version 3); the reference also reproduces the version 1 and 2 values (it takes the version as a parameter).
+Produced by an independent reference implementation written from this document alone (Python integers and masks), and reproduced by the engine's tests. Hex values are lowercase. "Header" is `SOVH` and `writeUint32(4)` (schema version 4); the reference also reproduces the older versions' values (it takes the version as a parameter).
 
 **xoshiro128\*\* reference** (state `[1, 2, 3, 4]`, decimal): `11520, 0, 5927040, 70819200, 2031721883`.
 
@@ -246,14 +258,14 @@ The seeds `305419896` (`0x12345678`), `3735928559` (`0xdeadbeef`) and `16711936`
 | Input                                                                                                              | Output                             |
 | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
 | no bytes                                                                                                           | `027ae52ecfc796215593990d4b41437c` |
-| header only                                                                                                        | `59304f23a6ec6a13837e6f4f00cf30dc` |
-| header, `writeUint32(7)`, `writeFloat64(-0)`, `writeFloat64(0.5)`, `writeUint8(1)`                                 | `d680575fa78efdb13e30d5dd8bf08ed8` |
-| same with `writeFloat64(+0)` instead of `-0` (proves canonicalization)                                             | `d680575fa78efdb13e30d5dd8bf08ed8` |
-| header, `writeString("héllo ✓ 🌍")`                                                                                | `5e9bf25b8111630e9950a5e12e44c2e0` |
-| header, `writeUint8Array([0, 1, 2, 255, 128])`                                                                     | `1a2fab9a33c38d3817d36845b694499b` |
-| header, `writeUint8Array([])`                                                                                      | `eabec1ed9acf947c25584f8646894d0c` |
-| header, `writeFloat32Array([0.5, -0, 1/3, 3.4028234663852886e38, 1.401298464324817e-45, -2.5])` (1/3 as a float32) | `264ca0b4aae35d3172e6f88d1e34f33c` |
-| header, `writeUint8Array([0, 1, 2, 255, 128])`, `writeFloat32Array([1.5, -0.25])`                                  | `979d8b3c3cf573387273459ceaa8836a` |
+| header only                                                                                                        | `419d97344219625b23baad833530a5dc` |
+| header, `writeUint32(7)`, `writeFloat64(-0)`, `writeFloat64(0.5)`, `writeUint8(1)`                                 | `8305b0bf315b05c7be428f5367175e6f` |
+| same with `writeFloat64(+0)` instead of `-0` (proves canonicalization)                                             | `8305b0bf315b05c7be428f5367175e6f` |
+| header, `writeString("héllo ✓ 🌍")`                                                                                | `d4f7583f75a3cfa1705a6e16bfb73cf1` |
+| header, `writeUint8Array([0, 1, 2, 255, 128])`                                                                     | `bee514285e33a9b3fa008ea92a1e69e6` |
+| header, `writeUint8Array([])`                                                                                      | `19633495f01c50b9e4c332deea69cbda` |
+| header, `writeFloat32Array([0.5, -0, 1/3, 3.4028234663852886e38, 1.401298464324817e-45, -2.5])` (1/3 as a float32) | `bd5a9b81f6b26b37d8076341458d9103` |
+| header, `writeUint8Array([0, 1, 2, 255, 128])`, `writeFloat32Array([1.5, -0.25])`                                  | `c35fe6a01f51ed83f802d244593a3ff8` |
 
 **Deterministic math accuracy.** `ln`, `exp` and `pow` are tested against the platform functions: within `2.3e-16` relative (about one ulp) for `ln` over `1e-300..1e300` and for `exp` over `-700..700`, and within `1e-14` relative for `pow` where `|y * ln x| <= 30`. The platform functions are only an oracle in tests, which are exempt from the lint bans.
 

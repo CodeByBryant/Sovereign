@@ -8,6 +8,8 @@ export interface SmallWorldOptions {
   nations?: number
   minSpacing?: number
   startArea?: number
+  /** The distance between province seeds (tiles); default 8, so test provinces are about 70 tiles. */
+  provinceSpacing?: number
   islandMode?: boolean
 }
 
@@ -64,6 +66,8 @@ export function smallWorldOverrides(options: SmallWorldOptions = {}): WorldConfi
     resources: smallResources(k),
     // hubs closer together, so a test-sized map has a network
     routes: { hubSpacing: 24 },
+    // provinces in proportion to a test-sized map (the defaults, 20 and 40, are for 2000 x 2000)
+    provinces: { spacing: options.provinceSpacing ?? 8, minArea: 10 },
     nations: {
       count: options.nations ?? 8,
       minSpacing: options.minSpacing ?? 18,

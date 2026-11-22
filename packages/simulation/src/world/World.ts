@@ -21,11 +21,15 @@ import {
   type WorldSnapshot
 } from '@sovereign/contracts'
 import { SimulationClock } from '../clock/SimulationClock'
+import { deriveStats } from '../nations/derive'
 import { Nation } from '../nations/Nation'
+import { combineProfile, type ProvinceFacts } from '../nations/provinceProfile'
 import { spawnNations } from '../nations/NationSpawner'
 import { normalizeSeed } from '../random/seed'
 import { stateHasher } from '../serialization/hash'
 import { generateTerrain } from '../terrain/pipeline'
+import { NO_PROVINCE, type ProvinceMap } from '../terrain/provinces'
+import { buildProvinceLayer, type ProvinceLayer } from './provinceLayer'
 import { buildRegrowthTable, ResourceStocks, type ResourceLayerName } from './ResourceStocks'
 import { WorldMap } from './WorldMap'
 
@@ -49,6 +53,31 @@ export const PROFILE_FIELDS = [
 
 /** Ownership byte for a tile that belongs to no nation. */
 export const UNCLAIMED = 255
+
+/** The index of the nation that holds each province, from the nations' own lists (the first holder wins). */
+function ownersOf(nations: readonly Nation[], provinceCount: number): Uint8Array {
+  const owners = new Uint8Array(provinceCount).fill(UNCLAIMED)
+  nations.forEach((nation, index) => {
+    for (const province of nation.provinces) {
+      if (Number.isInteger(province) && province >= 0 && province < provinceCount) {
+        if (owners[province] === UNCLAIMED) owners[province] = index
+      }
+    }
+  })
+  return owners
+}
+
+/** Mark every tile of a province as owned by the nation with this index. */
+function writeOwner(
+  ownership: Uint8Array,
+  map: ProvinceMap,
+  province: number,
+  owner: number
+): void {
+  for (let k = map.start[province]; k < map.start[province + 1]; k += 1) {
+    ownership[map.tiles[k]] = owner
+  }
+}
 
 export interface WorldOptions {
   /** A number, or any text; see `normalizeSeed`. */
@@ -77,15 +106,24 @@ export class World {
   readonly terrain: TerrainFields
   readonly map: WorldMap
   readonly nations: readonly Nation[]
+  /** The land cut into provinces, the units nations own (derived from the terrain; never saved). */
+  readonly provinces: ProvinceMap
+  /** What each province is like; a nation's profile is the sum over its provinces. */
+  readonly provinceFacts: ProvinceFacts
+  /** The index of the nation that owns each province, or {@link UNCLAIMED}. */
+  readonly provinceOwner: Uint8Array
   /** Drawing resources down and letting the renewable ones grow back (it works on `terrain.resources`). */
   private readonly stocks: ResourceStocks
 
-  private constructor(state: WorldState) {
+  private constructor(state: WorldState, layer: ProvinceLayer) {
     this.seed = state.seed
     this.config = state.config
     this.clock = new SimulationClock(state.config.timestep, state.tick)
     this.terrain = state.terrain
     this.nations = state.nations
+    this.provinces = layer.map
+    this.provinceFacts = layer.facts
+    this.provinceOwner = ownersOf(state.nations, layer.map.count)
     this.map = new WorldMap({
       width: state.terrain.width,
       height: state.terrain.height,
@@ -131,37 +169,27 @@ export class World {
       minLandRatio: config.map.minLandRatio
     })
 
+    const layer = buildProvinceLayer(terrain, config)
+
     // The nations are placed on the world as generated, so use its effective sea level.
-    const { nations, ownerMap } = spawnNations({
+    const { nations } = spawnNations({
       width: terrain.width,
-      height: terrain.height,
-      seaLevel: terrain.seaLevel,
-      elevation: terrain.elevation,
       biomeIds: terrain.biomeIds,
-      riverMask: terrain.riverMask,
-      riverWidth: terrain.riverWidth,
-      resources: terrain.resources,
-      strategicPoints: terrain.strategicPoints,
       hubs: terrain.hubs,
       routes: terrain.routes,
-      routeConfig: config.routes,
-      highlandElevation: config.biomes.highlandElevation,
-      slopeScale: config.resources.features.slopeScale,
+      provinces: layer,
       count: config.nations.count,
       seed,
       minSpacing: config.nations.minSpacing,
       startArea: config.nations.startArea
     })
 
-    const indexOf = new Map<string, number>()
-    nations.forEach((nation, index) => indexOf.set(nation.id, index))
     const ownership = new Uint8Array(terrain.width * terrain.height).fill(UNCLAIMED)
-    for (let i = 0; i < ownerMap.length; i += 1) {
-      const owner = ownerMap[i] as string
-      if (owner !== '') ownership[i] = indexOf.get(owner) as number
-    }
+    nations.forEach((nation, index) => {
+      for (const province of nation.provinces) writeOwner(ownership, layer.map, province, index)
+    })
 
-    return new World({ seed, config, tick: 0, terrain, nations, ownership })
+    return new World({ seed, config, tick: 0, terrain, nations, ownership }, layer)
   }
 
   /**
@@ -170,7 +198,7 @@ export class World {
    */
   static restore(state: WorldState): World {
     assertValidWorldConfig(state.config)
-    const world = new World(state)
+    const world = new World(state, buildProvinceLayer(state.terrain, state.config))
     const problems = world.validate()
     if (problems.length > 0) {
       throw new RangeError(`restored world is not valid:\n  ${problems.join('\n  ')}`)
@@ -204,7 +232,7 @@ export class World {
 
   /**
    * A 128-bit fingerprint of the simulation state (see docs/simulation/determinism.md, section 7.3,
-   * "Version 2"). Equal hashes mean equal worlds on any engine.
+   * "Version 4"). Equal hashes mean equal worlds on any engine.
    */
   stateHash(): string {
     const h = stateHasher()
@@ -229,6 +257,13 @@ export class World {
       h.writeUint8Array(t.resources[layer].stock)
     }
     h.writeUint8Array(this.map.ownership)
+
+    // the province cut is derived, but its fingerprint catches an engine that cuts it differently
+    h.writeUint32(this.provinces.count)
+    for (let p = 0; p < this.provinces.count; p += 1) {
+      h.writeUint32(this.provinces.area[p] as number)
+      h.writeUint32(this.provinces.seed[p] as number)
+    }
 
     h.writeUint32(t.strategicPoints.length)
     for (const p of t.strategicPoints) {
@@ -284,8 +319,9 @@ export class World {
       h.writeFloat64(n.stats.economy)
       h.writeFloat64(n.stats.diplomacy)
       for (const key of PROFILE_FIELDS) h.writeFloat64(n.profile[key])
+      h.writeFloat64(n.expansionPoints)
       h.writeUint32(n.provinces.size)
-      for (const tile of n.provinces) h.writeUint32(tile)
+      for (const province of n.provinces) h.writeUint32(province)
     }
 
     return h.digest()
@@ -308,7 +344,8 @@ export class World {
       capital: n.capital,
       stats: { ...n.stats },
       profile: { ...n.profile },
-      area: n.provinces.size
+      area: n.profile.area,
+      provinceCount: n.provinces.size
     }))
     return {
       seed: this.seed,
@@ -394,26 +431,79 @@ export class World {
       }
     }
 
+    // who holds each province, worked out from the nations' own lists
+    const count = this.provinces.count
+    const holder = new Int32Array(count).fill(-1)
     const ids = new Set<string>()
     this.nations.forEach((nation, index) => {
       if (ids.has(nation.id)) problems.push(`the nation id ${nation.id} is used twice`)
       ids.add(nation.id)
-      if (!nation.provinces.has(nation.capital)) {
-        problems.push(`the capital of ${nation.id} is not one of its tiles`)
-      }
-      for (const tile of nation.provinces) {
-        if (!Number.isInteger(tile) || tile < 0 || tile >= size) {
-          problems.push(`${nation.id} owns the tile ${tile}, which is outside the map`)
+
+      let sound = true
+      for (const province of nation.provinces) {
+        if (!Number.isInteger(province) || province < 0 || province >= count) {
+          problems.push(`${nation.id} owns the province ${province}, which is not on the map`)
+          sound = false
           break
         }
-        if (ownership[tile] !== index) {
+        if (holder[province] >= 0) {
           problems.push(
-            `${nation.id} owns tile ${tile} but the ownership layer says ${ownership[tile]}`
+            `the province ${province} is held by both ${this.nations[holder[province] as number]?.id} and ${nation.id}`
+          )
+          sound = false
+          break
+        }
+        holder[province] = index
+      }
+
+      const capitalProvince = this.provinces.provinceOf[nation.capital]
+      if (
+        !Number.isInteger(nation.capital) ||
+        nation.capital < 0 ||
+        nation.capital >= size ||
+        capitalProvince === NO_PROVINCE ||
+        !nation.provinces.has(capitalProvince as number)
+      ) {
+        problems.push(`the capital of ${nation.id} is not in one of its provinces`)
+      }
+
+      if (!(Number.isFinite(nation.expansionPoints) && nation.expansionPoints >= 0)) {
+        problems.push(`${nation.id} has expansion points that are not a finite number of 0 or more`)
+      }
+
+      if (!sound) return
+      const profile = combineProfile(this.provinceFacts, nation.provinces, nation.profile.contacts)
+      if (PROFILE_FIELDS.some((key) => profile[key] !== nation.profile[key])) {
+        problems.push(`the profile of ${nation.id} is not the sum of its provinces`)
+      }
+      const stats = deriveStats(nation.profile)
+      if (
+        stats.population !== nation.stats.population ||
+        stats.military !== nation.stats.military ||
+        stats.economy !== nation.stats.economy ||
+        stats.diplomacy !== nation.stats.diplomacy
+      ) {
+        problems.push(`the stats of ${nation.id} are not those of its profile`)
+      }
+    })
+
+    // the ownership layer says, tile by tile, who holds the province the tile is in
+    const provinceOf = this.provinces.provinceOf
+    if (provinceOf.length === ownership.length) {
+      for (let i = 0; i < ownership.length; i += 1) {
+        const province = provinceOf[i] as number
+        const expected =
+          province === NO_PROVINCE || holder[province] === -1
+            ? UNCLAIMED
+            : (holder[province] as number)
+        if (ownership[i] !== expected) {
+          problems.push(
+            `ownership at tile ${i} is ${ownership[i]}, but its province ${province === NO_PROVINCE ? '(none)' : province} is held by ${expected === UNCLAIMED ? 'nobody' : expected}`
           )
           break
         }
       }
-    })
+    }
 
     return problems
   }

@@ -1,293 +1,303 @@
 import { describe, expect, it } from 'vitest'
+import { buildProvinces, type ProvinceMap } from '../src/terrain/provinces'
 import { growTerritories, type TerritoryInput } from '../src/nations/territory'
 
-const W = 60
-const H = 40
+/**
+ * A map of provinces of 10 x 10 tiles, `cols` by `rows`, one seed in the middle of each (province id =
+ * `row * cols + col`). `rough(col, row)` makes a province cost 8 to cross instead of 1.
+ */
+function lattice(
+  cols: number,
+  rows: number,
+  rough: (col: number, row: number) => boolean = () => false
+): ProvinceMap {
+  const width = cols * 10
+  const height = rows * 10
+  const land = new Uint8Array(width * height).fill(1)
+  const cost = new Float32Array(width * height)
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      cost[y * width + x] = rough(Math.floor(x / 10), Math.floor(y / 10)) ? 8 : 1
+    }
+  }
+  const seeds: number[] = []
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) seeds.push((r * 10 + 5) * width + c * 10 + 5)
+  }
+  return buildProvinces({ width, height, land, cost, spacing: 10, minArea: 1, seeds })
+}
 
 interface Options {
-  capitals: Array<[number, number]>
+  provinces: ProvinceMap
+  capitals: number[]
   area: number | number[]
-  width?: number
-  height?: number
-  claimable?: (x: number, y: number) => boolean
-  cost?: (x: number, y: number) => number
+  claimable?: (p: number) => boolean
 }
 
 function run(o: Options): { claimed: number[][]; input: TerritoryInput } {
-  const width = o.width ?? W
-  const height = o.height ?? H
-  const claimable = new Uint8Array(width * height)
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1)
-      claimable[y * width + x] = (o.claimable?.(x, y) ?? true) ? 1 : 0
-  }
+  const claimable = new Uint8Array(o.provinces.count)
+  for (let p = 0; p < claimable.length; p += 1) claimable[p] = (o.claimable?.(p) ?? true) ? 1 : 0
   const input: TerritoryInput = {
-    width,
-    height,
-    capitals: o.capitals.map(([x, y]) => y * width + x),
+    provinces: o.provinces,
+    capitals: o.capitals,
     claimable,
-    tileCost: (tile) => o.cost?.(tile % width, Math.floor(tile / width)) ?? 1,
     area: o.area
   }
   return { claimed: growTerritories(input), input }
 }
 
-const xy = (tile: number, width = W): [number, number] => [tile % width, Math.floor(tile / width)]
+const neighbours = (map: ProvinceMap, p: number): number[] =>
+  Array.from(map.neighbourId.subarray(map.neighbourStart[p], map.neighbourStart[p + 1]))
+
+const area = (map: ProvinceMap, ids: readonly number[]): number =>
+  ids.reduce((n, p) => n + map.area[p], 0)
+
+/** The nation holds at least `wanted` tiles, and held fewer before its last province. */
+function expectJustEnough(map: ProvinceMap, ids: readonly number[], wanted: number): void {
+  expect(area(map, ids)).toBeGreaterThanOrEqual(wanted)
+  expect(area(map, ids.slice(0, -1))).toBeLessThan(wanted)
+}
 
 describe('growTerritories: one nation', () => {
-  it('claims exactly the area asked for, capital first', () => {
-    const { claimed, input } = run({ capitals: [[30, 20]], area: 200 })
+  const map = lattice(6, 4)
+
+  it('claims the capital first, then provinces until it holds the area asked for', () => {
+    const { claimed } = run({ provinces: map, capitals: [14], area: 350 })
     expect(claimed).toHaveLength(1)
-    expect(claimed[0]).toHaveLength(200)
-    expect(claimed[0][0]).toBe(input.capitals[0])
-    expect(new Set(claimed[0]).size).toBe(200)
+    expect(claimed[0][0]).toBe(14)
+    expect(new Set(claimed[0]).size).toBe(claimed[0].length)
+    expect(claimed[0].length).toBeGreaterThanOrEqual(4) // about 100 tiles each
+    expectJustEnough(map, claimed[0], 350)
   })
 
-  it('grows a compact blob on open ground, not a line', () => {
-    const { claimed } = run({ capitals: [[30, 20]], area: 200 })
-    const far = Math.max(...claimed[0].map((t) => Math.hypot(xy(t)[0] - 30, xy(t)[1] - 20)))
-    // a disc of 200 tiles has radius 8; a diamond (4-neighbour growth) reaches 10
-    expect(far).toBeLessThan(11.5)
+  it('stops as soon as it holds the area, so it never holds a whole province more', () => {
+    for (const wanted of [150, 300, 301, 700]) {
+      const { claimed } = run({ provinces: map, capitals: [14], area: wanted })
+      expectJustEnough(map, claimed[0], wanted)
+    }
   })
 
-  it('claims each tile next to one it already holds, in the order it grew', () => {
-    const { claimed } = run({ capitals: [[30, 20]], area: 150 })
+  it('claims each province next to one it already holds, in the order it grew', () => {
+    const { claimed } = run({ provinces: map, capitals: [14], area: 1000 })
     const held = new Set<number>([claimed[0][0]])
-    for (const t of claimed[0].slice(1)) {
-      const [x, y] = xy(t)
-      const next = [t - 1, t + 1, t - W, t + W].filter((_n, k) =>
-        k === 0 ? x > 0 : k === 1 ? x < W - 1 : k === 2 ? y > 0 : y < H - 1
-      )
-      expect(next.some((n) => held.has(n))).toBe(true)
-      held.add(t)
+    for (const p of claimed[0].slice(1)) {
+      expect(neighbours(map, p).some((n) => held.has(n))).toBe(true)
+      held.add(p)
     }
   })
 
-  it('never claims a tile that cannot be claimed (water, ice)', () => {
-    const { claimed } = run({
-      capitals: [[30, 20]],
-      area: 300,
-      claimable: (x) => x >= 25 && x < 40
-    })
-    for (const t of claimed[0]) {
-      expect(xy(t)[0]).toBeGreaterThanOrEqual(25)
-      expect(xy(t)[0]).toBeLessThan(40)
+  it('grows a compact patch on open ground, not a line', () => {
+    const { claimed } = run({ provinces: map, capitals: [14], area: 900 })
+    // nine provinces around (2, 2) on a 6 x 4 lattice: none farther than 2 provinces from it
+    for (const p of claimed[0]) {
+      const dc = Math.abs((p % 6) - 2)
+      const dr = Math.abs(Math.floor(p / 6) - 2)
+      expect(dc + dr).toBeLessThanOrEqual(3)
     }
   })
 
-  it('takes all it can reach when the land is smaller than the area', () => {
+  it('never claims a province that cannot be claimed', () => {
     const { claimed } = run({
-      capitals: [[30, 20]],
-      area: 1000,
-      claimable: (x, y) => x >= 28 && x < 33 && y >= 18 && y < 23
+      provinces: map,
+      capitals: [0],
+      area: 100000,
+      claimable: (p) => p % 6 !== 2
     })
-    expect(claimed[0]).toHaveLength(25)
+    for (const p of claimed[0]) expect(p % 6).not.toBe(2)
   })
 
-  it('does not jump a gap of unclaimable tiles', () => {
-    const { claimed } = run({ capitals: [[10, 20]], area: 500, claimable: (x) => x < 20 || x > 22 })
-    for (const t of claimed[0]) expect(xy(t)[0]).toBeLessThan(20)
+  it('does not jump a gap of provinces that cannot be claimed', () => {
+    const { claimed } = run({
+      provinces: map,
+      capitals: [0],
+      area: 100000,
+      claimable: (p) => p % 6 !== 2
+    })
+    // the column 2 cuts the lattice in two; only the west part (columns 0 and 1) is reachable
+    expect(claimed[0].sort((a, b) => a - b)).toEqual([0, 1, 6, 7, 12, 13, 18, 19])
+  })
+
+  it('takes everything it can reach when the land is smaller than the area', () => {
+    const { claimed } = run({ provinces: map, capitals: [0], area: 1000000 })
+    expect(claimed[0]).toHaveLength(map.count)
   })
 
   it('grows toward cheap ground and away from costly ground', () => {
-    // ground west of x = 30 costs 4 per step, east of it 1: the nation spreads east
-    const { claimed } = run({ capitals: [[30, 20]], area: 300, cost: (x) => (x < 30 ? 4 : 1) })
-    const east = claimed[0].filter((t) => xy(t)[0] >= 30).length
-    const west = claimed[0].length - east
-    expect(east).toBeGreaterThan(west * 2)
+    const rough = lattice(6, 4, (c) => c === 3)
+    const { claimed } = run({ provinces: rough, capitals: [2], area: 500 })
+    const west = claimed[0].filter((p) => p % 6 < 3).length
+    const east = claimed[0].filter((p) => p % 6 > 3).length
+    expect(west).toBeGreaterThan(east)
   })
 
-  it('area 1 is the capital alone, and area 0 is nothing', () => {
-    expect(run({ capitals: [[30, 20]], area: 1 }).claimed[0]).toEqual([20 * W + 30])
-    expect(run({ capitals: [[30, 20]], area: 0 }).claimed[0]).toEqual([])
-  })
-})
-
-describe('growTerritories: edges and walls', () => {
-  it('fills a whole small map from a corner and from the middle, edges included', () => {
-    for (const capital of [
-      [0, 0],
-      [3, 3],
-      [6, 6],
-      [6, 0],
-      [0, 6]
-    ] as Array<[number, number]>) {
-      const { claimed } = run({ capitals: [capital], area: 49, width: 7, height: 7 })
-      expect(new Set(claimed[0]).size).toBe(49)
-    }
-  })
-
-  it('never crosses a tile nothing can cross, even if it could be claimed', () => {
-    const { claimed } = run({
-      capitals: [[10, 20]],
-      area: 900,
-      cost: (x) => (x === 20 ? Infinity : 1)
-    })
-    for (const t of claimed[0]) expect(xy(t)[0]).toBeLessThan(20)
+  it('holds the capital alone for an area of 1, and nothing for an area of 0', () => {
+    expect(run({ provinces: map, capitals: [9], area: 1 }).claimed).toEqual([[9]])
+    expect(run({ provinces: map, capitals: [9], area: 0 }).claimed).toEqual([[]])
   })
 })
 
 describe('growTerritories: several nations', () => {
-  it('lets a nation take the ground a neighbour that has stopped growing left behind', () => {
-    // one row of land to x = 25: nation 0 (at 10) wants 4 tiles, nation 1 (at 20) wants as many as it can get
-    const { claimed } = run({
-      capitals: [
-        [10, 0],
-        [20, 0]
-      ],
-      area: [4, 100],
-      width: 60,
-      height: 1,
-      claimable: (x) => x <= 25
-    })
-    expect(claimed[0]).toHaveLength(4)
-    // nation 0 holds 8 to 11; nation 1 takes every free tile it can reach, from 12 to 25
-    expect(claimed[1]).toHaveLength(14)
-    expect(Math.min(...claimed[1])).toBe(12)
-  })
-
-  it('takes one area per nation when given a list, and rejects a list of the wrong length', () => {
-    const { claimed, input } = run({
-      capitals: [
-        [15, 20],
-        [45, 20]
-      ],
-      area: [30, 90]
-    })
-    expect(claimed.map((c) => c.length)).toEqual([30, 90])
-    expect(() => growTerritories({ ...input, area: [30] })).toThrow(RangeError)
-    expect(() => growTerritories({ ...input, area: [30, -1] })).toThrow(RangeError)
-  })
-
-  it('shares the land: nobody holds a tile twice, and each gets its area', () => {
-    const { claimed } = run({
-      capitals: [
-        [15, 20],
-        [45, 20]
-      ],
-      area: 250
-    })
+  it('shares the land: nobody holds a province twice, and each gets about its area', () => {
+    const map = lattice(6, 4)
+    const { claimed } = run({ provinces: map, capitals: [0, 5, 18, 23], area: 400 })
     const all = claimed.flat()
     expect(new Set(all).size).toBe(all.length)
-    expect(claimed[0]).toHaveLength(250)
-    expect(claimed[1]).toHaveLength(250)
+    for (const c of claimed) expectJustEnough(map, c, 400)
   })
 
   it('draws the border halfway between equal neighbours that crowd each other', () => {
-    // 30 wide strip: two capitals 20 apart, each wants more than half
-    const { claimed } = run({
-      capitals: [
-        [10, 20],
-        [30, 20]
-      ],
-      area: 700,
-      width: 41,
-      height: 41
-    })
-    const left = claimed[0].filter((t) => xy(t, 41)[0] < 20).length
-    expect(left).toBeGreaterThan(claimed[0].length * 0.85)
-    const right = claimed[1].filter((t) => xy(t, 41)[0] > 20).length
-    expect(right).toBeGreaterThan(claimed[1].length * 0.85)
+    const map = lattice(7, 1)
+    const { claimed } = run({ provinces: map, capitals: [0, 6], area: 100000 })
+    expect(claimed[0].length + claimed[1].length).toBe(7)
+    expect(Math.abs(claimed[0].length - claimed[1].length)).toBeLessThanOrEqual(1)
+    expect(Math.max(...claimed[0])).toBeLessThan(Math.min(...claimed[1]))
   })
 
   it('puts the border on a costly barrier instead of halfway', () => {
-    // a wall at x = 24 (cost 12) closer to the right capital than the left
-    const { claimed } = run({
-      capitals: [
-        [10, 20],
-        [30, 20]
-      ],
-      area: 600,
-      width: 41,
-      height: 41,
-      cost: (x) => (x === 24 ? 12 : 1)
-    })
-    const leftReach = Math.max(...claimed[0].map((t) => xy(t, 41)[0]))
-    expect(leftReach).toBeGreaterThanOrEqual(23) // the left nation climbs up to the wall
-    const rightReach = Math.min(...claimed[1].map((t) => xy(t, 41)[0]))
-    expect(rightReach).toBeGreaterThanOrEqual(24) // the right one stops at it
+    // the rough province is in column 4: it is costly to enter, so the west nation, that reaches it
+    // first over cheap ground, does not push the border east of it; the border sits at the rough ground
+    const map = lattice(9, 1, (c) => c === 2)
+    const { claimed } = run({ provinces: map, capitals: [0, 8], area: 100000 })
+    // halfway would be 4 | 5; the barrier at 2 pulls the west nation's reach in
+    expect(claimed[0].length).toBeLessThanOrEqual(3)
+    expect(claimed[1].length).toBeGreaterThanOrEqual(6)
   })
 
-  it('lets a nation keep growing when its neighbour has stopped', () => {
-    // nation 0 wants 50, nation 1 wants 400, side by side: nation 1 takes what nation 0 left
-    const small = run({ capitals: [[15, 20]], area: 50 }).claimed[0]
-    const { claimed } = run({
-      capitals: [
-        [15, 20],
-        [24, 20]
-      ],
-      area: 400
+  it('draws the border halfway on a vertical line of provinces too', () => {
+    const map = lattice(1, 7)
+    const { claimed } = run({ provinces: map, capitals: [0, 6], area: 100000 })
+    expect(claimed[0].length + claimed[1].length).toBe(7)
+    expect(Math.abs(claimed[0].length - claimed[1].length)).toBeLessThanOrEqual(1)
+  })
+
+  it('leaves no province free beside a nation that still has room to grow', () => {
+    // nations that fill up mid-growth leave offers behind; whatever they hold in the queue must not be lost
+    let state = 12345
+    const rand = (n: number): number => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0
+      return Math.floor((state / 4294967296) * n)
+    }
+    for (let trial = 0; trial < 80; trial += 1) {
+      const cols = 3 + rand(4)
+      const rows = 2 + rand(3)
+      const map = lattice(cols, rows, (c, r) => (c * 7 + r * 3 + trial) % 5 === 0)
+      const count = 2 + rand(3)
+      const capitals: number[] = []
+      while (capitals.length < count) {
+        const p = rand(map.count)
+        if (!capitals.includes(p)) capitals.push(p)
+      }
+      const wanted = capitals.map((_, k) => (k === 0 ? 1000000 : 1 + rand(450)))
+      const { claimed } = run({ provinces: map, capitals, area: wanted })
+      const owner = new Array<number>(map.count).fill(-1)
+      claimed.forEach((ids, nation) => ids.forEach((p) => (owner[p] = nation)))
+      const full = claimed.map((ids, nation) => area(map, ids) >= wanted[nation])
+      // a province can stay free only when every neighbour it has is free or held by a nation that is full
+      for (let p = 0; p < map.count; p += 1) {
+        if (owner[p] >= 0) continue
+        for (const n of neighbours(map, p)) {
+          expect(owner[n] < 0 || full[owner[n]], `trial ${trial}: province ${p} next to ${n}`).toBe(
+            true
+          )
+        }
+      }
+    }
+  })
+
+  it('hands a province to the nation that can reach it most cheaply when the first to reach for it is full', () => {
+    // Found by comparing against variants that hand it to the wrong nation, or at the wrong price: in each
+    // of these a nation fills up with offers still queued, and its provinces go to the cheapest taker.
+    const a = lattice(6, 2, (c, r) => (c * 7 + r * 5 + 1) % 5 === 0)
+    expect(
+      run({ provinces: a, capitals: [4, 6, 5, 7], area: [1000000, 1000000, 329, 143] }).claimed
+    ).toEqual([
+      [4, 10, 3, 9, 2, 8],
+      [6, 0],
+      [5, 11],
+      [7, 1]
+    ])
+    const b = lattice(3, 4, (c, r) => (c * 3 + r * 2 + 1) % 5 === 0)
+    expect(
+      run({ provinces: b, capitals: [2, 6, 7, 9, 5], area: [1000000, 1000000, 263, 70, 200] })
+        .claimed
+    ).toEqual([[2, 1, 0], [6], [7, 11, 3], [9], [5, 4, 8]])
+  })
+
+  it('weighs how far apart provinces are, not only how many steps lie between them', () => {
+    // a wide province in the middle, with a near neighbour on its left and a far one on its right
+    const width = 60
+    const land = new Uint8Array(width).fill(1)
+    const cost = new Float32Array(width).fill(1)
+    const map = buildProvinces({
+      width,
+      height: 1,
+      land,
+      cost,
+      spacing: 5,
+      minArea: 1,
+      seeds: [50, 20, 5]
     })
-    expect(claimed[0]).toHaveLength(400)
-    expect(small).toHaveLength(50)
-    expect(claimed[1]).toHaveLength(400)
+    expect(map.count).toBe(3)
+    // province 0 (right, nation 0) and province 2 (left, nation 1) both neighbour province 1 (the middle).
+    // The middle is 17 tiles from the left one and 24 from the right one.
+    const { claimed } = run({ provinces: map, capitals: [0, 2], area: 100000 })
+    expect(claimed[1]).toContain(1)
+    expect(claimed[0]).not.toContain(1)
+  })
+
+  it('lets a nation take the ground a neighbour that has stopped growing left behind', () => {
+    const map = lattice(8, 1)
+    const { claimed } = run({ provinces: map, capitals: [0, 7], area: [100, 100000] })
+    expect(claimed[0]).toEqual([0])
+    expect(claimed[1]).toHaveLength(7)
+  })
+
+  it('takes one area per nation when given a list, and rejects a list of the wrong length', () => {
+    const map = lattice(6, 4)
+    const { claimed } = run({ provinces: map, capitals: [0, 23], area: [200, 500] })
+    expectJustEnough(map, claimed[0], 200)
+    expectJustEnough(map, claimed[1], 500)
+    expect(() => run({ provinces: map, capitals: [0, 23], area: [200] })).toThrow(RangeError)
   })
 
   it('is the same twice, in claim order', () => {
-    const a = run({
-      capitals: [
-        [15, 20],
-        [45, 20],
-        [30, 5]
-      ],
-      area: 200
-    }).claimed
-    const b = run({
-      capitals: [
-        [15, 20],
-        [45, 20],
-        [30, 5]
-      ],
-      area: 200
-    }).claimed
+    const map = lattice(6, 4, (c, r) => (c + r) % 3 === 0)
+    const a = run({ provinces: map, capitals: [0, 9, 17, 23], area: 450 }).claimed
+    const b = run({ provinces: map, capitals: [0, 9, 17, 23], area: 450 }).claimed
     expect(a).toEqual(b)
   })
 
   it('does not depend on how the capitals are listed, apart from their numbering', () => {
-    const forward = run({
-      capitals: [
-        [15, 20],
-        [45, 20]
-      ],
-      area: 200
-    }).claimed
-    const reversed = run({
-      capitals: [
-        [45, 20],
-        [15, 20]
-      ],
-      area: 200
-    }).claimed
-    expect(new Set(forward[0])).toEqual(new Set(reversed[1]))
-    expect(new Set(forward[1])).toEqual(new Set(reversed[0]))
+    const map = lattice(6, 4, (c, r) => (c + r) % 3 === 0)
+    const a = run({ provinces: map, capitals: [0, 9, 17, 23], area: 450 }).claimed
+    const b = run({ provinces: map, capitals: [23, 17, 9, 0], area: 450 }).claimed
+    expect(
+      b
+        .slice()
+        .reverse()
+        .map((c) => new Set(c))
+    ).toEqual(a.map((c) => new Set(c)))
   })
 })
 
 describe('growTerritories: bad input', () => {
-  it('rejects a capital on an unclaimable tile, off the map, or shared', () => {
-    expect(() => run({ capitals: [[5, 5]], area: 10, claimable: () => false })).toThrow(RangeError)
-    const base = run({ capitals: [[5, 5]], area: 10 }).input
-    expect(() => growTerritories({ ...base, capitals: [W * H] })).toThrow(RangeError)
-    expect(() => growTerritories({ ...base, capitals: [-1] })).toThrow(RangeError)
-    expect(() => growTerritories({ ...base, capitals: [1.5] })).toThrow(RangeError)
+  const map = lattice(4, 2)
+
+  it('rejects a capital on a province that cannot be claimed, off the map, or shared', () => {
     expect(() =>
-      run({
-        capitals: [
-          [5, 5],
-          [5, 5]
-        ],
-        area: 10
-      })
-    ).toThrow(RangeError)
+      run({ provinces: map, capitals: [3], area: 100, claimable: (p) => p !== 3 })
+    ).toThrow(/claimed/)
+    expect(() => run({ provinces: map, capitals: [8], area: 100 })).toThrow(/province of the map/)
+    expect(() => run({ provinces: map, capitals: [-1], area: 100 })).toThrow(/province of the map/)
+    expect(() => run({ provinces: map, capitals: [2, 2], area: 100 })).toThrow(/share/)
   })
 
-  it('rejects a negative or fractional area, and a tile cost that is not above 0', () => {
-    expect(() => run({ capitals: [[5, 5]], area: -1 })).toThrow(RangeError)
-    expect(() => run({ capitals: [[5, 5]], area: 2.5 })).toThrow(RangeError)
-    expect(() => run({ capitals: [[5, 5]], area: 10, cost: () => 0 })).toThrow(RangeError)
+  it('rejects a negative or fractional area', () => {
+    expect(() => run({ provinces: map, capitals: [0], area: -1 })).toThrow(/area/)
+    expect(() => run({ provinces: map, capitals: [0], area: 1.5 })).toThrow(/area/)
   })
 
   it('has no territories for no capitals', () => {
-    expect(run({ capitals: [], area: 10 }).claimed).toEqual([])
+    expect(run({ provinces: map, capitals: [], area: 100 }).claimed).toEqual([])
   })
 })

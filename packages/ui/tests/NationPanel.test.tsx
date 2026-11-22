@@ -34,7 +34,8 @@ const nation: NationSnapshot = {
     traffic: 0.42,
     contacts: 3
   },
-  area: 1200
+  area: 1200,
+  provinceCount: 3
 }
 
 const render = (n: NationSnapshot = nation): string =>

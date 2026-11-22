@@ -151,7 +151,7 @@ describe(`routes, strategic points and nations over ${SEEDS.length} worlds of ${
     expect(straitsWet / straits).toBeGreaterThanOrEqual(0.7)
   })
 
-  it('gives every nation its starting area (nearly always), on land nobody else holds', () => {
+  it('gives every nation its starting area (nearly always), in provinces nobody else holds', () => {
     const area = defaultWorldConfig.nations.startArea
     let nations = 0
     let full = 0
@@ -159,11 +159,14 @@ describe(`routes, strategic points and nations over ${SEEDS.length} worlds of ${
       const seen = new Set<number>()
       for (const n of w.nations) {
         nations += 1
-        if (n.provinces.size === area) full += 1
-        expect(n.provinces.size).toBeLessThanOrEqual(area)
-        for (const tile of n.provinces) {
-          expect(seen.has(tile)).toBe(false)
-          seen.add(tile)
+        const held = n.profile.area
+        const last = w.provinces.area[[...n.provinces].pop() as number] as number
+        if (held >= area) full += 1
+        // it stops at the first province that takes it to the starting area
+        expect(held - last).toBeLessThan(area)
+        for (const province of n.provinces) {
+          expect(seen.has(province)).toBe(false)
+          seen.add(province)
         }
       }
     }

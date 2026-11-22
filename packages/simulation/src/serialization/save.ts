@@ -11,7 +11,8 @@
  * bytes 4..7    format version, uint32 big-endian
  * bytes 8..11   header length N, uint32 big-endian
  * bytes 12..    header: N bytes of UTF-8 JSON (seed, tick, size, sea level, config, strategic
- *               points, route hubs, routes, nations with their tiles)
+ *               points, route hubs, routes, nations with their province ids and expansion points;
+ *               the provinces themselves are derived from the terrain and rebuilt on load)
  * then          thirteen tile layers, each width*height long, in this order:
  *               elevation, temperature, humidity (float32, little-endian),
  *               biome ids, river mask, river width,
@@ -40,7 +41,7 @@ import { Nation } from '../nations/Nation'
 import { PROFILE_FIELDS, World } from '../world/World'
 import { utf8Bytes, utf8Decode } from './utf8'
 
-export const SAVE_FORMAT_VERSION = 4
+export const SAVE_FORMAT_VERSION = 5
 
 const MAGIC = [0x53, 0x4f, 0x56, 0x57] // "SOVW"
 const PREAMBLE = 12
@@ -135,6 +136,7 @@ export function encodeWorld(world: World): Uint8Array {
       founded: n.founded,
       stats: { ...n.stats },
       profile: { ...n.profile },
+      expansionPoints: n.expansionPoints,
       provinces: [...n.provinces]
     }))
   }
@@ -218,7 +220,7 @@ function nationFromJson(value: unknown, index: number): Nation {
     throw new SaveFormatError(`${where} has a malformed personality or stats`)
   }
   if (!Array.isArray(provinces) || !provinces.every((p) => Number.isInteger(p) && p >= 0)) {
-    throw new SaveFormatError(`${where} has a malformed tile list`)
+    throw new SaveFormatError(`${where} has a malformed province list`)
   }
   const stats = value.stats
   const rawProfile = value.profile as Json
@@ -255,6 +257,7 @@ function nationFromJson(value: unknown, index: number): Nation {
     capital: number(value, 'capital', where),
     founded: number(value, 'founded', where),
     provinces: new Set<number>(provinces as number[]),
+    expansionPoints: number(value, 'expansionPoints', where),
     stats: {
       population: number(stats, 'population', where),
       military: number(stats, 'military', where),

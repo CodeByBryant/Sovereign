@@ -26,6 +26,8 @@ export interface NationSnapshot {
   profile: NationProfile
   /** Number of tiles the nation owns. */
   area: number
+  /** Number of provinces the nation owns. */
+  provinceCount: number
 }
 
 export interface WorldSnapshot {

@@ -86,7 +86,10 @@ export interface NationData {
   readonly founded: number
   readonly government: GovernmentType
   readonly personality: NationPersonality
+  /** The ids of the provinces it owns, in the order it claimed them. */
   readonly provinces: ReadonlySet<number>
+  /** Expansion points saved up toward the next province. */
+  readonly expansionPoints: number
   readonly capital: number
   readonly stats: NationStats
   /** What its land is like: the facts the stats follow from. */
