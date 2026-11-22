@@ -421,3 +421,92 @@ describe('politicalRgba', () => {
     expect([out[0], out[1], out[2]]).toEqual([base[0], base[1], base[2]])
   })
 })
+
+describe('politicalRgba: province borders', () => {
+  // an 8 x 4 map, all of it one nation's, cut into two provinces by a vertical line between x = 3 and x = 4
+  const W = 8
+  const H = 4
+  const grey = new Uint8ClampedArray(W * H * 4)
+  for (let i = 0; i < W * H; i += 1) grey.set([100, 100, 100, 255], i * 4)
+  const owned = new Uint8Array(W * H).fill(0)
+  const colors: Array<[number, number, number]> = [[200, 40, 40]]
+  const provinces = new Uint16Array(W * H)
+  for (let y = 0; y < H; y += 1) for (let x = 0; x < W; x += 1) provinces[y * W + x] = x < 4 ? 0 : 1
+  const style = { alpha: 0.5, darken: 0.2, provinceDarken: 0.25 }
+  const at = (rgba: Uint8ClampedArray, x: number, y: number): number[] =>
+    Array.from(rgba.subarray((y * W + x) * 4, (y * W + x) * 4 + 3))
+
+  it('is the same as before when no provinces are given', () => {
+    const without = politicalRgba(grey, owned, colors, W, H, style)
+    const plain = politicalRgba(grey, owned, colors, W, H, { alpha: 0.5, darken: 0.2 })
+    expect(without).toEqual(plain)
+  })
+
+  it('darkens the tiles on both sides of a border between two provinces of one nation, and only those', () => {
+    const out = politicalRgba(grey, owned, colors, W, H, style, provinces)
+    const plain = politicalRgba(grey, owned, colors, W, H, style)
+    for (const y of [1, 2]) {
+      for (let x = 0; x < W; x += 1) {
+        const onBorder = x === 3 || x === 4
+        const expected = at(plain, x, y).map((v) => (onBorder ? Math.round(v * 0.75) : v))
+        expect(at(out, x, y), `(${x}, ${y})`).toEqual(expected)
+      }
+    }
+  })
+
+  it('leaves a nation border alone: it is drawn as ever, province or not', () => {
+    const out = politicalRgba(grey, owned, colors, W, H, style, provinces)
+    const plain = politicalRgba(grey, owned, colors, W, H, style)
+    // the top row is the edge of the map and not a nation border; the west end x = 0 is not a border either
+    // (the edge of the map does not count), so make a real one: a second nation to the south
+    const two = new Uint8Array(owned)
+    for (let x = 0; x < W; x += 1) two[3 * W + x] = 1
+    const colors2: Array<[number, number, number]> = [
+      [200, 40, 40],
+      [40, 40, 200]
+    ]
+    const withProvinces = politicalRgba(grey, two, colors2, W, H, style, provinces)
+    const withoutProvinces = politicalRgba(grey, two, colors2, W, H, style)
+    for (let x = 0; x < W; x += 1) {
+      // rows 2 and 3 are the nation border: identical with and without province lines
+      expect(at(withProvinces, x, 2)).toEqual(at(withoutProvinces, x, 2))
+      expect(at(withProvinces, x, 3)).toEqual(at(withoutProvinces, x, 3))
+    }
+    expect(out.length).toBe(plain.length)
+  })
+
+  it('draws a line between provinces above and below each other as well', () => {
+    const rows = new Uint16Array(W * H)
+    for (let y = 0; y < H; y += 1) for (let x = 0; x < W; x += 1) rows[y * W + x] = y < 2 ? 0 : 1
+    const out = politicalRgba(grey, owned, colors, W, H, style, rows)
+    const plain = politicalRgba(grey, owned, colors, W, H, style)
+    for (let y = 0; y < H; y += 1) {
+      const onBorder = y === 1 || y === 2
+      expect(at(out, 3, y), `y ${y}`).toEqual(
+        at(plain, 3, y).map((v) => (onBorder ? Math.round(v * 0.75) : v))
+      )
+    }
+  })
+
+  it('does not draw a province line where there is none: the sea and unowned land stay as they were', () => {
+    const none = new Uint8Array(W * H).fill(255)
+    expect(politicalRgba(grey, none, colors, W, H, style, provinces)).toEqual(grey)
+  })
+
+  it('draws no province lines with a province darkening of 0 or none', () => {
+    const noLines = politicalRgba(grey, owned, colors, W, H, { alpha: 0.5, darken: 0.2 }, provinces)
+    expect(noLines).toEqual(politicalRgba(grey, owned, colors, W, H, style, new Uint16Array(W * H)))
+    expect(noLines).toEqual(
+      politicalRgba(grey, owned, colors, W, H, { ...style, provinceDarken: 0 }, provinces)
+    )
+  })
+
+  it('sees a province line with 0xFFFF (no province) on its other side too', () => {
+    // a notch of unclaimed-province tiles inside the nation: the owned tile beside it is on a province line
+    const notch = new Uint16Array(provinces)
+    notch[1 * W + 6] = 0xffff
+    const out = politicalRgba(grey, owned, colors, W, H, style, notch)
+    const plain = politicalRgba(grey, owned, colors, W, H, style)
+    expect(at(out, 6, 2)).toEqual(at(plain, 6, 2).map((v) => Math.round(v * 0.75)))
+  })
+})

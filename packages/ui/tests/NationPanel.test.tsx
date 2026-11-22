@@ -82,3 +82,17 @@ describe('NationPanel: the land', () => {
     expect(html).toContain('Aggression')
   })
 })
+
+describe('NationPanel: territory', () => {
+  it('says how many provinces the nation holds and how many tiles they cover', () => {
+    const html = render()
+    expect(html).toContain('Provinces')
+    expect(html).toMatch(/Provinces<\/span><span[^>]*>3</)
+    expect(html).toContain('1200 tiles')
+  })
+
+  it('shows a nation of a single province', () => {
+    const html = render({ ...nation, provinceCount: 1 })
+    expect(html).toMatch(/Provinces<\/span><span[^>]*>1</)
+  })
+})

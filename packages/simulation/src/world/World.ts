@@ -442,6 +442,7 @@ export class World {
       seed: this.seed,
       tick: this.clock.tick,
       time: this.clock.time,
+      timestep: this.clock.deltaTime,
       width: this.terrain.width,
       height: this.terrain.height,
       seaLevel: this.terrain.seaLevel,

@@ -36,6 +36,8 @@ export interface WorldSnapshot {
   tick: number
   /** In-game time: `tick * timestep`. */
   time: number
+  /** In-game days per tick. */
+  timestep: number
   width: number
   height: number
   seaLevel: number

@@ -236,6 +236,12 @@ describe('snapshot()', () => {
     expect(snap.nations.length).toBe(world.nations.length)
   })
 
+  it('says how many days a tick is, so a host can turn days into ticks', () => {
+    expect(snap.timestep).toBe(world.config.timestep)
+    const slow = World.create({ seed: 7, config: { ...smallWorldOverrides(), timestep: 0.25 } })
+    expect(slow.snapshot().timestep).toBe(0.25)
+  })
+
   it('lists each nation with its area but without the bulky tile list', () => {
     const first = world.nations[0]
     const s = snap.nations[0]

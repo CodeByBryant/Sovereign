@@ -15,7 +15,8 @@ const DB_NAME = 'sovereign'
 //    records written before it can no longer be loaded and are dropped.
 // 4: engine save format 3 (every tile has two resource slots with richness and stock); older records are dropped.
 // 5: engine save format 4 (a route network, and the profile of each nation's land); older records are dropped.
-const DB_VERSION = 5
+// 6: engine save format 5 (nations own provinces, with expansion points); older records are dropped.
+const DB_VERSION = 6
 const STORE_NAME = 'saves'
 
 /* ------------------------------------------------------------------ */

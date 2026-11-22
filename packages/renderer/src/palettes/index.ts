@@ -348,12 +348,21 @@ export interface PoliticalStyle {
   alpha: number
   /** Extra blend on border tiles (0 to 1); borders are also dimmed by 30%. */
   darken: number
+  /**
+   * How much to dim a tile that lies on the line between two provinces of one nation (0 to 1), so the
+   * provinces show faintly inside a territory. 0 or missing draws none.
+   */
+  provinceDarken?: number
 }
 
 /**
  * The political overlay: the base map with each owned tile blended toward its nation's colour. A
  * tile is a border if any of its four in-map neighbours has a different owner (the edge of the map
  * does not count). `ownership` holds one byte per tile: the owning nation's index, or 255.
+ *
+ * With `provinces` (one 16-bit province id per tile, 0xFFFF for none) a tile that is not on a nation
+ * border but has a neighbour in another province is dimmed by `style.provinceDarken`, so the provinces
+ * a nation is made of show faintly inside it, and its own border still shows strongly.
  */
 export function politicalRgba(
   base: Uint8ClampedArray,
@@ -361,10 +370,13 @@ export function politicalRgba(
   nationColors: ReadonlyArray<readonly [number, number, number]>,
   width: number,
   height: number,
-  style: PoliticalStyle
+  style: PoliticalStyle,
+  provinces?: Uint16Array
 ): Uint8ClampedArray {
   const data = new Uint8ClampedArray(base)
   const { alpha, darken } = style
+  const lineKeep = 1 - (style.provinceDarken ?? 0)
+  const drawLines = provinces !== undefined && lineKeep < 1
 
   for (let i = 0; i < ownership.length; i += 1) {
     const owner = ownership[i] as number
@@ -389,6 +401,18 @@ export function politicalRgba(
       data[p] = Math.round((data[p] as number) * 0.7)
       data[p + 1] = Math.round((data[p + 1] as number) * 0.7)
       data[p + 2] = Math.round((data[p + 2] as number) * 0.7)
+    } else if (drawLines) {
+      const province = (provinces as Uint16Array)[i] as number
+      const onLine =
+        (x > 0 && (provinces as Uint16Array)[i - 1] !== province) ||
+        (x < width - 1 && (provinces as Uint16Array)[i + 1] !== province) ||
+        (y > 0 && (provinces as Uint16Array)[i - width] !== province) ||
+        (y < height - 1 && (provinces as Uint16Array)[i + width] !== province)
+      if (onLine) {
+        data[p] = Math.round((data[p] as number) * lineKeep)
+        data[p + 1] = Math.round((data[p + 1] as number) * lineKeep)
+        data[p + 2] = Math.round((data[p + 2] as number) * lineKeep)
+      }
     }
   }
   return data

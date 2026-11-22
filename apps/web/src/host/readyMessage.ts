@@ -54,7 +54,8 @@ export function buildReady(world: World, style: PoliticalStyle): Built {
       world.nations.map((n) => n.color),
       width,
       height,
-      style
+      style,
+      world.provinces.provinceOf
     )
   }
 

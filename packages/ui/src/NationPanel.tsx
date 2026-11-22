@@ -49,6 +49,11 @@ const NationPanel: React.FC<Props> = ({ nation, onClose }) => {
           <div className="nation-panel__stat-row">
             <span className="nation-panel__stat-icon">🗺️</span>
             <span className="nation-panel__stat-label">Provinces</span>
+            <span className="nation-panel__stat-value">{nation.provinceCount}</span>
+          </div>
+          <div className="nation-panel__stat-row">
+            <span className="nation-panel__stat-icon">📐</span>
+            <span className="nation-panel__stat-label">Area</span>
             <span className="nation-panel__stat-value">{nation.area} tiles</span>
           </div>
         </div>

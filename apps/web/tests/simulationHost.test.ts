@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SimulationHost, type WorkerLike } from '../src/host/SimulationHost'
-import type { WorldReady, WorldRequest, WorldResponse } from '../src/host/protocol'
+import type { WorldReady, WorldRequest, WorldResponse, WorldTicked } from '../src/host/protocol'
 
 /** A worker double: records what it is sent and lets the test answer. */
 class FakeWorker implements WorkerLike {
@@ -26,6 +26,15 @@ const READY = {
   layers: {},
   fields: {}
 } as unknown as WorldReady
+
+const TICKED: WorldTicked = {
+  type: 'ticked',
+  tick: 10,
+  time: 10,
+  claims: 2,
+  saturated: false,
+  nations: []
+}
 
 const setup = (): { host: SimulationHost; worker: FakeWorker } => {
   const worker = new FakeWorker()
@@ -121,5 +130,52 @@ describe('SimulationHost', () => {
     const pending = host.create(1)
     host.dispose()
     await expect(pending).rejects.toThrow(/disposed/i)
+  })
+
+  it('asks the worker to run some ticks and resolves with where the world is', async () => {
+    const { host, worker } = setup()
+    const pending = host.run(10)
+    expect(worker.sent).toEqual([{ type: 'run', ticks: 10 }])
+    worker.reply(TICKED)
+    await expect(pending).resolves.toBe(TICKED)
+  })
+
+  it('passes on whether the political overlay is wanted and whether to flush', async () => {
+    const { host, worker } = setup()
+    const pending = host.run(0, { political: true, flush: true })
+    expect(worker.sent).toEqual([{ type: 'run', ticks: 0, political: true, flush: true }])
+    worker.reply(TICKED)
+    await pending
+  })
+
+  it('is busy while a run is in flight, and free again after', async () => {
+    const { host, worker } = setup()
+    const first = host.run(5)
+    await expect(host.run(5)).rejects.toThrow(/busy/i)
+    expect(host.busy).toBe(true)
+    worker.reply(TICKED)
+    await first
+    expect(host.busy).toBe(false)
+  })
+
+  it('rejects a run answered with the wrong kind of response', async () => {
+    const { host, worker } = setup()
+    const pending = host.run(5)
+    worker.reply({ type: 'hash', hash: 'a'.repeat(32) })
+    await expect(pending).rejects.toThrow(/unexpected "hash" response while waiting for run/)
+  })
+
+  it('rejects a create answered with a run result', async () => {
+    const { host, worker } = setup()
+    const pending = host.create(1)
+    worker.reply(TICKED)
+    await expect(pending).rejects.toThrow(/unexpected "ticked" response while waiting for create/)
+  })
+
+  it('rejects a run when the engine reports an error', async () => {
+    const { host, worker } = setup()
+    const pending = host.run(5)
+    worker.reply({ type: 'error', message: 'ticks must be a non-negative integer' })
+    await expect(pending).rejects.toThrow(/non-negative/)
   })
 })

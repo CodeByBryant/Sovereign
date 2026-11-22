@@ -19,7 +19,9 @@ export const viewConfig = {
     /** Alpha blend for territory fill (0 to 1). */
     alpha: 0.45,
     /** Darkening factor for border tiles (0 to 1). */
-    darken: 0.35
+    darken: 0.35,
+    /** How much the lines between the provinces of one nation dim the map (0 to 1). */
+    provinceDarken: 0.18
   },
   camera: {
     /** Minimum zoom level (fully zoomed out). */
