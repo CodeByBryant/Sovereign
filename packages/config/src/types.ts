@@ -314,6 +314,17 @@ export interface ProvincesConfig {
   costCap: number
 }
 
+/** How nations grow into free provinces as time passes. */
+export interface ExpansionConfig {
+  /**
+   * Expansion points a nation earns per day at 100 people and an expansionism of 0.5; it scales with
+   * `0.5 + expansionism` and with the square root of the population over 100.
+   */
+  rate: number
+  /** Points it costs to claim a province, per tile of it, times how hard its ground is to cross. */
+  costPerTile: number
+}
+
 /** Where routes between settlements are drawn from, and how they are found. */
 export interface RoutesConfig {
   /** Side of one route cell, in tiles: routes are found on this coarser grid. */

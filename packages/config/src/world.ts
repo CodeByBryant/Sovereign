@@ -16,6 +16,7 @@ import { BIOME_KEYS, RESOURCE_CATALOG, type QuantileProfile } from '@sovereign/c
 import type {
   BiomeConfig,
   BiomeNoiseConfig,
+  ExpansionConfig,
   HumidityConfig,
   ProvincesConfig,
   ResourcePlacementSettings,
@@ -66,6 +67,8 @@ export interface WorldConfig {
   routes: RoutesConfig
   /** How the land is cut into provinces. */
   provinces: ProvincesConfig
+  /** How nations grow into free provinces. */
+  expansion: ExpansionConfig
   /** Where each resource is found, how rich it is and how it regrows. */
   resources: ResourcePlacementSettings
   nations: NationsConfig
@@ -385,6 +388,16 @@ export const defaultWorldConfig: WorldConfig = {
     spacing: 20,
     minArea: 40,
     costCap: 12
+  },
+
+  /**
+   * Expansion: every day a nation earns points (more with a high expansionism and a big population) and
+   * spends them to claim the free province beside its land that is the best value for the effort. Nothing
+   * random: the same world always grows the same way. See docs/nations.md.
+   */
+  expansion: {
+    rate: 1,
+    costPerTile: 0.05
   },
 
   /* ------------------------------------------------------------ */
@@ -806,6 +819,7 @@ export function resolveWorldConfig(overrides: WorldConfigOverrides = {}): WorldC
     strategic: merge(d.strategic, overrides.strategic),
     routes: merge(d.routes, overrides.routes),
     provinces: merge(d.provinces, overrides.provinces),
+    expansion: merge(d.expansion, overrides.expansion),
     resources: merge(d.resources, overrides.resources),
     nations: merge(d.nations, overrides.nations),
     timestep: overrides.timestep ?? d.timestep
@@ -886,6 +900,7 @@ export function validateWorldConfig(config: WorldConfig): string[] {
   validateResourcePlacement(config.resources, problems)
   validateRoutes(config.routes, problems)
   validateProvinces(config.provinces, problems)
+  validateExpansion(config.expansion, problems)
   validateStrategic(config.strategic, problems)
 
   return problems
@@ -913,6 +928,17 @@ function validateStrategic(strategic: StrategicConfig, problems: string[]): void
   }
   if (!(strategic.minTraffic >= 0 && strategic.minTraffic <= 1)) {
     problems.push(`${at}.minTraffic must be from 0 to 1`)
+  }
+}
+
+/** Problems with the expansion settings. */
+function validateExpansion(expansion: ExpansionConfig, problems: string[]): void {
+  const at = 'expansion'
+  if (!(Number.isFinite(expansion.rate) && expansion.rate > 0)) {
+    problems.push(`${at}.rate must be a finite number above 0`)
+  }
+  if (!(Number.isFinite(expansion.costPerTile) && expansion.costPerTile > 0)) {
+    problems.push(`${at}.costPerTile must be a finite number above 0`)
   }
 }
 

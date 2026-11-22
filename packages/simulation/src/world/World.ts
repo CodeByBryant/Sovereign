@@ -21,11 +21,17 @@ import {
   type WorldSnapshot
 } from '@sovereign/contracts'
 import { SimulationClock } from '../clock/SimulationClock'
+import { claimableProvinces } from '../nations/claimable'
 import { deriveStats } from '../nations/derive'
 import { Nation } from '../nations/Nation'
-import { combineProfile, type ProvinceFacts } from '../nations/provinceProfile'
+import {
+  combineProfile,
+  refreshProvinceFacts,
+  type ProvinceFacts
+} from '../nations/provinceProfile'
 import { spawnNations } from '../nations/NationSpawner'
 import { normalizeSeed } from '../random/seed'
+import { ExpansionSystem } from '../systems/ExpansionSystem'
 import { stateHasher } from '../serialization/hash'
 import { generateTerrain } from '../terrain/pipeline'
 import { NO_PROVINCE, type ProvinceMap } from '../terrain/provinces'
@@ -112,6 +118,12 @@ export class World {
   readonly provinceFacts: ProvinceFacts
   /** The index of the nation that owns each province, or {@link UNCLAIMED}. */
   readonly provinceOwner: Uint8Array
+  /** 1 for a province that can be owned, 0 for one that is mostly ice. */
+  readonly claimable: Uint8Array
+  /** Provinces whose land changed (a stock was drawn down or regrew) and must be measured again. */
+  private readonly dirtyProvinces = new Set<number>()
+  /** Nations growing into free provinces (derived state: its borders are rebuilt from the land held). */
+  private readonly expansion: ExpansionSystem
   /** Drawing resources down and letting the renewable ones grow back (it works on `terrain.resources`). */
   private readonly stocks: ResourceStocks
 
@@ -124,6 +136,7 @@ export class World {
     this.provinces = layer.map
     this.provinceFacts = layer.facts
     this.provinceOwner = ownersOf(state.nations, layer.map.count)
+    this.claimable = claimableProvinces(layer.map, state.terrain.biomeIds)
     this.map = new WorldMap({
       width: state.terrain.width,
       height: state.terrain.height,
@@ -138,8 +151,19 @@ export class World {
     })
     this.stocks = new ResourceStocks(
       state.terrain.resources,
-      buildRegrowthTable(state.config.resources.regrowth)
+      buildRegrowthTable(state.config.resources.regrowth),
+      (tile) => this.noteStockChange(tile)
     )
+    this.expansion = new ExpansionSystem({
+      nations: state.nations,
+      provinces: layer.map,
+      facts: layer.facts,
+      claimable: this.claimable,
+      provinceOwner: this.provinceOwner,
+      ownership: state.ownership,
+      config: state.config.expansion,
+      timestep: state.config.timestep
+    })
   }
 
   /** Generate a new world: terrain first, then nations placed on it. */
@@ -209,8 +233,20 @@ export class World {
   /** Advance the simulation by one tick. */
   step(): void {
     // Systems run here, as a flat, ordered list of calls.
+    this.expansion.step(this.clock.tick)
     this.stocks.regrow(this.clock.tick)
+    this.refreshDirtyProvinces()
     this.clock.advance()
+  }
+
+  /** How many provinces nations have claimed since this world object was made (not part of its state). */
+  get expansionClaims(): number {
+    return this.expansion.claims
+  }
+
+  /** True when no nation has a free province left to claim: the borders will not change again. */
+  get saturated(): boolean {
+    return this.expansion.saturated
   }
 
   /**
@@ -219,7 +255,62 @@ export class World {
    * economy and the god tools draw resources down through this.
    */
   extractResource(layer: ResourceLayerName, tile: number, amount: number): number {
-    return this.stocks.extract(layer, tile, amount)
+    const taken = this.stocks.extract(layer, tile, amount)
+    this.refreshDirtyProvinces()
+    return taken
+  }
+
+  /**
+   * A tile's stock changed: the province it is in changes, and so do those beside it when it is water (a
+   * coast's food counts the fishery next to it).
+   */
+  private noteStockChange(tile: number): void {
+    const { width, height } = this.terrain
+    const provinceOf = this.provinces.provinceOf
+    const x = tile % width
+    const y = (tile - x) / width
+    const own = provinceOf[tile] as number
+    if (own !== NO_PROVINCE) this.dirtyProvinces.add(own)
+    for (const n of [
+      x > 0 ? tile - 1 : -1,
+      x < width - 1 ? tile + 1 : -1,
+      y > 0 ? tile - width : -1,
+      y < height - 1 ? tile + width : -1
+    ]) {
+      if (n < 0) continue
+      const province = provinceOf[n] as number
+      if (province !== NO_PROVINCE) this.dirtyProvinces.add(province)
+    }
+  }
+
+  /** Measure the changed provinces again, and re-sum the profile and re-derive the stats of whoever holds them. */
+  private refreshDirtyProvinces(): void {
+    if (this.dirtyProvinces.size === 0) return
+    const t = this.terrain
+    const input = {
+      width: t.width,
+      height: t.height,
+      seaLevel: t.seaLevel,
+      elevation: t.elevation,
+      biomeIds: t.biomeIds,
+      riverMask: t.riverMask,
+      resources: t.resources,
+      provinces: this.provinces,
+      strategicPoints: t.strategicPoints,
+      routes: t.routes
+    }
+    const owners = new Set<number>()
+    for (const province of this.dirtyProvinces) {
+      refreshProvinceFacts(this.provinceFacts, input, province)
+      const owner = this.provinceOwner[province] as number
+      if (owner !== UNCLAIMED) owners.add(owner)
+    }
+    this.dirtyProvinces.clear()
+    for (const index of owners) {
+      const nation = this.nations[index] as Nation
+      nation.profile = combineProfile(this.provinceFacts, nation.provinces, nation.profile.contacts)
+      nation.stats = deriveStats(nation.profile)
+    }
   }
 
   /** Advance the simulation by `ticks` ticks. */

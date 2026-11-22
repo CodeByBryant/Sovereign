@@ -3,6 +3,7 @@ import { resolveWorldConfig } from '@sovereign/config'
 import type { WorldSnapshot } from '@sovereign/contracts'
 import { spawnNations } from '../src/nations/NationSpawner'
 import { generateTerrain } from '../src/terrain/pipeline'
+import { decodeWorld, encodeWorld } from '../src/serialization/save'
 import { World } from '../src/world/World'
 import { hashTerrain } from './support/fieldHash'
 import { spawnInputOf } from './support/spawnInput'
@@ -350,12 +351,14 @@ describe('resources in the world', () => {
     const world = make(7)
     const s = tileWith(world, 'surface')
     world.extractResource('surface', s, 255)
+    // the copy has nations of its own: they change as the worlds run
+    const nations = [...decodeWorld(encodeWorld(world)).nations]
     const copy = World.restore({
       seed: world.seed,
       config: world.config,
       tick: world.clock.tick,
       terrain: structuredClone(world.terrain),
-      nations: world.nations as never,
+      nations,
       ownership: world.map.ownership.slice()
     })
     world.run(500)

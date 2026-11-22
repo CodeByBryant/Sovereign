@@ -73,19 +73,7 @@ export function buildProvinceFacts(input: ProvinceFactsInput): ProvinceFacts {
     kinds: new Uint32Array(count)
   }
 
-  for (let p = 0; p < count; p += 1) {
-    const t = tileFacts(input, provinces.tiles.subarray(provinces.start[p], provinces.start[p + 1]))
-    facts.food[p] = t.food
-    facts.timber[p] = t.timber
-    facts.stone[p] = t.stone
-    facts.horses[p] = t.horses
-    facts.metals[p] = t.metals
-    facts.luxuries[p] = t.luxuries
-    facts.coast[p] = t.coast
-    facts.river[p] = t.river
-    facts.highGround[p] = t.highGround
-    facts.kinds[p] = t.kinds
-  }
+  for (let p = 0; p < count; p += 1) refreshProvinceFacts(facts, input, p)
 
   for (const point of input.strategicPoints) {
     const p = provinces.provinceOf[point.y * width + point.x]
@@ -106,6 +94,33 @@ export function buildProvinceFacts(input: ProvinceFactsInput): ProvinceFacts {
     }
   }
   return facts
+}
+
+/**
+ * Measure again what the land of one province gives (food, materials, luxuries, coast, rivers, high ground
+ * and the resource kinds), from the terrain as it is now: stocks change as resources are drawn down and
+ * regrow. The strategic points and the route traffic never change, so they are not touched.
+ */
+export function refreshProvinceFacts(
+  facts: ProvinceFacts,
+  input: ProvinceFactsInput,
+  province: number
+): void {
+  const { provinces } = input
+  const t = tileFacts(
+    input,
+    provinces.tiles.subarray(provinces.start[province], provinces.start[province + 1])
+  )
+  facts.food[province] = t.food
+  facts.timber[province] = t.timber
+  facts.stone[province] = t.stone
+  facts.horses[province] = t.horses
+  facts.metals[province] = t.metals
+  facts.luxuries[province] = t.luxuries
+  facts.coast[province] = t.coast
+  facts.river[province] = t.river
+  facts.highGround[province] = t.highGround
+  facts.kinds[province] = t.kinds
 }
 
 /**

@@ -16,12 +16,13 @@
  * const { nations } = spawnNations({ ...terrain, provinces: layer, count: 12, seed, minSpacing: 70, startArea: 1200 })
  * ```
  */
-import { BIOME_INDEX, type RouteHub, type StrategicRoute } from '@sovereign/contracts'
+import type { RouteHub, StrategicRoute } from '@sovereign/contracts'
 import { normalizeSeed } from '../random/seed'
 import { createStream } from '../random/streams'
 import { NO_PROVINCE } from '../terrain/provinces'
 import type { ProvinceLayer } from '../world/provinceLayer'
 import { chooseCapitals, contactCounts } from './capitals'
+import { claimableProvinces } from './claimable'
 import { deriveGovernment, derivePersonality, deriveStats, GOVERNMENTS } from './derive'
 import { ColorGenerator } from './ColorGenerator'
 import { FlagGenerator } from './FlagGenerator'
@@ -53,9 +54,6 @@ export interface SpawnResult {
   nations: Nation[]
 }
 
-/** Biomes nobody settles: the ice. (Shore, mountains and the rest can be owned.) */
-const UNCLAIMABLE = [BIOME_INDEX.glacier, BIOME_INDEX.polar_desert]
-
 /** A random draw in -1 to 1 for the jitter of a government score or a personality trait. */
 const draw = (rng: { float(): number }): number => rng.float() * 2 - 1
 
@@ -69,15 +67,7 @@ export function spawnNations(input: SpawnInput): SpawnResult {
   const flagGen = new FlagGenerator(worldSeed)
 
   // ---- where nations can live: provinces that are not mostly ice ----
-  const blocked = new Uint8Array(256)
-  for (const biome of UNCLAIMABLE) blocked[biome] = 1
-  const claimable = new Uint8Array(map.count)
-  for (let p = 0; p < map.count; p += 1) {
-    let ice = 0
-    for (let k = map.start[p]; k < map.start[p + 1]; k += 1)
-      ice += blocked[input.biomeIds[map.tiles[k]]]
-    claimable[p] = ice * 2 <= map.area[p] ? 1 : 0
-  }
+  const claimable = claimableProvinces(map, input.biomeIds)
   const hubTile = (hub: RouteHub): number => hub.y * width + hub.x
   const provinceOfHub = (h: number): number => map.provinceOf[hubTile(input.hubs[h] as RouteHub)]
   const chosen = chooseCapitals(

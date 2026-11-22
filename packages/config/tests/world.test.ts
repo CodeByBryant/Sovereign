@@ -603,3 +603,39 @@ describe('province settings (provinces)', () => {
     expect(resolved.provinces.minArea).toBe(provinces.minArea)
   })
 })
+
+describe('expansion settings (expansion)', () => {
+  const expansion = defaultWorldConfig.expansion
+  const bad = (edit: (c: WorldConfig) => void): string[] => {
+    const c = clone()
+    edit(c)
+    return validateWorldConfig(c)
+  }
+
+  it('is valid as shipped', () => {
+    expect(validateWorldConfig(defaultWorldConfig)).toEqual([])
+  })
+
+  it('earns points at a positive rate and charges a positive price per tile', () => {
+    expect(expansion.rate).toBeGreaterThan(0)
+    expect(expansion.costPerTile).toBeGreaterThan(0)
+  })
+
+  it.each([
+    ['a rate of 0', (c: WorldConfig) => (c.expansion.rate = 0)],
+    ['a negative rate', (c: WorldConfig) => (c.expansion.rate = -1)],
+    ['a rate that is not a number', (c: WorldConfig) => (c.expansion.rate = Number.NaN)],
+    ['a price of 0', (c: WorldConfig) => (c.expansion.costPerTile = 0)],
+    ['an infinite price', (c: WorldConfig) => (c.expansion.costPerTile = Infinity)]
+  ])('rejects %s', (_label, edit) => {
+    const problems = bad(edit)
+    expect(problems.length).toBeGreaterThan(0)
+    expect(problems.join('\n')).toMatch(/expansion/)
+  })
+
+  it('merges a partial override into the defaults', () => {
+    const resolved = resolveWorldConfig({ expansion: { rate: 3 } })
+    expect(resolved.expansion.rate).toBe(3)
+    expect(resolved.expansion.costPerTile).toBe(expansion.costPerTile)
+  })
+})
