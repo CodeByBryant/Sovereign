@@ -565,3 +565,77 @@ describe('route settings (routes)', () => {
     expect(defaultWorldConfig.routes.cost.biomes.mountain).not.toBe(99)
   })
 })
+
+describe('province settings (provinces)', () => {
+  const provinces = defaultWorldConfig.provinces
+  const bad = (edit: (c: WorldConfig) => void): string[] => {
+    const c = clone()
+    edit(c)
+    return validateWorldConfig(c)
+  }
+
+  it('is valid as shipped', () => {
+    expect(validateWorldConfig(defaultWorldConfig)).toEqual([])
+  })
+
+  it('has provinces of about 450 tiles: a seed every 20, none under 40', () => {
+    expect(provinces.spacing).toBe(20)
+    expect(provinces.minArea).toBe(40)
+    expect(provinces.costCap).toBeGreaterThan(1)
+  })
+
+  it.each([
+    ['a spacing of 0', (c: WorldConfig) => (c.provinces.spacing = 0)],
+    ['a spacing below 1', (c: WorldConfig) => (c.provinces.spacing = 0.5)],
+    ['a minimum area of 0', (c: WorldConfig) => (c.provinces.minArea = 0)],
+    ['a fractional minimum area', (c: WorldConfig) => (c.provinces.minArea = 2.5)],
+    ['a cost cap of 1', (c: WorldConfig) => (c.provinces.costCap = 1)],
+    ['a cost cap below the base cost', (c: WorldConfig) => (c.provinces.costCap = 0.4)]
+  ])('rejects %s', (_label, edit) => {
+    const problems = bad(edit)
+    expect(problems.length).toBeGreaterThan(0)
+    expect(problems.join('\n')).toMatch(/provinces/)
+  })
+
+  it('merges a partial override into the defaults', () => {
+    const resolved = resolveWorldConfig({ provinces: { spacing: 30 } })
+    expect(resolved.provinces.spacing).toBe(30)
+    expect(resolved.provinces.minArea).toBe(provinces.minArea)
+  })
+})
+
+describe('expansion settings (expansion)', () => {
+  const expansion = defaultWorldConfig.expansion
+  const bad = (edit: (c: WorldConfig) => void): string[] => {
+    const c = clone()
+    edit(c)
+    return validateWorldConfig(c)
+  }
+
+  it('is valid as shipped', () => {
+    expect(validateWorldConfig(defaultWorldConfig)).toEqual([])
+  })
+
+  it('earns points at a positive rate and charges a positive price per tile', () => {
+    expect(expansion.rate).toBeGreaterThan(0)
+    expect(expansion.costPerTile).toBeGreaterThan(0)
+  })
+
+  it.each([
+    ['a rate of 0', (c: WorldConfig) => (c.expansion.rate = 0)],
+    ['a negative rate', (c: WorldConfig) => (c.expansion.rate = -1)],
+    ['a rate that is not a number', (c: WorldConfig) => (c.expansion.rate = Number.NaN)],
+    ['a price of 0', (c: WorldConfig) => (c.expansion.costPerTile = 0)],
+    ['an infinite price', (c: WorldConfig) => (c.expansion.costPerTile = Infinity)]
+  ])('rejects %s', (_label, edit) => {
+    const problems = bad(edit)
+    expect(problems.length).toBeGreaterThan(0)
+    expect(problems.join('\n')).toMatch(/expansion/)
+  })
+
+  it('merges a partial override into the defaults', () => {
+    const resolved = resolveWorldConfig({ expansion: { rate: 3 } })
+    expect(resolved.expansion.rate).toBe(3)
+    expect(resolved.expansion.costPerTile).toBe(expansion.costPerTile)
+  })
+})

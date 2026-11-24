@@ -145,13 +145,12 @@ Start with [docs/architecture.md](docs/architecture.md); [docs/README.md](docs/R
 
 ## Roadmap
 
-The restructure is done: workspace, deterministic engine, PixiJS renderer, apps and CI. Next:
+The restructure is done (workspace, deterministic engine, PixiJS renderer, apps and CI), and so is the core of the first simulation phase: provinces cut by travel cost (borders pulled toward rivers and steep ground), nations that own them and grow into free land, borders that settle, and time controls in the app. Next:
 
-1. **Provinces and borders**: a province graph, expansion, natural borders, time controls
-2. **People and economy**: pops, production, trade, notables
-3. **AI and diplomacy**, then **warfare**, then **culture and events**
-4. **God mode and observability**: every intervention a logged, deterministic command; replays
-5. **Scale and 1.0**; later, **play a nation**
+1. **People and economy**: pops, production, trade, notables
+2. **AI and diplomacy**, then **warfare**, then **culture and events**
+3. **God mode and observability**: every intervention a logged, deterministic command; replays
+4. **Scale and 1.0**; later, **play a nation**
 
 Details, exit criteria and the decisions behind them: [docs/roadmap.md](docs/roadmap.md).
 

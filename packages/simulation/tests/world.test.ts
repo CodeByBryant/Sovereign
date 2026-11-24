@@ -3,6 +3,7 @@ import { resolveWorldConfig } from '@sovereign/config'
 import type { WorldSnapshot } from '@sovereign/contracts'
 import { spawnNations } from '../src/nations/NationSpawner'
 import { generateTerrain } from '../src/terrain/pipeline'
+import { decodeWorld, encodeWorld } from '../src/serialization/save'
 import { World } from '../src/world/World'
 import { hashTerrain } from './support/fieldHash'
 import { spawnInputOf } from './support/spawnInput'
@@ -42,10 +43,13 @@ describe('World.create', () => {
   it('records ownership as the index of the owning nation, with 255 for unclaimed', () => {
     const { ownership } = world.map
     let claimed = 0
+    const map = world.provinces
     world.nations.forEach((nation, index) => {
-      for (const tile of nation.provinces) {
-        expect(ownership[tile]).toBe(index)
-        claimed += 1
+      for (const province of nation.provinces) {
+        for (let k = map.start[province]!; k < map.start[province + 1]!; k += 1) {
+          expect(ownership[map.tiles[k]!]).toBe(index)
+          claimed += 1
+        }
       }
     })
     expect(ownership.filter((o) => o !== 255).length).toBe(claimed)
@@ -232,12 +236,19 @@ describe('snapshot()', () => {
     expect(snap.nations.length).toBe(world.nations.length)
   })
 
+  it('says how many days a tick is, so a host can turn days into ticks', () => {
+    expect(snap.timestep).toBe(world.config.timestep)
+    const slow = World.create({ seed: 7, config: { ...smallWorldOverrides(), timestep: 0.25 } })
+    expect(slow.snapshot().timestep).toBe(0.25)
+  })
+
   it('lists each nation with its area but without the bulky tile list', () => {
     const first = world.nations[0]
     const s = snap.nations[0]
     expect(s?.id).toBe(first?.id)
     expect(s?.name).toBe(first?.name)
-    expect(s?.area).toBe(first?.provinces.size)
+    expect(s?.area).toBe(first?.profile.area)
+    expect(s?.provinceCount).toBe(first?.provinces.size)
     expect(s).not.toHaveProperty('provinces')
   })
 
@@ -346,12 +357,14 @@ describe('resources in the world', () => {
     const world = make(7)
     const s = tileWith(world, 'surface')
     world.extractResource('surface', s, 255)
+    // the copy has nations of its own: they change as the worlds run
+    const nations = [...decodeWorld(encodeWorld(world)).nations]
     const copy = World.restore({
       seed: world.seed,
       config: world.config,
       tick: world.clock.tick,
       terrain: structuredClone(world.terrain),
-      nations: world.nations as never,
+      nations,
       ownership: world.map.ownership.slice()
     })
     world.run(500)
@@ -505,15 +518,17 @@ describe('validate()', () => {
   it('reports a nation tile whose owner byte disagrees', () => {
     const world = make(7)
     const nation = world.nations[0]
-    const tile = [...(nation?.provinces ?? [])][0] as number
-    world.map.ownership[tile] = 255
+    const province = [...(nation?.provinces ?? [])][0] as number
+    world.map.ownership[
+      world.provinces.tiles[world.provinces.start[province] as number] as number
+    ] = 255
     expect(world.validate().join('\n')).toMatch(/nation-0|ownership/)
   })
 
-  it("reports a capital that is not one of the nation's tiles", () => {
+  it("reports a capital that is not in one of the nation's provinces", () => {
     const world = make(7)
     const nation = world.nations[0]
-    nation?.provinces.delete(nation.capital)
+    nation?.provinces.delete(world.provinces.provinceOf[nation.capital] as number)
     expect(world.validate().join('\n')).toMatch(/capital/)
   })
 

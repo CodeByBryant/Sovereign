@@ -175,9 +175,23 @@ Two points of one kind closer than `mergeRadius` cells are one (the more valuabl
 
 Measured over 10 worlds of 2000 x 2000: about 160 points per world (the scans gave about 1,580, 92% of them river crossings: now about 50 fords, 50 passes, 50 necks and 10 straits), a median 38 tiles to the next point (was 6.7), about 190 hubs and 480 routes, and creation about 6.5 s (the same as before: routes cost about 0.5 s, and the new nation code is cheaper than the old). See [decision 0006](decisions/0006-routes-and-nations-from-the-land.md).
 
+### 9. Provinces
+
+**Module:** `provinces.ts` in `terrain/` (and `world/provinceLayer.ts`, which builds the layer for a world).
+
+Provinces are the units nations own and grow by. They are **derived from the terrain and the config, never saved**: `World.create` and `World.restore` rebuild them and get the same layer.
+
+1. **Seeds** (`pickSeeds`): the land is cut into cells of about a fifth of `provinces.spacing`, each scored by how much of it is land and how cheap that land is, and the best cells are taken a spacing apart (`pickHubs`); a cell's seed is its cheapest land tile, so seeds sit in plains and the barrier falls between them. Every landmass (4-connected land) without a seed gets one.
+2. **The cut** (`buildProvinces`): one multi-source Dijkstra over the land tiles with the deterministic heap. A step onto a tile costs the mean of the two tiles' costs, a tile's cost being the cost of its cell in the route cost grid, at most `provinces.costCap` (closed cells too). Every tile goes to the seed it is cheapest to reach, so each province is connected and its borders are pulled toward ground that is costly to cross (a river is about 1.5 times as common beside a border as on land; the pull is modest because provinces stay about the same size everywhere, see [decision 0007](decisions/0007-provinces-and-expansion.md)).
+3. **Merging**: a province under `provinces.minArea` tiles merges into the neighbour that shares the longest border (ties to the lower id), smallest first; a speck with no neighbour at all belongs to nobody.
+
+A province has its tiles (a CSR list), area, centroid, mean cost and its neighbours with the length of each shared border. The ids are 16 bits (`0xFFFF` is "none"). Each province also has what its land is like (`nations/provinceProfile.ts`): the sums a nation's profile is made of.
+
+Measured over 2000 x 2000 worlds: about 2,100 provinces (area p10 about 310, median about 465, p90 about 660), built in about 1.1 s (seeds 0.2 s, the cut, adjacency and merging 0.9 s) plus 0.3 s for what each province is like, of the 8 s a world takes to create. Because the layer is derived, it is rebuilt on every load too. See [decision 0007](decisions/0007-provinces-and-expansion.md).
+
 ### Colour is not terrain
 
-The pipeline stops at the fields. Turning them into pixels happens in `@sovereign/renderer` (`packages/renderer/src/palettes`): pure functions from a field value to RGBA for each overlay (elevation: blue → green → brown → white; temperature: blue → red; humidity: tan → teal; biome: the 26-colour palette with the river overlay; strategic: the biome base dimmed, the route network drawn as lines (brighter with traffic) and a marker per strategic point; resource: the biome base tinted by each tile's dominant resource (luxury over industrial over basic, ground over surface), fading as the stock is drawn down, or, with a focus, a heat map of one resource; political: territory colour at 45% with borders darkened 35%, see `apps/web/src/viewConfig.ts`). The browser app gets the tile layers from its worker by transfer and hands them to the PixiJS renderer.
+The pipeline stops at the fields. Turning them into pixels happens in `@sovereign/renderer` (`packages/renderer/src/palettes`): pure functions from a field value to RGBA for each overlay (elevation: blue → green → brown → white; temperature: blue → red; humidity: tan → teal; biome: the 26-colour palette with the river overlay; strategic: the biome base dimmed, the route network drawn as lines (brighter with traffic) and a marker per strategic point; resource: the biome base tinted by each tile's dominant resource (luxury over industrial over basic, ground over surface), fading as the stock is drawn down, or, with a focus, a heat map of one resource; political: territory colour at 45% with nation borders darkened 35% and the lines between a nation's provinces dimmed 18%, see `apps/web/src/viewConfig.ts`). The browser app gets the tile layers from its worker by transfer and hands them to the PixiJS renderer.
 
 ---
 
@@ -192,6 +206,8 @@ temperature: { scale, octaves, latitudeStrength, elevationCooling, ..., profile 
 humidity:    { scale, octaves, coastalInfluence, elevationDrying, profile }
 rivers:      { primaryScale, secondaryScale, thresholds, widths, warpStrength, ... }
 routes:      { cell, hubSpacing, hubMinScore, cost { base, slope, height, river, sea, seaReach, biomes } }
+provinces:   { spacing, minArea, costCap }
+expansion:   { rate, costPerTile }
 strategic:   { fordMaxRun, straitMaxCells, passRise, passMinElevation, passWindow, isthmus*, mergeRadius, minTraffic }
 biomeNoise:  { scale, octaves, jitter amounts }
 biomes:      { elevation thresholds, jitter amounts, bands (the climate table), lowlandBand }

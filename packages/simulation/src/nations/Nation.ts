@@ -2,9 +2,9 @@
  * @module Nation
  * @description Core nation entity for the Sovereign world simulation.
  *
- * Each nation owns a set of tile indices (provinces), has stats for
- * military/economy/population/diplomacy, personality traits that drive
- * AI behaviour, and visual identity (color, flag pattern).
+ * Each nation owns a set of provinces (ids into the province map, in the order they were claimed), has
+ * stats for military/economy/population/diplomacy, personality traits that drive AI behaviour, and visual
+ * identity (color, flag pattern).
  */
 import type {
   FlagPattern,
@@ -22,8 +22,7 @@ import type {
 /**
  * Represents a single nation on the world map.
  *
- * Provinces are stored as tile flat-indices into the world map grid.
- * The `capital` is the spawn tile from which the nation originated.
+ * The `capital` is the tile from which the nation originated; its province is the first one claimed.
  */
 export class Nation implements NationData {
   readonly id: string
@@ -35,13 +34,15 @@ export class Nation implements NationData {
   readonly government: GovernmentType
   readonly personality: NationPersonality
 
-  /** Set of flat tile indices owned by this nation. */
+  /** The ids of the provinces this nation owns, in the order it claimed them (a `Set` keeps that order). */
   provinces: Set<number>
   /** Flat tile index of the capital. */
   capital: number
   stats: NationStats
   /** What the territory is like; stats, government and personality were derived from it. */
   profile: NationProfile
+  /** Expansion points saved up toward the next province (see the expansion system). */
+  expansionPoints: number
 
   constructor(opts: {
     id: string
@@ -54,6 +55,7 @@ export class Nation implements NationData {
     provinces?: Set<number>
     stats?: Partial<NationStats>
     profile: NationProfile
+    expansionPoints?: number
     founded?: number
   }) {
     this.id = opts.id
@@ -66,6 +68,7 @@ export class Nation implements NationData {
     this.provinces = opts.provinces ?? new Set<number>()
     this.founded = opts.founded ?? 0
     this.profile = opts.profile
+    this.expansionPoints = opts.expansionPoints ?? 0
     this.stats = {
       population: opts.stats?.population ?? 100,
       military: opts.stats?.military ?? 100,
@@ -78,47 +81,18 @@ export class Nation implements NationData {
   /*  Province management                                              */
   /* ---------------------------------------------------------------- */
 
-  /** Claim a tile index as territory. */
-  addProvince(index: number): void {
-    this.provinces.add(index)
+  /** Claim a province. */
+  addProvince(province: number): void {
+    this.provinces.add(province)
   }
 
-  /** Release a tile index from territory. */
-  removeProvince(index: number): void {
-    this.provinces.delete(index)
+  /** Release a province. */
+  removeProvince(province: number): void {
+    this.provinces.delete(province)
   }
 
-  /** Total number of owned tiles. */
+  /** Total number of owned tiles (the profile counts them). */
   get totalArea(): number {
-    return this.provinces.size
-  }
-
-  /**
-   * Return the subset of province indices that border a tile owned by
-   * a different nation or unclaimed land.
-   *
-   * @param mapWidth Width of the world grid (tiles).
-   * @param mapHeight Height of the world grid (tiles).
-   * @param ownerMap Per-tile nation id lookup (empty string = unclaimed).
-   */
-  getBorderProvinces(mapWidth: number, mapHeight: number, ownerMap: string[]): Set<number> {
-    const borders = new Set<number>()
-    for (const idx of this.provinces) {
-      const x = idx % mapWidth
-      const y = (idx - x) / mapWidth
-      const neighbors = [
-        x > 0 ? idx - 1 : -1,
-        x < mapWidth - 1 ? idx + 1 : -1,
-        y > 0 ? idx - mapWidth : -1,
-        y < mapHeight - 1 ? idx + mapWidth : -1
-      ]
-      for (const ni of neighbors) {
-        if (ni >= 0 && ownerMap[ni] !== this.id) {
-          borders.add(idx)
-          break
-        }
-      }
-    }
-    return borders
+    return this.profile.area
   }
 }

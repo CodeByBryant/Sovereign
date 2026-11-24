@@ -26,6 +26,8 @@ export interface NationSnapshot {
   profile: NationProfile
   /** Number of tiles the nation owns. */
   area: number
+  /** Number of provinces the nation owns. */
+  provinceCount: number
 }
 
 export interface WorldSnapshot {
@@ -34,6 +36,8 @@ export interface WorldSnapshot {
   tick: number
   /** In-game time: `tick * timestep`. */
   time: number
+  /** In-game days per tick. */
+  timestep: number
   width: number
   height: number
   seaLevel: number

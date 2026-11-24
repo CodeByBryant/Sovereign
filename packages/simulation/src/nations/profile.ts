@@ -34,7 +34,8 @@ export const METAL_WEIGHT: Readonly<Record<number, number>> = {
 const FERTILITY = new Float64Array(256)
 for (const key of BIOME_KEYS) FERTILITY[BIOME_INDEX[key]] = BIOME_DESIRABILITY[key]
 
-export interface ProfileInput {
+/** What the per-tile facts need of the terrain. */
+export interface TileFactsInput {
   width: number
   height: number
   seaLevel: number
@@ -42,17 +43,32 @@ export interface ProfileInput {
   biomeIds: Uint8Array
   riverMask: Uint8Array
   resources: ResourceSlots
-  strategicPoints: readonly StrategicPoint[]
-  routes: readonly StrategicRoute[]
-  /** The tiles the nation owns. */
-  tiles: readonly number[]
-  /** How many other nations lie within a few routes of its capital (measured by the caller). */
-  contacts: number
 }
 
-export function measureProfile(input: ProfileInput): NationProfile {
+/** The facts that add up tile by tile. `kinds` has one bit per resource type present (bit `type - 1`). */
+export interface TileFacts {
+  food: number
+  timber: number
+  stone: number
+  horses: number
+  metals: number
+  luxuries: number
+  coast: number
+  river: number
+  highGround: number
+  kinds: number
+}
+
+/** How many different resource types a `kinds` mask holds. */
+export function kindCount(kinds: number): number {
+  let n = 0
+  for (let k = kinds >>> 0; k !== 0; k &= k - 1) n += 1
+  return n
+}
+
+/** Measure the facts that are sums over tiles: food, materials, luxuries, coast, rivers, high ground. */
+export function tileFacts(input: TileFactsInput, tiles: Iterable<number>): TileFacts {
   const { width, height, seaLevel, elevation, resources } = input
-  const owned = new Set<number>(input.tiles)
   const isWater = (tile: number): boolean => elevation[tile] <= seaLevel
 
   let food = 0
@@ -64,9 +80,9 @@ export function measureProfile(input: ProfileInput): NationProfile {
   let coast = 0
   let river = 0
   let highGround = 0
-  const kinds = new Set<number>()
+  let kinds = 0
 
-  for (const tile of input.tiles) {
+  for (const tile of tiles) {
     const biome = input.biomeIds[tile]
     food += FERTILITY[biome]
     if (input.riverMask[tile] !== 0) {
@@ -106,7 +122,7 @@ export function measureProfile(input: ProfileInput): NationProfile {
       const slot = resources[layer]
       const type = slot.type[tile]
       if (type === 0) continue
-      kinds.add(type)
+      kinds |= 1 << (type - 1)
       const left = slot.stock[tile] / 255
       if (type === ResourceType.Grain) food += FOOD_GRAIN * left
       else if (type === ResourceType.Pasture) food += FOOD_PASTURE * left
@@ -118,6 +134,23 @@ export function measureProfile(input: ProfileInput): NationProfile {
       if (resourceDef(type)?.tier === 'luxury') luxuries += left
     }
   }
+  return { food, timber, stone, horses, metals, luxuries, coast, river, highGround, kinds }
+}
+
+export interface ProfileInput extends TileFactsInput {
+  strategicPoints: readonly StrategicPoint[]
+  routes: readonly StrategicRoute[]
+  /** The tiles the nation owns. */
+  tiles: readonly number[]
+  /** How many other nations lie within a few routes of its capital (measured by the caller). */
+  contacts: number
+}
+
+/** The profile of a territory, measured from its tiles; see {@link combineProfile} for the same from provinces. */
+export function measureProfile(input: ProfileInput): NationProfile {
+  const { width } = input
+  const owned = new Set<number>(input.tiles)
+  const facts = tileFacts(input, input.tiles)
 
   let defence = 0
   for (const point of input.strategicPoints) {
@@ -141,16 +174,16 @@ export function measureProfile(input: ProfileInput): NationProfile {
 
   return {
     area: input.tiles.length,
-    food,
-    timber,
-    stone,
-    horses,
-    metals,
-    luxuries,
-    diversity: kinds.size,
-    coast,
-    river,
-    highGround,
+    food: facts.food,
+    timber: facts.timber,
+    stone: facts.stone,
+    horses: facts.horses,
+    metals: facts.metals,
+    luxuries: facts.luxuries,
+    diversity: kindCount(facts.kinds),
+    coast: facts.coast,
+    river: facts.river,
+    highGround: facts.highGround,
     defence,
     traffic,
     contacts: input.contacts

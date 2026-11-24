@@ -63,9 +63,14 @@ interface Pending {
 export class ResourceStocks {
   private readonly pendingBy: { surface: Pending; ground: Pending }
 
+  /**
+   * `onChange(tile)` is told of every tile whose stock changed (taken or regrown), so what depends on
+   * stocks (the profile of the nation that holds the tile) can be measured again.
+   */
   constructor(
     private readonly slots: ResourceSlots,
-    private readonly table: RegrowthTable
+    private readonly table: RegrowthTable,
+    private readonly onChange?: (tile: number) => void
   ) {
     const size = slots.surface.type.length
     this.pendingBy = {
@@ -109,6 +114,7 @@ export class ResourceStocks {
     const taken = Math.min(amount, slot.stock[tile])
     if (taken === 0) return 0
     slot.stock[tile] -= taken
+    this.onChange?.(tile)
     if (this.table.period[slot.type[tile]] > 0) this.track(layer, tile)
     return taken
   }
@@ -130,6 +136,7 @@ export class ResourceStocks {
             slot.richness[tile],
             slot.stock[tile] + this.table.units[type]
           )
+          this.onChange?.(tile)
         }
         if (slot.stock[tile] >= slot.richness[tile]) {
           pending.flag[tile] = 0

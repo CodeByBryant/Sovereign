@@ -213,6 +213,39 @@ describe('--json and --summary', () => {
   })
 })
 
+describe('--summary: provinces and borders', () => {
+  it('counts the provinces of the world and how many the nations hold', () => {
+    const { io, out } = memoryIo()
+    expect(run(['--seed', '5', '--summary', ...SMALL], io)).toBe(0)
+    const text = out.join('')
+    expect(text).toMatch(/provinces\s+\d+ \(\d+ held\)/)
+    const [, total, held] = /provinces\s+(\d+) \((\d+) held\)/.exec(text) ?? []
+    expect(Number(total)).toBeGreaterThan(0)
+    expect(Number(held)).toBeLessThanOrEqual(Number(total))
+    expect(Number(held)).toBeGreaterThan(0)
+  })
+
+  it('holds more provinces after more ticks, and says whether the borders are still moving', () => {
+    // provinces a fifth of the default size and a small start, so a world this small has room to grow into
+    const files = {
+      'grow.json': JSON.stringify({
+        provinces: { spacing: 6, minArea: 8 },
+        nations: { startArea: 40 }
+      })
+    }
+    const args = ['--seed', '5', '--config', 'grow.json', '--summary', ...SMALL]
+    const early = memoryIo(files)
+    run(args, early.io)
+    expect(early.out.join('')).toMatch(/borders\s+moving/)
+    const late = memoryIo(files)
+    run(['--ticks', '60000', ...args], late.io)
+    const text = late.out.join('')
+    expect(text).toMatch(/borders\s+settled/)
+    const heldOf = (t: string): number => Number(/\((\d+) held\)/.exec(t)?.[1])
+    expect(heldOf(text)).toBeGreaterThan(heldOf(early.out.join('')))
+  })
+})
+
 describe('--save and --load', () => {
   it('--save writes a save the engine can decode, and still prints the hash', () => {
     const { io, out, files } = memoryIo()

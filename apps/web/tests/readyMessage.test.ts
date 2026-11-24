@@ -14,7 +14,7 @@ import type { ResourceSlot } from '@sovereign/contracts'
 import { buildReady } from '../src/host/readyMessage'
 import type { WorldFields } from '../src/host/protocol'
 
-const STYLE = { alpha: 0.45, darken: 0.35 }
+const STYLE = { alpha: 0.45, darken: 0.35, provinceDarken: 0.18 }
 
 /** A small world with enough variety to be interesting (default noise is tuned for 2000x2000). */
 const SMALL: WorldConfigOverrides = {
@@ -72,7 +72,7 @@ describe('buildReady', () => {
     for (const rgba of Object.values(message.layers)) expect(rgba.length).toBe(width * height * 4)
   })
 
-  it('draws the biome and political overlays exactly as the renderer does', () => {
+  it('draws the biome and political overlays exactly as the renderer does, province lines included', () => {
     const biome = biomeRgba(world.terrain.biomeIds, world.terrain.riverWidth, width, height)
     expect(message.layers.biome).toEqual(biome)
     expect(message.layers.political).toEqual(
@@ -82,7 +82,8 @@ describe('buildReady', () => {
         world.nations.map((n) => n.color),
         width,
         height,
-        STYLE
+        STYLE,
+        world.provinces.provinceOf
       )
     )
   })

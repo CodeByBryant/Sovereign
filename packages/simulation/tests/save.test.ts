@@ -35,13 +35,13 @@ describe('SAVE_FORMAT_VERSION and layout', () => {
   const bytes = encodeWorld(make(7))
   const view = new DataView(bytes.buffer, bytes.byteOffset)
 
-  it('is version 4', () => {
-    expect(SAVE_FORMAT_VERSION).toBe(4)
+  it('is version 5', () => {
+    expect(SAVE_FORMAT_VERSION).toBe(5)
   })
 
   it('starts with the magic "SOVW", the version (uint32, big-endian) and the header length', () => {
     expect([...bytes.subarray(0, 4)]).toEqual(MAGIC)
-    expect(view.getUint32(4, false)).toBe(4)
+    expect(view.getUint32(4, false)).toBe(5)
     expect(view.getUint32(8, false)).toBeGreaterThan(0)
   })
 
@@ -124,7 +124,7 @@ describe('round trip', () => {
     expect(decoded.nations.map((n) => n.stats)).toEqual(world.nations.map((n) => n.stats))
   })
 
-  it('keeps the nations: names, colours, tiles in claim order', () => {
+  it('keeps the nations: names, colours, provinces in claim order', () => {
     const world = make(7)
     const decoded = decodeWorld(encodeWorld(world))
     expect(decoded.nations.map((n) => n.name)).toEqual(world.nations.map((n) => n.name))
@@ -161,7 +161,7 @@ describe('decodeWorld rejects a file that is not a good save', () => {
     rejects(bad, /not a Sovereign save/)
   })
 
-  it.each([0, 1, 2, 3, 5, 99])('a file of unsupported format version %d', (version) => {
+  it.each([0, 1, 2, 3, 4, 6, 99])('a file of unsupported format version %d', (version) => {
     const bad = good.slice()
     new DataView(bad.buffer).setUint32(4, version, false)
     rejects(bad, /unsupported save format version/)
@@ -295,11 +295,64 @@ describe('decodeWorld rejects a file that is not a good save', () => {
     rejects(long, /size/)
   })
 
-  it('a nation whose tile list names a tile outside the map', () => {
+  it('keeps the expansion points a nation has saved up', () => {
+    const world = make(7)
+    world.nations[0]!.expansionPoints = 4.25
+    const decoded = decodeWorld(encodeWorld(world))
+    expect(decoded.nations.map((n) => n.expansionPoints)).toEqual(
+      world.nations.map((n) => n.expansionPoints)
+    )
+    expect(decoded.nations[0]!.expansionPoints).toBe(4.25)
+    expect(decoded.stateHash()).toBe(world.stateHash())
+  })
+
+  it('rebuilds the provinces from the terrain, exactly as they were', () => {
+    const world = make(7)
+    const decoded = decodeWorld(encodeWorld(world))
+    expect(Array.from(decoded.provinces.provinceOf)).toEqual(Array.from(world.provinces.provinceOf))
+    expect(Array.from(decoded.provinceOwner)).toEqual(Array.from(world.provinceOwner))
+  })
+
+  it.each([
+    ['no expansion points', (n: Record<string, unknown>) => delete n.expansionPoints],
+    [
+      'expansion points that are not a number',
+      (n: Record<string, unknown>) => (n.expansionPoints = 'lots')
+    ],
+    ['negative expansion points', (n: Record<string, unknown>) => (n.expansionPoints = -1)]
+  ])('a nation with %s', (_label, edit) => {
+    rejects(
+      withHeader(good, (h) =>
+        edit((h.nations as Array<Record<string, unknown>>)[0] as Record<string, unknown>)
+      ),
+      /nation|expansion/
+    )
+  })
+
+  it('a nation whose province list names a province that is not on the map', () => {
     rejects(
       withHeader(good, (h) => {
         const nations = h.nations as Array<{ provinces: number[] }>
-        nations[0]?.provinces.push(160 * 96 + 5)
+        nations[0]?.provinces.push(100000)
+      }),
+      /not valid/
+    )
+  })
+
+  it('a nation whose province list is not a list of whole numbers', () => {
+    rejects(
+      withHeader(good, (h) => {
+        ;(h.nations as Array<{ provinces: unknown }>)[0]!.provinces = [1.5]
+      }),
+      /province/
+    )
+  })
+
+  it('a nation whose province list repeats a province held by another', () => {
+    rejects(
+      withHeader(good, (h) => {
+        const nations = h.nations as Array<{ provinces: number[] }>
+        nations[0]?.provinces.push(nations[1]!.provinces[0]!)
       }),
       /not valid/
     )

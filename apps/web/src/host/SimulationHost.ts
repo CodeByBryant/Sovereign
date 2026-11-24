@@ -6,7 +6,7 @@
  * The worker is injected, so the host is tested with a fake and the app supplies the real one.
  */
 import type { WorldConfigOverrides } from '@sovereign/config'
-import type { WorldReady, WorldRequest, WorldResponse } from './protocol'
+import type { RunOptions, WorldReady, WorldRequest, WorldResponse, WorldTicked } from './protocol'
 
 /** The part of a `Worker` the host uses. */
 export interface WorkerLike {
@@ -19,6 +19,7 @@ export interface WorkerLike {
 type Pending =
   | { kind: 'create'; resolve: (world: WorldReady) => void; reject: (error: Error) => void }
   | { kind: 'hash'; resolve: (hash: string) => void; reject: (error: Error) => void }
+  | { kind: 'run'; resolve: (ticked: WorldTicked) => void; reject: (error: Error) => void }
 
 export class SimulationHost {
   private readonly worker: WorkerLike
@@ -47,6 +48,16 @@ export class SimulationHost {
     return this.request<string>('hash', { type: 'hash' })
   }
 
+  /** Run the world some ticks. Resolves with where it is and what changed. */
+  run(ticks: number, options: RunOptions = {}): Promise<WorldTicked> {
+    return this.request<WorldTicked>('run', { type: 'run', ticks, ...options })
+  }
+
+  /** True while a request is in flight (a new one would be refused). */
+  get busy(): boolean {
+    return this.pending !== null
+  }
+
   /** Stop the worker. Anything still pending is rejected; the host cannot be used again. */
   dispose(): void {
     if (this.disposed) return
@@ -69,6 +80,10 @@ export class SimulationHost {
     if (pending === null) return // nobody is waiting for this
     if (response.type === 'error') return this.settle(new Error(response.message))
     if (response.type === 'ready' && pending.kind === 'create') {
+      this.pending = null
+      return pending.resolve(response)
+    }
+    if (response.type === 'ticked' && pending.kind === 'run') {
       this.pending = null
       return pending.resolve(response)
     }

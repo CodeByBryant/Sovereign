@@ -10,13 +10,22 @@ import type { NationSnapshot, ResourceSlots, StrategicPoint } from '@sovereign/c
 import { Camera, LAYER_NAMES, resourceRgba } from '@sovereign/renderer'
 import { MapRenderer } from '@sovereign/renderer/pixi'
 import { WorldMap } from '@sovereign/simulation'
-import { TileInspector, NationPanel, ResourceLegend, type InspectorData } from '@sovereign/ui'
+import {
+  TileInspector,
+  NationPanel,
+  ResourceLegend,
+  TimeControls,
+  type InspectorData
+} from '@sovereign/ui'
 import { FrameLoop } from './host/FrameLoop'
+import { Pacer } from './host/Pacer'
+import type { WorldTicked } from './host/protocol'
 import { SimulationHost } from './host/SimulationHost'
 import { GestureTracker, type GestureEvent } from './input/GestureTracker'
 import { createWorldWorker } from './host/createWorldWorker'
 import { randomSeed } from './seed'
 import { useGameStore, type ViewMode } from './state/GameStore'
+import { SPEEDS } from './state/time'
 import { viewConfig } from './viewConfig'
 
 const VIEWS: ViewMode[] = [
@@ -65,6 +74,8 @@ const MapView: React.FC = () => {
   const nationsRef = useRef<NationSnapshot[]>([])
   const strategicPointsRef = useRef<StrategicPoint[]>([])
   const strategicGridRef = useRef<Map<number, StrategicPoint>>(new Map())
+  // the world worker once a world exists (the run loop and the flushes talk to it)
+  const simulationRef = useRef<SimulationHost | null>(null)
 
   // --- Zustand selectors ---
   const seed = useGameStore((s) => s.seed)
@@ -76,6 +87,8 @@ const MapView: React.FC = () => {
   const resourceFocus = useGameStore((s) => s.resourceFocus)
   const setResourceFocus = useGameStore((s) => s.setResourceFocus)
   const setFps = useGameStore((s) => s.setFps)
+  const phase = useGameStore((s) => s.phase)
+  const paused = useGameStore((s) => s.paused)
   const setPhase = useGameStore((s) => s.setPhase)
   const setWorldMap = useGameStore((s) => s.setWorldMap)
   const setStrategicPoints = useGameStore((s) => s.setStrategicPoints)
@@ -308,6 +321,14 @@ const MapView: React.FC = () => {
           }
           strategicGridRef.current = sGrid
 
+          simulationRef.current = simulation
+          useGameStore.getState().setPaused(true)
+          useGameStore.getState().setClock({
+            tick: ready.snapshot.tick,
+            time: ready.snapshot.time,
+            timestep: ready.snapshot.timestep,
+            saturated: false
+          })
           setWorldMap(new WorldMap({ width, height, seaLevel, ...ready.fields }))
           setStrategicPoints(ready.strategicPoints)
           setNations(ready.snapshot.nations)
@@ -326,6 +347,7 @@ const MapView: React.FC = () => {
 
       return () => {
         cancelled = true
+        simulationRef.current = null
         frameLoop.stop()
         simulation.dispose()
         resizeObserver.disconnect()
@@ -370,7 +392,14 @@ const MapView: React.FC = () => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       const key = e.key.toLowerCase()
-      if (key === 'e') setView('elevation')
+      if (e.key === ' ') {
+        // a focused button takes Space itself (it presses); anywhere else Space plays and pauses
+        if (e.target instanceof HTMLButtonElement) return
+        e.preventDefault()
+        useGameStore.getState().togglePaused()
+      } else if (key === '+' || key === '=') useGameStore.getState().faster()
+      else if (key === '-' || key === '_') useGameStore.getState().slower()
+      else if (key === 'e') setView('elevation')
       else if (key === 't') setView('temperature')
       else if (key === 'h') setView('humidity')
       else if (key === 'b') setView('biome')
@@ -400,6 +429,80 @@ const MapView: React.FC = () => {
     document.addEventListener('fullscreenchange', handler)
     return () => document.removeEventListener('fullscreenchange', handler)
   }, [])
+
+  /* ---------------------------------------------------------------- */
+  /*  Time: the run loop                                               */
+  /* ---------------------------------------------------------------- */
+
+  /** Take what a run sent back: the clock, the nations, and (when provinces changed hands) the map. */
+  const applyTicked = useCallback((ticked: WorldTicked): void => {
+    const store = useGameStore.getState()
+    store.setClock({
+      tick: ticked.tick,
+      time: ticked.time,
+      timestep: store.timestep,
+      saturated: ticked.saturated
+    })
+    if (ticked.claims > 0) {
+      nationsRef.current = ticked.nations
+      store.setNations(ticked.nations)
+    }
+    if (ticked.ownership !== undefined) store.worldMap?.ownership.set(ticked.ownership)
+    if (ticked.political !== undefined) {
+      const { width, height } = mapSizeRef.current
+      rendererRef.current?.setLayer('political', ticked.political, width, height)
+    }
+  }, [])
+
+  /** Ask for what the worker held back (the player paused, or switched to the political view). */
+  const flush = useCallback(async (): Promise<void> => {
+    const simulation = simulationRef.current
+    if (simulation === null) return
+    while (simulation.busy) await new Promise((resolve) => setTimeout(resolve, 16))
+    if (simulationRef.current !== simulation) return // a new world, or the page went away
+    const ticked = await simulation.run(0, {
+      flush: true,
+      political: useGameStore.getState().view === 'political'
+    })
+    applyTicked(ticked)
+  }, [applyTicked])
+
+  // While time runs, each frame asks the worker for the ticks that much real time is worth. One request
+  // is in flight at a time: a frame that finds the worker busy waits, and its time is kept for the next.
+  useEffect(() => {
+    const simulation = simulationRef.current
+    if (phase !== 'playing' || paused || simulation === null) return undefined
+    const pacer = new Pacer()
+    let last = performance.now()
+    let frame = 0
+    let stopped = false
+    const loop = (now: number): void => {
+      if (stopped) return
+      frame = requestAnimationFrame(loop)
+      if (simulation.busy) return
+      const { speed, timestep, view: shown } = useGameStore.getState()
+      const ticks = pacer.advance(now - last, speed, timestep)
+      last = now
+      if (ticks === 0) return
+      simulation
+        .run(ticks, { political: shown === 'political' })
+        .then((ticked) => {
+          if (!stopped) applyTicked(ticked)
+        })
+        .catch((error: unknown) => console.error(error))
+    }
+    frame = requestAnimationFrame(loop)
+    return () => {
+      stopped = true
+      cancelAnimationFrame(frame)
+    }
+  }, [phase, paused, applyTicked])
+
+  // Pausing, or showing the political view, brings up to date whatever the throttle held back.
+  useEffect(() => {
+    if (phase !== 'playing') return
+    if (paused || view === 'political') void flush().catch((error: unknown) => console.error(error))
+  }, [phase, paused, view, flush])
 
   // A change of focus redraws the resource overlay: one resource as a heat map, or all of them.
   useEffect(() => {
@@ -449,9 +552,12 @@ const MapView: React.FC = () => {
     >
       <div ref={hostRef} className="canvas-shell__host" />
 
-      <div className="canvas-shell__hud">
-        FPS: {fps} · {view}
-        {useGameStore((s) => s.phase) === 'generating' ? ' · generating…' : ''}
+      <div className="canvas-shell__topbar">
+        <div className="canvas-shell__hud">
+          FPS: {fps} · {view}
+          {phase === 'generating' ? ' · generating…' : ''}
+        </div>
+        {phase === 'playing' && <ClockBar />}
       </div>
 
       <button
@@ -534,6 +640,29 @@ const MapView: React.FC = () => {
 
       {activeNation && <NationPanel nation={activeNation} onClose={() => selectNation(-1)} />}
     </section>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Time controls (their own subscriptions: a tick does not redraw the map view) */
+/* ------------------------------------------------------------------ */
+const ClockBar: React.FC = () => {
+  const time = useGameStore((s) => s.time)
+  const paused = useGameStore((s) => s.paused)
+  const speed = useGameStore((s) => s.speed)
+  const saturated = useGameStore((s) => s.saturated)
+  const togglePaused = useGameStore((s) => s.togglePaused)
+  const setSpeed = useGameStore((s) => s.setSpeed)
+  return (
+    <TimeControls
+      time={time}
+      paused={paused}
+      speed={speed}
+      speeds={SPEEDS}
+      saturated={saturated}
+      onTogglePause={togglePaused}
+      onSpeed={setSpeed}
+    />
   )
 }
 

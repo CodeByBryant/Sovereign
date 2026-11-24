@@ -16,7 +16,9 @@ import { BIOME_KEYS, RESOURCE_CATALOG, type QuantileProfile } from '@sovereign/c
 import type {
   BiomeConfig,
   BiomeNoiseConfig,
+  ExpansionConfig,
   HumidityConfig,
+  ProvincesConfig,
   ResourcePlacementSettings,
   RoutesConfig,
   RiverConfig,
@@ -63,6 +65,10 @@ export interface WorldConfig {
   strategic: StrategicConfig
   /** Where routes between settlements go (the cheapest paths over the terrain). */
   routes: RoutesConfig
+  /** How the land is cut into provinces. */
+  provinces: ProvincesConfig
+  /** How nations grow into free provinces. */
+  expansion: ExpansionConfig
   /** Where each resource is found, how rich it is and how it regrows. */
   resources: ResourcePlacementSettings
   nations: NationsConfig
@@ -371,6 +377,27 @@ export const defaultWorldConfig: WorldConfig = {
         mountain: 3
       }
     }
+  },
+
+  /**
+   * Provinces: the land cut into the cells of seeds (about `spacing` tiles apart, on cheap ground) in travel
+   * cost, so borders are pulled toward barriers. Small ones merge into a neighbour. Nations own
+   * and grow by provinces. See docs/terrain.md.
+   */
+  provinces: {
+    spacing: 20,
+    minArea: 40,
+    costCap: 12
+  },
+
+  /**
+   * Expansion: every day a nation earns points (more with a high expansionism and a big population) and
+   * spends them to claim the free province beside its land that is the best value for the effort. Nothing
+   * random: the same world always grows the same way. See docs/nations.md.
+   */
+  expansion: {
+    rate: 1,
+    costPerTile: 0.05
   },
 
   /* ------------------------------------------------------------ */
@@ -791,6 +818,8 @@ export function resolveWorldConfig(overrides: WorldConfigOverrides = {}): WorldC
     biomes: merge(d.biomes, overrides.biomes),
     strategic: merge(d.strategic, overrides.strategic),
     routes: merge(d.routes, overrides.routes),
+    provinces: merge(d.provinces, overrides.provinces),
+    expansion: merge(d.expansion, overrides.expansion),
     resources: merge(d.resources, overrides.resources),
     nations: merge(d.nations, overrides.nations),
     timestep: overrides.timestep ?? d.timestep
@@ -870,6 +899,8 @@ export function validateWorldConfig(config: WorldConfig): string[] {
   validateBiomeTable(config.biomes, problems)
   validateResourcePlacement(config.resources, problems)
   validateRoutes(config.routes, problems)
+  validateProvinces(config.provinces, problems)
+  validateExpansion(config.expansion, problems)
   validateStrategic(config.strategic, problems)
 
   return problems
@@ -898,6 +929,27 @@ function validateStrategic(strategic: StrategicConfig, problems: string[]): void
   if (!(strategic.minTraffic >= 0 && strategic.minTraffic <= 1)) {
     problems.push(`${at}.minTraffic must be from 0 to 1`)
   }
+}
+
+/** Problems with the expansion settings. */
+function validateExpansion(expansion: ExpansionConfig, problems: string[]): void {
+  const at = 'expansion'
+  if (!(Number.isFinite(expansion.rate) && expansion.rate > 0)) {
+    problems.push(`${at}.rate must be a finite number above 0`)
+  }
+  if (!(Number.isFinite(expansion.costPerTile) && expansion.costPerTile > 0)) {
+    problems.push(`${at}.costPerTile must be a finite number above 0`)
+  }
+}
+
+/** Problems with the province settings. */
+function validateProvinces(provinces: ProvincesConfig, problems: string[]): void {
+  const at = 'provinces'
+  if (!(provinces.spacing >= 1)) problems.push(`${at}.spacing must be at least 1 tile`)
+  if (!isInteger(provinces.minArea) || provinces.minArea < 1) {
+    problems.push(`${at}.minArea must be a whole number of at least 1`)
+  }
+  if (!(provinces.costCap > 1)) problems.push(`${at}.costCap must be greater than 1`)
 }
 
 /** Problems with the route settings. */

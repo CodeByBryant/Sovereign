@@ -72,6 +72,34 @@ describe('golden depletion', () => {
     expect(taken).toBe(7358)
     world.run(700)
     expect(world.validate()).toEqual([])
-    expect(world.stateHash()).toBe('0f178a7e00104a251c24b99d929f563e')
+    expect(world.stateHash()).toBe('c1e637cf883551260f002e64a2344582')
+  })
+})
+
+describe('golden growth', () => {
+  // The pins are only worth anything if they pin the right moments: one with the nations still growing,
+  // one after the borders stopped moving (where a change that kept growing would be caught).
+  const named = (prefix: string): GoldenEntry => {
+    const entry = golden.entries.find((e) => e.name.startsWith(prefix))
+    if (entry === undefined) throw new Error(`no golden entry starting "${prefix}"`)
+    return entry
+  }
+
+  it('pins a world whose nations are still expanding', () => {
+    const entry = named('growing:')
+    const world = World.create({ seed: entry.seed, config: entry.config })
+    world.run(entry.steps)
+    expect(world.saturated).toBe(false)
+    expect(world.expansionClaims).toBeGreaterThan(20)
+  })
+
+  it('pins a world whose borders have settled, and it stays that way', () => {
+    const entry = named('settled:')
+    const world = World.create({ seed: entry.seed, config: entry.config })
+    world.run(entry.steps)
+    expect(world.saturated).toBe(true)
+    const claims = world.expansionClaims
+    world.run(500)
+    expect(world.expansionClaims).toBe(claims)
   })
 })

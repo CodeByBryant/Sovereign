@@ -1,10 +1,10 @@
-import { RESOURCE_CATALOG } from '@sovereign/contracts'
+import { BIOME_INDEX, RESOURCE_CATALOG } from '@sovereign/contracts'
 import { describe, expect, it } from 'vitest'
 import { contactCounts } from '../src/nations/capitals'
 import { deriveStats, GOVERNMENTS } from '../src/nations/derive'
 import { spawnNations } from '../src/nations/NationSpawner'
 import { measureProfile } from '../src/nations/profile'
-import { World } from '../src/world/World'
+import { PROFILE_FIELDS, World } from '../src/world/World'
 import { hashNations } from './support/nationHash'
 import { smallWorldOverrides } from './support/worldOptions'
 import { spawnInputOf } from './support/spawnInput'
@@ -81,47 +81,64 @@ describe('spawnNations: where they start', () => {
 describe('spawnNations: starting territory', () => {
   const world = make(11)
   const t = world.terrain
+  const map = world.provinces
   const area = world.config.nations.startArea
+  const areaOf = (ids: Iterable<number>): number => [...ids].reduce((s, p) => s + map.area[p]!, 0)
 
-  it('gives each nation about the starting area, never more', () => {
-    for (const n of world.nations) expect(n.provinces.size).toBeLessThanOrEqual(area)
-    const full = world.nations.filter((n) => n.provinces.size === area).length
+  it('gives each nation the starting area in whole provinces, and never a province more', () => {
+    for (const n of world.nations) {
+      const ids = [...n.provinces]
+      // it stops at the first province that takes it to the starting area (or runs out of land to reach)
+      expect(areaOf(ids.slice(0, -1))).toBeLessThan(area)
+    }
+    const full = world.nations.filter((n) => areaOf(n.provinces) >= area).length
     expect(full).toBeGreaterThanOrEqual(Math.ceil(world.nations.length / 2))
   })
 
-  it('claims the capital first, then each tile beside one it already had, in claim order', () => {
+  it('claims the capital province first, then each province beside one it already had', () => {
     for (const n of world.nations) {
       const order = [...n.provinces]
-      expect(order[0]).toBe(n.capital)
+      expect(order[0]).toBe(map.provinceOf[n.capital])
       const held = new Set<number>([order[0]!])
-      for (const tile of order.slice(1)) {
-        const x = tile % t.width
-        const near = [
-          x > 0 ? tile - 1 : -1,
-          x < t.width - 1 ? tile + 1 : -1,
-          tile - t.width,
-          tile + t.width
-        ]
+      for (const id of order.slice(1)) {
+        const near = Array.from(
+          map.neighbourId.subarray(map.neighbourStart[id], map.neighbourStart[id + 1])
+        )
         expect(near.some((k) => held.has(k))).toBe(true)
-        held.add(tile)
+        held.add(id)
       }
     }
   })
 
-  it('shares the land: no tile belongs to two nations, and the ownership layer agrees', () => {
+  it('shares the land: no province belongs to two nations, and the ownership layer agrees', () => {
     const seen = new Map<number, number>()
     world.nations.forEach((n, i) => {
-      for (const tile of n.provinces) {
-        expect(seen.has(tile)).toBe(false)
-        seen.set(tile, i)
-        expect(world.map.ownership[tile]).toBe(i)
+      for (const id of n.provinces) {
+        expect(seen.has(id)).toBe(false)
+        seen.set(id, i)
+        for (let k = map.start[id]!; k < map.start[id + 1]!; k += 1) {
+          expect(world.map.ownership[map.tiles[k]!]).toBe(i)
+        }
       }
     })
   })
 
-  it('owns only land that is not ice', () => {
+  it('owns only land, and no province that is mostly ice', () => {
     for (const n of world.nations) {
-      for (const tile of n.provinces) expect(t.elevation[tile]).toBeGreaterThan(t.seaLevel)
+      for (const id of n.provinces) {
+        let ice = 0
+        for (let k = map.start[id]!; k < map.start[id + 1]!; k += 1) {
+          const tile = map.tiles[k]!
+          expect(t.elevation[tile]).toBeGreaterThan(t.seaLevel)
+          if (
+            t.biomeIds[tile] === BIOME_INDEX.glacier ||
+            t.biomeIds[tile] === BIOME_INDEX.polar_desert
+          ) {
+            ice += 1
+          }
+        }
+        expect(ice * 2).toBeLessThanOrEqual(map.area[id]!)
+      }
     }
   })
 })
@@ -141,13 +158,19 @@ describe('spawnNations: stats follow from the land', () => {
       resources: t.resources,
       strategicPoints: t.strategicPoints,
       routes: t.routes,
-      tiles: [...n.provinces],
+      tiles: [...n.provinces].flatMap((id) =>
+        Array.from(
+          world.provinces.tiles.subarray(world.provinces.start[id], world.provinces.start[id + 1])
+        )
+      ),
       contacts
     })
 
   it('gives every nation the profile of its territory, and the stats of that profile', () => {
     for (const n of world.nations) {
-      expect(n.profile).toEqual(measured(n, n.profile.contacts))
+      // the profile is the sum over provinces; measuring the tiles one by one adds in another order
+      const expected = measured(n, n.profile.contacts)
+      for (const key of PROFILE_FIELDS) expect(n.profile[key], key).toBeCloseTo(expected[key], 8)
       expect(n.stats).toEqual(deriveStats(n.profile))
     }
   })
@@ -246,6 +269,31 @@ describe('spawnNations: determinism and edges', () => {
     const crowded = make(5, { nations: 200, minSpacing: 18 })
     expect(crowded.nations.length).toBeLessThan(200)
     expect(crowded.validate()).toEqual([])
+  })
+
+  it('never puts two capitals in one province: the better hub keeps it', () => {
+    // provinces of about 40 tiles across, hubs 24 apart: several hubs lie in one province
+    const big = make(5, { nations: 8, provinceSpacing: 40 })
+    expect(big.validate()).toEqual([])
+    const provinces = big.nations.map((n) => big.provinces.provinceOf[n.capital])
+    expect(new Set(provinces).size).toBe(provinces.length)
+    expect(big.nations.length).toBeGreaterThan(0)
+  })
+
+  it('does not found a nation in a province that is mostly ice, nor give it one', () => {
+    const world = make(11)
+    const frozen = world.provinces.provinceOf[world.nations[0]!.capital]!
+    const biomeIds = world.terrain.biomeIds.slice()
+    const map = world.provinces
+    for (let k = map.start[frozen]!; k < map.start[frozen + 1]!; k += 1) {
+      biomeIds[map.tiles[k]!] = BIOME_INDEX.glacier
+    }
+    const again = spawnNations(spawnInputOf(world, { biomeIds })).nations
+    expect(again.length).toBeGreaterThan(0)
+    for (const n of again) {
+      expect(n.provinces.has(frozen)).toBe(false)
+      expect(map.provinceOf[n.capital]).not.toBe(frozen)
+    }
   })
 
   it('has an economy even for the resource catalogue: nations hold different resources', () => {

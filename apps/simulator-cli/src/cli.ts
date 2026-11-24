@@ -155,6 +155,11 @@ function summary(world: World): string {
     ['size', `${s.width} x ${s.height}`],
     ['sea level', s.seaLevel.toFixed(4)],
     ['nations', String(s.nations.length)],
+    [
+      'provinces',
+      `${world.provinces.count} (${s.nations.reduce((n, nation) => n + nation.provinceCount, 0)} held)`
+    ],
+    ['borders', world.saturated ? 'settled' : 'moving'],
     ['tick', String(s.tick)],
     ['time', String(s.time)],
     ['hash', world.stateHash()]

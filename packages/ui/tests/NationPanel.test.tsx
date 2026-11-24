@@ -34,7 +34,8 @@ const nation: NationSnapshot = {
     traffic: 0.42,
     contacts: 3
   },
-  area: 1200
+  area: 1200,
+  provinceCount: 3
 }
 
 const render = (n: NationSnapshot = nation): string =>
@@ -79,5 +80,19 @@ describe('NationPanel: the land', () => {
     const html = render()
     expect(html).toContain('Population')
     expect(html).toContain('Aggression')
+  })
+})
+
+describe('NationPanel: territory', () => {
+  it('says how many provinces the nation holds and how many tiles they cover', () => {
+    const html = render()
+    expect(html).toContain('Provinces')
+    expect(html).toMatch(/Provinces<\/span><span[^>]*>3</)
+    expect(html).toContain('1200 tiles')
+  })
+
+  it('shows a nation of a single province', () => {
+    const html = render({ ...nation, provinceCount: 1 })
+    expect(html).toMatch(/Provinces<\/span><span[^>]*>1</)
   })
 })

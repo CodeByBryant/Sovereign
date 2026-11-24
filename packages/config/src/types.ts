@@ -304,6 +304,27 @@ export interface RouteCostConfig {
   biomes: Record<BiomeKey, number>
 }
 
+/** How the land is cut into provinces, the units nations own and grow by. */
+export interface ProvincesConfig {
+  /** The least distance (tiles) between two province seeds; sets the size of a province (about 20 gives 450 tiles). */
+  spacing: number
+  /** A province with fewer tiles than this merges into the neighbour it shares the longest border with. */
+  minArea: number
+  /** The most one tile costs to cross when provinces are cut, so a range divides two seeds without ruling a whole map. */
+  costCap: number
+}
+
+/** How nations grow into free provinces as time passes. */
+export interface ExpansionConfig {
+  /**
+   * Expansion points a nation earns per day at 100 people and an expansionism of 0.5; it scales with
+   * `0.5 + expansionism` and with the square root of the population over 100.
+   */
+  rate: number
+  /** Points it costs to claim a province, per tile of it, times how hard its ground is to cross. */
+  costPerTile: number
+}
+
 /** Where routes between settlements are drawn from, and how they are found. */
 export interface RoutesConfig {
   /** Side of one route cell, in tiles: routes are found on this coarser grid. */
