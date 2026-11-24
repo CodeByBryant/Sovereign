@@ -21,6 +21,7 @@ import type {
   ProvincesConfig,
   ResourcePlacementSettings,
   RoutesConfig,
+  UnitsConfig,
   RiverConfig,
   StrategicConfig,
   TemperatureConfig,
@@ -69,6 +70,8 @@ export interface WorldConfig {
   provinces: ProvincesConfig
   /** How nations grow into free provinces. */
   expansion: ExpansionConfig
+  /** The people who walk the world. */
+  units: UnitsConfig
   /** Where each resource is found, how rich it is and how it regrows. */
   resources: ResourcePlacementSettings
   nations: NationsConfig
@@ -398,6 +401,19 @@ export const defaultWorldConfig: WorldConfig = {
   expansion: {
     rate: 1,
     costPerTile: 0.05
+  },
+
+  /**
+   * Units: each nation starts with `perNation` villagers at its capital. They rest, pick a place within
+   * `wanderRadius` route cells, walk there (a route costs its cost over `walkSpeed` ticks) and rest again.
+   * See docs/decisions/0008-units-and-a-living-world.md.
+   */
+  units: {
+    perNation: 24,
+    walkSpeed: 5,
+    wanderRadius: 10,
+    restMin: 1,
+    restMax: 6
   },
 
   /* ------------------------------------------------------------ */
@@ -820,6 +836,7 @@ export function resolveWorldConfig(overrides: WorldConfigOverrides = {}): WorldC
     routes: merge(d.routes, overrides.routes),
     provinces: merge(d.provinces, overrides.provinces),
     expansion: merge(d.expansion, overrides.expansion),
+    units: merge(d.units, overrides.units),
     resources: merge(d.resources, overrides.resources),
     nations: merge(d.nations, overrides.nations),
     timestep: overrides.timestep ?? d.timestep
@@ -901,6 +918,7 @@ export function validateWorldConfig(config: WorldConfig): string[] {
   validateRoutes(config.routes, problems)
   validateProvinces(config.provinces, problems)
   validateExpansion(config.expansion, problems)
+  validateUnits(config.units, problems)
   validateStrategic(config.strategic, problems)
 
   return problems
@@ -928,6 +946,26 @@ function validateStrategic(strategic: StrategicConfig, problems: string[]): void
   }
   if (!(strategic.minTraffic >= 0 && strategic.minTraffic <= 1)) {
     problems.push(`${at}.minTraffic must be from 0 to 1`)
+  }
+}
+
+/** Problems with the unit settings. */
+function validateUnits(units: UnitsConfig, problems: string[]): void {
+  const at = 'units'
+  if (!isInteger(units.perNation) || units.perNation < 0 || units.perNation > 5000) {
+    problems.push(`${at}.perNation must be a whole number from 0 to 5000`)
+  }
+  if (!(Number.isFinite(units.walkSpeed) && units.walkSpeed > 0)) {
+    problems.push(`${at}.walkSpeed must be a finite number above 0`)
+  }
+  if (!isInteger(units.wanderRadius) || units.wanderRadius < 1) {
+    problems.push(`${at}.wanderRadius must be a whole number of at least 1`)
+  }
+  if (!isInteger(units.restMin) || units.restMin < 1) {
+    problems.push(`${at}.restMin must be a whole number of at least 1`)
+  }
+  if (!isInteger(units.restMax) || units.restMax < units.restMin) {
+    problems.push(`${at}.restMax must be a whole number, at least ${at}.restMin`)
   }
 }
 

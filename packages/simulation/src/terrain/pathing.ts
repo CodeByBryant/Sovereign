@@ -199,17 +199,24 @@ export class RouteCache {
 
 /**
  * Where a walker is when it has paid `progress` (0 to 1) of a route's cost, in tiles: between the centres of the
- * cells it is crossing, in proportion to the cost of each step (so it dawdles through rough ground).
+ * cells it is crossing (or the tile `anchor` names for each cell, where the centre is not a place to stand), in proportion to the cost of each step (so it dawdles through rough ground).
  */
-export function routePosition(route: Route, grid: CostGrid, progress: number): [number, number] {
+export function routePosition(
+  route: Route,
+  grid: CostGrid,
+  progress: number,
+  anchor?: (cell: number) => [number, number]
+): [number, number] {
   const { cells, cumulative, cost } = route
-  const centre = (cell: number): [number, number] => {
-    const x = cell % grid.cols
-    return [
-      x * grid.cell + (grid.cell >> 1),
-      ((cell - x) / grid.cols) * grid.cell + (grid.cell >> 1)
-    ]
-  }
+  const centre =
+    anchor ??
+    ((cell: number): [number, number] => {
+      const x = cell % grid.cols
+      return [
+        x * grid.cell + (grid.cell >> 1),
+        ((cell - x) / grid.cols) * grid.cell + (grid.cell >> 1)
+      ]
+    })
   if (cells.length === 1 || !(cost > 0)) return centre(cells[0] as number)
   const paid = Math.min(1, Math.max(0, progress)) * cost
   let lo = 0

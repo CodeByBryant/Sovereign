@@ -157,3 +157,120 @@ describe('EntityStore: iterating', () => {
     expect(store.alive(Number.NaN)).toBe(false)
   })
 })
+
+describe('EntityStore: columns, for saving and restoring', () => {
+  const filled = (): EntityStore => {
+    const store = new EntityStore(2)
+    for (let i = 0; i < 6; i += 1) {
+      store.spawn({
+        kind: 1,
+        x: i,
+        y: 2 * i,
+        owner: i % 3,
+        state: i % 2,
+        home: 10 + i,
+        target: 20 + i,
+        wake: 30 + i,
+        legStart: 40 + i,
+        legEnd: 50 + i
+      })
+    }
+    store.despawn(1)
+    store.despawn(4)
+    return store
+  }
+
+  it('gives every column up to the high water mark, holes included', () => {
+    const store = filled()
+    const c = store.toColumns()
+    expect(c.highWater).toBe(6)
+    expect(c.kind).toEqual([1, 0, 1, 1, 0, 1])
+    expect(c.x).toEqual([0, 0, 2, 3, 0, 5])
+    expect(c.owner).toEqual([0, 255, 2, 0, 255, 2])
+    expect(c.legEnd).toEqual([50, 0, 52, 53, 0, 55])
+  })
+
+  it('rebuilds the same store from them: the same rows, the same count, the same ids handed out next', () => {
+    const a = filled()
+    const b = EntityStore.fromColumns(a.toColumns())
+    expect(b.toColumns()).toEqual(a.toColumns())
+    expect(b.count).toBe(a.count)
+    expect(b.highWater).toBe(a.highWater)
+    expect([...b.ids()]).toEqual([...a.ids()])
+    expect([
+      a.spawn({ kind: 1, x: 0, y: 0 }),
+      a.spawn({ kind: 1, x: 0, y: 0 }),
+      a.spawn({ kind: 1, x: 0, y: 0 })
+    ]).toEqual([1, 4, 6])
+    expect([
+      b.spawn({ kind: 1, x: 0, y: 0 }),
+      b.spawn({ kind: 1, x: 0, y: 0 }),
+      b.spawn({ kind: 1, x: 0, y: 0 })
+    ]).toEqual([1, 4, 6])
+  })
+
+  it('rebuilds an empty store from empty columns', () => {
+    const empty = EntityStore.fromColumns(new EntityStore().toColumns())
+    expect(empty.count).toBe(0)
+    expect(empty.spawn({ kind: 1, x: 0, y: 0 })).toBe(0)
+  })
+
+  it('refuses columns that are not all the same length, or a high water mark that does not match', () => {
+    const c = filled().toColumns()
+    expect(() => EntityStore.fromColumns({ ...c, x: c.x.slice(1) })).toThrow(RangeError)
+    expect(() => EntityStore.fromColumns({ ...c, legEnd: [...c.legEnd, 1] })).toThrow(RangeError)
+    expect(() => EntityStore.fromColumns({ ...c, highWater: 5 })).toThrow(RangeError)
+  })
+
+  it('refuses a value that does not fit its column, one way at a time', () => {
+    const c = filled().toColumns() // rows 1 and 4 are empty, so only rows 0, 2, 3 and 5 may change
+    const bad = (over: Partial<typeof c>): void => {
+      expect(() => EntityStore.fromColumns({ ...c, ...over })).toThrow(/does not fit/)
+    }
+    bad({ kind: [1, 0, 1, 1, 0, 256] })
+    bad({ x: [0, 0, 2, 3, 0, 65536] })
+    bad({ y: [0, 0, 2, 3, 0, -1] })
+    bad({ owner: [0, 255, 2, 0, 255, 256] })
+    bad({ state: [0, 0, 1, 0, 0, 1.5] })
+    bad({ home: [10, 0, 12, 13, 0, 2.5] })
+    bad({ target: [20, 0, 22, 23, 0, Number.NaN] })
+    bad({ wake: [30, 0, 32, 33, 0, 2 ** 31] })
+    bad({ legStart: [40, 0, 42, 43, 0, -(2 ** 31) - 1] })
+    bad({ legEnd: [50, 0, 52, 53, 0, Infinity] })
+    const edge = {
+      ...c,
+      x: [0, 0, 2, 3, 0, 65535],
+      wake: [30, 0, 32, 33, 0, 2 ** 31 - 1],
+      legStart: [40, 0, 42, 43, 0, -(2 ** 31)]
+    }
+    expect(() => EntityStore.fromColumns(edge)).not.toThrow()
+  })
+
+  it('refuses a column that is missing or not a list', () => {
+    const c = filled().toColumns()
+    expect(() => EntityStore.fromColumns({ ...c, x: undefined as unknown as number[] })).toThrow(
+      RangeError
+    )
+    expect(() => EntityStore.fromColumns({ ...c, home: 'nope' as unknown as number[] })).toThrow(
+      RangeError
+    )
+  })
+
+  it('refuses a high water mark that is not a whole number of 0 or more', () => {
+    const c = filled().toColumns()
+    expect(() => EntityStore.fromColumns({ ...c, highWater: -1 })).toThrow(RangeError)
+    expect(() => EntityStore.fromColumns({ ...c, highWater: 5.5 })).toThrow(RangeError)
+  })
+
+  it('refuses a row that is empty but not zeroed', () => {
+    const c = filled().toColumns()
+    expect(() => EntityStore.fromColumns({ ...c, x: [0, 9, 2, 3, 0, 5] })).toThrow(RangeError)
+  })
+
+  it('copies: changing the columns afterwards does not change the store', () => {
+    const c = filled().toColumns()
+    const store = EntityStore.fromColumns(c)
+    c.x[0] = 999
+    expect(store.x[0]).toBe(0)
+  })
+})

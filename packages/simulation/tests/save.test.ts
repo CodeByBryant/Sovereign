@@ -35,13 +35,13 @@ describe('SAVE_FORMAT_VERSION and layout', () => {
   const bytes = encodeWorld(make(7))
   const view = new DataView(bytes.buffer, bytes.byteOffset)
 
-  it('is version 5', () => {
-    expect(SAVE_FORMAT_VERSION).toBe(5)
+  it('is version 6', () => {
+    expect(SAVE_FORMAT_VERSION).toBe(6)
   })
 
   it('starts with the magic "SOVW", the version (uint32, big-endian) and the header length', () => {
     expect([...bytes.subarray(0, 4)]).toEqual(MAGIC)
-    expect(view.getUint32(4, false)).toBe(5)
+    expect(view.getUint32(4, false)).toBe(6)
     expect(view.getUint32(8, false)).toBeGreaterThan(0)
   })
 
@@ -161,7 +161,7 @@ describe('decodeWorld rejects a file that is not a good save', () => {
     rejects(bad, /not a Sovereign save/)
   })
 
-  it.each([0, 1, 2, 3, 4, 6, 99])('a file of unsupported format version %d', (version) => {
+  it.each([0, 1, 2, 3, 4, 5, 7, 99])('a file of unsupported format version %d', (version) => {
     const bad = good.slice()
     new DataView(bad.buffer).setUint32(4, version, false)
     rejects(bad, /unsupported save format version/)
@@ -345,6 +345,49 @@ describe('decodeWorld rejects a file that is not a good save', () => {
         ;(h.nations as Array<{ provinces: unknown }>)[0]!.provinces = [1.5]
       }),
       /province/
+    )
+  })
+
+  it('keeps the villagers, holes and all, and they go on as before', () => {
+    const world = make(7)
+    world.run(30)
+    const hole = world.entities.spawn({ kind: 1, x: 0, y: 0 })
+    world.entities.despawn(hole) // a hole in the rows
+    const decoded = decodeWorld(encodeWorld(world))
+    expect(decoded.entities.toColumns()).toEqual(world.entities.toColumns())
+    expect(decoded.stateHash()).toBe(world.stateHash())
+    world.run(120)
+    decoded.run(120)
+    expect(decoded.stateHash()).toBe(world.stateHash())
+  })
+
+  it.each([
+    ['no entities', (h: Record<string, unknown>) => delete h.entities],
+    ['entities that are not an object', (h: Record<string, unknown>) => (h.entities = 5)],
+    [
+      'a column that is missing',
+      (h: Record<string, unknown>) => delete (h.entities as Record<string, unknown>).x
+    ],
+    [
+      'a column of the wrong length',
+      (h: Record<string, unknown>) => ((h.entities as { x: number[] }).x = [1, 2])
+    ],
+    [
+      'a value that does not fit',
+      (h: Record<string, unknown>) => ((h.entities as { kind: number[] }).kind[0] = 300)
+    ],
+    [
+      'a kind that is not a kind',
+      (h: Record<string, unknown>) => ((h.entities as { kind: number[] }).kind[0] = 99)
+    ],
+    [
+      'a unit in the sea',
+      (h: Record<string, unknown>) => ((h.entities as { x: number[] }).x[0] = 15999)
+    ]
+  ])('a header with %s', (_label, edit) => {
+    rejects(
+      withHeader(good, (h) => edit(h)),
+      /entit|unit|not valid|column|does not fit/
     )
   })
 

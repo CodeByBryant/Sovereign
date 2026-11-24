@@ -4,11 +4,11 @@ A save is the exact state of a `World` as bytes. The engine produces and reads i
 
 This is separate from the state **hash** ([determinism.md](determinism.md), section 7): a hash is a fingerprint, a save is the data. Decoding a save and hashing the result gives the hash of the world that was saved, on any engine.
 
-## Layout (version 5)
+## Layout (version 6)
 
 ```text
 bytes 0..3    magic "SOVW" (0x53 0x4f 0x56 0x57)
-bytes 4..7    format version, uint32 big-endian (5)
+bytes 4..7    format version, uint32 big-endian (6)
 bytes 8..11   header length N, uint32 big-endian
 bytes 12..    header: N bytes of UTF-8 JSON
 then          thirteen tile layers, each width * height long, in this order:
@@ -19,7 +19,7 @@ then          thirteen tile layers, each width * height long, in this order:
                 ownership                                  one byte each
 ```
 
-The header is a JSON object with `seed` (the normalized uint32), `tick`, `width`, `height`, `seaLevel` (the effective one), `config` (the full resolved world config), `strategicPoints` (`x`, `y`, `type`, `value`), `hubs` (`x`, `y`, `weight`), `routes` (`from`, `to`, `cost`, `traffic` and `path`, the tiles as x, y pairs) and `nations` (every field of a nation, including its `profile` and its `expansionPoints`, with its `provinces` as a list of province ids in claim order). There is no layer length table: the layers' sizes follow from the config, and the file must be exactly the right size.
+The header is a JSON object with `seed` (the normalized uint32), `tick`, `width`, `height`, `seaLevel` (the effective one), `config` (the full resolved world config), `strategicPoints` (`x`, `y`, `type`, `value`), `hubs` (`x`, `y`, `weight`), `routes` (`from`, `to`, `cost`, `traffic` and `path`, the tiles as x, y pairs) and `nations` (every field of a nation, including its `profile` and its `expansionPoints`, with its `provinces` as a list of province ids in claim order) and `entities` (the villagers, as one array per column of the entity store: `kind`, `x`, `y`, `owner`, `state`, `home`, `target`, `wake`, `legStart`, `legEnd`, one entry per row up to the store's high-water mark, empty rows included as zeros). There is no layer length table: the layers' sizes follow from the config, and the file must be exactly the right size.
 
 Encoding is deterministic: the same world always encodes to the same bytes, and `encode(decode(bytes))` equals `bytes`. Float layers are copied as raw little-endian bytes, so saving and loading are refused on a big-endian host rather than writing a file other machines would misread.
 
@@ -49,3 +49,5 @@ Any change to the layout bumps `SAVE_FORMAT_VERSION`. Older versions are not mig
 **Version 4** (from version 3): the world has a route network and its nations have a profile. The header gained `hubs` and `routes`, the `strategicPoints` types changed (`peninsula` is gone, `isthmus` was added) and are found along the routes, every nation carries the `profile` of its land (what its stats, government and personality were derived from), and the config gained `routes`, `strategic` was rebuilt and `nations.startArea` was added. A version 3 file is refused as an unsupported version.
 
 **Version 5** (from version 4): nations own provinces. A nation's `provinces` is a list of province ids (it was a list of tile indices), in claim order, and every nation has `expansionPoints`; the config gained `provinces` and `expansion`. The province layer is derived and not saved. A version 4 file is refused as an unsupported version.
+
+**Version 6** (from version 5): the world has units. The header gained `entities`, the entity store's columns, and the config gained `units`. What is derived is not saved: the timer wheel is rebuilt from the `wake` column, routes are recomputed on demand (the route cache is a pure memo) and each cell's anchor tile is derived from the terrain. A version 5 file is refused as an unsupported version.

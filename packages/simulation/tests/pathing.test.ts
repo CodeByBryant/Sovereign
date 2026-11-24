@@ -232,6 +232,17 @@ describe('routePosition: where a walker is part of the way along', () => {
     expect(routePosition(r, rough.grid, 12 / 13)[0]).toBeCloseTo(2 + 4 * 3, 4)
   })
 
+  it('walks between the tiles a function names for each cell when it is given one', () => {
+    const anchor = (cell: number): [number, number] => [cell * 4 + 1, 7]
+    expect(routePosition(route, grid, 0, anchor)).toEqual([at(0, 0) * 4 + 1, 7])
+    expect(routePosition(route, grid, 1, anchor)).toEqual([at(4, 0) * 4 + 1, 7])
+    const [x, y] = routePosition(route, grid, 0.5, anchor)
+    expect(x).toBeCloseTo(at(2, 0) * 4 + 1, 4)
+    expect(y).toBe(7)
+    const one = new Pathfinder(grid).find(at(2, 0), at(2, 0))!
+    expect(routePosition(one, grid, 0.5, anchor)).toEqual([at(2, 0) * 4 + 1, 7])
+  })
+
   it('clamps progress outside 0 to 1, and handles a route of one cell', () => {
     expect(routePosition(route, grid, -3)).toEqual(centre(at(0, 0)))
     expect(routePosition(route, grid, 7)).toEqual(centre(at(4, 0)))

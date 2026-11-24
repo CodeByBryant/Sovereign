@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { resolveWorldConfig } from '@sovereign/config'
 import type { WorldSnapshot } from '@sovereign/contracts'
+import { EntityStore } from '../src/entities/EntityStore'
 import { spawnNations } from '../src/nations/NationSpawner'
 import { generateTerrain } from '../src/terrain/pipeline'
 import { decodeWorld, encodeWorld } from '../src/serialization/save'
@@ -97,7 +98,8 @@ describe('World.restore', () => {
     tick: w.clock.tick,
     terrain: w.terrain,
     nations: [...w.nations],
-    ownership: w.map.ownership
+    ownership: w.map.ownership,
+    entities: EntityStore.fromColumns(w.entities.toColumns())
   })
 
   it('rebuilds a world with the same state hash, keeping its tick', () => {
@@ -365,7 +367,8 @@ describe('resources in the world', () => {
       tick: world.clock.tick,
       terrain: structuredClone(world.terrain),
       nations,
-      ownership: world.map.ownership.slice()
+      ownership: world.map.ownership.slice(),
+      entities: EntityStore.fromColumns(world.entities.toColumns())
     })
     world.run(500)
     copy.run(500)

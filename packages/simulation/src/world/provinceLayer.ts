@@ -7,8 +7,9 @@
 import type { WorldConfig } from '@sovereign/config'
 import type { TerrainFields } from '@sovereign/contracts'
 import { buildProvinceFacts, type ProvinceFacts } from '../nations/provinceProfile'
-import { buildCostGrid } from '../terrain/cost'
+import type { CostGrid } from '../terrain/cost'
 import { buildProvinces, tileCosts, type ProvinceMap } from '../terrain/provinces'
+import { costGridOf } from './costGrid'
 
 export interface ProvinceLayer {
   /** The cut: which province each tile is in, their tiles, areas and neighbours. */
@@ -17,21 +18,12 @@ export interface ProvinceLayer {
   facts: ProvinceFacts
 }
 
-export function buildProvinceLayer(terrain: TerrainFields, config: WorldConfig): ProvinceLayer {
+export function buildProvinceLayer(
+  terrain: TerrainFields,
+  config: WorldConfig,
+  grid: CostGrid = costGridOf(terrain, config)
+): ProvinceLayer {
   const { width, height } = terrain
-  const grid = buildCostGrid({
-    width,
-    height,
-    seaLevel: terrain.seaLevel,
-    elevation: terrain.elevation,
-    biomeIds: terrain.biomeIds,
-    riverMask: terrain.riverMask,
-    riverWidth: terrain.riverWidth,
-    highlandElevation: config.biomes.highlandElevation,
-    slopeScale: config.resources.features.slopeScale,
-    cell: config.routes.cell,
-    config: config.routes.cost
-  })
   const land = new Uint8Array(width * height)
   for (let i = 0; i < land.length; i += 1) land[i] = terrain.elevation[i] > terrain.seaLevel ? 1 : 0
   const map = buildProvinces({

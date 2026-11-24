@@ -34,6 +34,49 @@ export interface SpawnInput {
 
 const INITIAL_CAPACITY = 256
 
+/** Every column of a store up to its high water mark, as plain numbers (what a save holds). */
+export interface EntityColumns {
+  highWater: number
+  kind: number[]
+  x: number[]
+  y: number[]
+  owner: number[]
+  state: number[]
+  home: number[]
+  target: number[]
+  wake: number[]
+  legStart: number[]
+  legEnd: number[]
+}
+
+/** The columns, in the order they are saved and hashed. */
+export const COLUMN_NAMES = [
+  'kind',
+  'x',
+  'y',
+  'owner',
+  'state',
+  'home',
+  'target',
+  'wake',
+  'legStart',
+  'legEnd'
+] as const
+
+/** The columns and the range each value must be in (the width of the typed array that holds it). */
+const COLUMN_RANGES = {
+  kind: [0, 255],
+  x: [0, 65535],
+  y: [0, 65535],
+  owner: [0, 255],
+  state: [0, 255],
+  home: [-2147483648, 2147483647],
+  target: [-2147483648, 2147483647],
+  wake: [-2147483648, 2147483647],
+  legStart: [-2147483648, 2147483647],
+  legEnd: [-2147483648, 2147483647]
+} as const
+
 export class EntityStore {
   kind: Uint8Array
   x: Uint16Array
@@ -127,6 +170,76 @@ export class EntityStore {
     this.legEnd[id] = 0
     this.alive_ -= 1
     if (id < this.firstFree) this.firstFree = id
+  }
+
+  /** Every column up to the high water mark, copied. */
+  toColumns(): EntityColumns {
+    const n = this.highWater_
+    return {
+      highWater: n,
+      kind: Array.from(this.kind.subarray(0, n)),
+      x: Array.from(this.x.subarray(0, n)),
+      y: Array.from(this.y.subarray(0, n)),
+      owner: Array.from(this.owner.subarray(0, n)),
+      state: Array.from(this.state.subarray(0, n)),
+      home: Array.from(this.home.subarray(0, n)),
+      target: Array.from(this.target.subarray(0, n)),
+      wake: Array.from(this.wake.subarray(0, n)),
+      legStart: Array.from(this.legStart.subarray(0, n)),
+      legEnd: Array.from(this.legEnd.subarray(0, n))
+    }
+  }
+
+  /** Rebuild a store from columns made by {@link toColumns}; the columns are copied and checked. */
+  static fromColumns(columns: EntityColumns): EntityStore {
+    const n = columns.highWater
+    if (!Number.isInteger(n) || n < 0)
+      throw new RangeError('the high water mark must be a whole number of 0 or more')
+    for (const name of COLUMN_NAMES) {
+      const values = columns[name]
+      if (!Array.isArray(values) || values.length !== n) {
+        throw new RangeError(`the column ${name} must have ${n} values`)
+      }
+      const [lo, hi] = COLUMN_RANGES[name]
+      for (const v of values) {
+        if (!Number.isInteger(v) || v < lo || v > hi) {
+          throw new RangeError(`the column ${name} has the value ${v}, which does not fit`)
+        }
+      }
+    }
+    const store = new EntityStore(n)
+    let alive = 0
+    for (let id = 0; id < n; id += 1) {
+      store.kind[id] = columns.kind[id] as number
+      store.x[id] = columns.x[id] as number
+      store.y[id] = columns.y[id] as number
+      store.owner[id] = columns.owner[id] as number
+      store.state[id] = columns.state[id] as number
+      store.home[id] = columns.home[id] as number
+      store.target[id] = columns.target[id] as number
+      store.wake[id] = columns.wake[id] as number
+      store.legStart[id] = columns.legStart[id] as number
+      store.legEnd[id] = columns.legEnd[id] as number
+      if (store.kind[id] === EntityKind.None) {
+        const zero =
+          store.x[id] === 0 &&
+          store.y[id] === 0 &&
+          store.owner[id] === NO_OWNER &&
+          store.state[id] === 0 &&
+          store.home[id] === 0 &&
+          store.target[id] === 0 &&
+          store.wake[id] === 0 &&
+          store.legStart[id] === 0 &&
+          store.legEnd[id] === 0
+        if (!zero) throw new RangeError(`row ${id} is empty but not zeroed`)
+      } else {
+        alive += 1
+      }
+    }
+    store.alive_ = alive
+    store.highWater_ = n
+    store.firstFree = 0
+    return store
   }
 
   /** The ids of the living rows, lowest first. */
