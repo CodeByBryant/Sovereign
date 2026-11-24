@@ -49,6 +49,13 @@ ADR 0007 made the world tick, but nations grow by an abstract points-and-claims 
 
 So nodes as entities is confirmed and the tile-data fallback in the plan is not needed.
 
+## What M1 built (and what it did not)
+
+- `EntityStore` (struct-of-arrays, lowest-free-id allocation, saved and hashed), `Pathfinder` and `RouteCache` over the 4-tile cost grid (step cost is the mean of two cells so a route and its reverse cost the same), counter-based randomness for unit behaviour (a pure hash of seed, unit, tick and purpose, so nothing about it is saved), and a timer-wheel `WanderSystem` whose wheel is derived from the rows' `wake` ticks. Hash schema 5, save format 6, web database version 7.
+- A unit arriving in a cell stands on that cell's **anchor tile** (the land tile nearest its middle): the middle of a coastal cell can be sea.
+- Drawing: `SpriteLayers` (pooled sprites for the visible tiles only, from one procedural atlas), unit positions sent with every run and glided on the main thread by `UnitInterpolator`, a road byte per tile from the route network, a hall at each capital. Sprites replace nothing: they show when a tile is 10 screen pixels wide and the overlays stay underneath.
+- **Not done, on purpose:** resource nodes are still the tile slot arrays (the nodes-as-rows migration is M2, when gathering needs it); there are no gatherers, stockpiles, houses or roads that emerge from walking; the starting halls stand on the capitals the old system picked.
+
 ## Alternatives considered
 
 - **Keep expansion as a system and add units on top as decoration.** Rejected: the owner asked for the behaviour, not the picture; a settler who walks but whose claim is bought by points is a lie.

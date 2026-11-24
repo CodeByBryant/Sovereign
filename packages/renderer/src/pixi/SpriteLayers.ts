@@ -36,6 +36,11 @@ export interface SpriteWorld {
 
 const GREY = 0xc8c8c8
 
+/** Resource objects fill this much of a tile, so neighbours do not touch. */
+const RESOURCE_SCALE = 0.8
+/** Villagers are drawn this many times a tile's sprite size, so they read among the objects. */
+const UNIT_SCALE = 1.9
+
 const hex = (c: readonly [number, number, number]): number => (c[0] << 16) | (c[1] << 8) | c[2]
 
 /** Sprites that are reused from frame to frame: take what is needed, and the rest are hidden. */
@@ -186,9 +191,10 @@ export class SpriteLayers {
           )
           const s = this.resourcePool.take(this.texture(resourceFrameName(g, state)))
           // under a surface resource, a mineral is drawn smaller in the corner so both can be seen
-          const shrink = f !== 0 ? 0.6 : 1
+          const shrink = f !== 0 ? 0.5 : RESOURCE_SCALE
           s.scale.set(this.scale * shrink)
-          s.position.set(px + (f !== 0 ? ts * 0.4 : 0), py + (f !== 0 ? ts * 0.4 : 0))
+          const inset = f !== 0 ? ts * 0.45 : (ts * (1 - RESOURCE_SCALE)) / 2
+          s.position.set(px + inset, py + inset)
         }
         if (f !== 0) {
           const state = resourceSpriteState(
@@ -196,8 +202,8 @@ export class SpriteLayers {
             surface.richness[tile] as number
           )
           const s = this.resourcePool.take(this.texture(resourceFrameName(f, state)))
-          s.scale.set(this.scale)
-          s.position.set(px, py)
+          s.scale.set(this.scale * RESOURCE_SCALE)
+          s.position.set(px + (ts * (1 - RESOURCE_SCALE)) / 2, py + (ts * (1 - RESOURCE_SCALE)) / 2)
         }
       }
     }
@@ -212,11 +218,11 @@ export class SpriteLayers {
       const px = originX + x * ts
       const py = originY + y * ts
       const h = this.buildingPool.take(this.texture('hall'))
-      h.scale.set(this.scale * 1.5)
-      h.position.set(px - ts * 0.25, py - ts * 0.5)
+      h.scale.set(this.scale * 2.2)
+      h.position.set(px - ts * 0.6, py - ts * 1.1)
       const b = this.buildingPool.take(this.texture('banner'))
-      b.scale.set(this.scale)
-      b.position.set(px + ts * 0.5, py - ts * 0.9)
+      b.scale.set(this.scale * 1.6)
+      b.position.set(px + ts * 0.7, py - ts * 1.6)
       b.tint = hex(hall.color)
     }
     this.buildingPool.end()
@@ -236,7 +242,7 @@ export class SpriteLayers {
       const id = frame.id[i] as number
       const s = this.unitPool.take(this.texture(`villager.${walking ? (step + id) & 1 : 0}`))
       s.anchor.set(0.5, 0.85)
-      s.scale.set(this.scale * 1.25)
+      s.scale.set(this.scale * UNIT_SCALE)
       s.position.set(originX + (x + 0.5) * ts, originY + (y + 0.5) * ts)
       const owner = frame.owner[i] as number
       s.tint = owner === NO_OWNER ? GREY : (this.nationColors[owner] ?? GREY)
