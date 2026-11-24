@@ -11,7 +11,8 @@
  * bytes 4..7    format version, uint32 big-endian
  * bytes 8..11   header length N, uint32 big-endian
  * bytes 12..    header: N bytes of UTF-8 JSON (seed, tick, size, sea level, config, strategic
- *               points, route hubs, routes, nations with their province ids and expansion points;
+ *               points, route hubs, routes, nations with their province ids and expansion points,
+ *               the units as columns (entities);
  *               the provinces themselves are derived from the terrain and rebuilt on load)
  * then          thirteen tile layers, each width*height long, in this order:
  *               elevation, temperature, humidity (float32, little-endian),
@@ -37,11 +38,12 @@ import type {
   StrategicType,
   TerrainFields
 } from '@sovereign/contracts'
+import { EntityStore, type EntityColumns } from '../entities/EntityStore'
 import { Nation } from '../nations/Nation'
 import { PROFILE_FIELDS, World } from '../world/World'
 import { utf8Bytes, utf8Decode } from './utf8'
 
-export const SAVE_FORMAT_VERSION = 5
+export const SAVE_FORMAT_VERSION = 6
 
 const MAGIC = [0x53, 0x4f, 0x56, 0x57] // "SOVW"
 const PREAMBLE = 12
@@ -120,6 +122,7 @@ export function encodeWorld(world: World): Uint8Array {
       traffic: route.traffic,
       path: [...route.path]
     })),
+    entities: world.entities.toColumns(),
     nations: world.nations.map((n) => ({
       id: n.id,
       name: n.name,
@@ -265,6 +268,18 @@ function nationFromJson(value: unknown, index: number): Nation {
       diplomacy: number(stats, 'diplomacy', where)
     }
   })
+}
+
+/** The units in a header: every column, checked as it is rebuilt into a store. */
+function entitiesFromJson(value: unknown): EntityStore {
+  if (!isRecord(value)) throw new SaveFormatError('the header has no entities')
+  try {
+    return EntityStore.fromColumns(value as unknown as EntityColumns)
+  } catch (error) {
+    if (error instanceof RangeError)
+      throw new SaveFormatError(`the header entities are malformed: ${error.message}`)
+    throw error
+  }
 }
 
 function hubFromJson(value: unknown): RouteHub {
@@ -415,6 +430,7 @@ function decode(bytes: Uint8Array): World {
   if (!Array.isArray(header.hubs)) throw new SaveFormatError('the header hubs is not a list')
   if (!Array.isArray(header.routes)) throw new SaveFormatError('the header routes is not a list')
   const nations = header.nations.map((n, i) => nationFromJson(n, i))
+  const entities = entitiesFromJson(header.entities)
   const strategicPoints = header.strategicPoints.map(strategicPointFromJson)
   const hubs = header.hubs.map(hubFromJson)
   const routes = header.routes.map(routeFromJson)
@@ -458,5 +474,5 @@ function decode(bytes: Uint8Array): World {
     hubs,
     routes
   }
-  return World.restore({ seed, config, tick, terrain, nations, ownership })
+  return World.restore({ seed, config, tick, terrain, nations, ownership, entities })
 }

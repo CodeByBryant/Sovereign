@@ -8,6 +8,7 @@ import type {
   NationSnapshot,
   ResourceSlots,
   StrategicPoint,
+  UnitSnapshot,
   WorldSnapshot
 } from '@sovereign/contracts'
 import type { LayerName } from '@sovereign/renderer'
@@ -46,6 +47,10 @@ export interface WorldReady {
   /** Every overlay as RGBA pixels, `width * height * 4` bytes. */
   layers: Record<LayerName, Uint8ClampedArray>
   fields: WorldFields
+  /** One byte per tile for the road sprites: 0 for none, else `16 | sides` (see `roadMaskFromRoutes`). */
+  roads: Uint8Array
+  /** Where every unit is. */
+  units: UnitSnapshot
 }
 
 /** The world after some ticks. */
@@ -64,6 +69,8 @@ export interface WorldTicked {
   ownership?: Uint8Array
   /** The political overlay as RGBA pixels, when it was asked for and is out of date. */
   political?: Uint8ClampedArray
+  /** Where every unit is now (sent every time: they walk). */
+  units: UnitSnapshot
 }
 
 export type WorldResponse =

@@ -639,3 +639,53 @@ describe('expansion settings (expansion)', () => {
     expect(resolved.expansion.costPerTile).toBe(expansion.costPerTile)
   })
 })
+
+describe('unit settings (units)', () => {
+  const units = defaultWorldConfig.units
+  const bad = (edit: (c: WorldConfig) => void): string[] => {
+    const c = clone()
+    edit(c)
+    return validateWorldConfig(c)
+  }
+
+  it('is valid as shipped', () => {
+    expect(validateWorldConfig(defaultWorldConfig)).toEqual([])
+  })
+
+  it('starts each nation with a village-sized handful, walking at a pace that crosses a cell in about a day', () => {
+    expect(units.perNation).toBe(24)
+    expect(units.walkSpeed).toBe(5)
+    expect(units.wanderRadius).toBe(10)
+    expect(units.restMin).toBeLessThanOrEqual(units.restMax)
+  })
+
+  it.each([
+    ['a negative count', (c: WorldConfig) => (c.units.perNation = -1)],
+    ['a fractional count', (c: WorldConfig) => (c.units.perNation = 2.5)],
+    ['too many per nation', (c: WorldConfig) => (c.units.perNation = 5001)],
+    ['a walking speed of 0', (c: WorldConfig) => (c.units.walkSpeed = 0)],
+    ['an infinite walking speed', (c: WorldConfig) => (c.units.walkSpeed = Infinity)],
+    ['a wander radius of 0', (c: WorldConfig) => (c.units.wanderRadius = 0)],
+    ['a fractional wander radius', (c: WorldConfig) => (c.units.wanderRadius = 1.5)],
+    ['a rest of 0 ticks', (c: WorldConfig) => (c.units.restMin = 0)],
+    [
+      'a longest rest shorter than the shortest',
+      (c: WorldConfig) => ((c.units.restMin = 5), (c.units.restMax = 4))
+    ],
+    ['a fractional rest', (c: WorldConfig) => (c.units.restMax = 6.5)]
+  ])('rejects %s', (_label, edit) => {
+    const problems = bad(edit)
+    expect(problems.length).toBeGreaterThan(0)
+    expect(problems.join('\n')).toMatch(/units/)
+  })
+
+  it('takes a count of 0, so a world can have no units at all', () => {
+    expect(bad((c) => (c.units.perNation = 0))).toEqual([])
+  })
+
+  it('merges a partial override into the defaults', () => {
+    const resolved = resolveWorldConfig({ units: { perNation: 100 } })
+    expect(resolved.units.perNation).toBe(100)
+    expect(resolved.units.walkSpeed).toBe(units.walkSpeed)
+  })
+})

@@ -13,14 +13,19 @@ import {
 } from '@sovereign/config'
 import {
   BIOME_KEYS,
+  EntityKind,
+  NO_OWNER,
+  UnitState,
   RESOURCE_CATALOG,
   resourceDef,
   type NationProfile,
   type NationSnapshot,
   type TerrainFields,
+  type UnitSnapshot,
   type WorldSnapshot
 } from '@sovereign/contracts'
 import { SimulationClock } from '../clock/SimulationClock'
+import { COLUMN_NAMES, EntityStore } from '../entities/EntityStore'
 import { claimableProvinces } from '../nations/claimable'
 import { deriveStats } from '../nations/derive'
 import { Nation } from '../nations/Nation'
@@ -32,9 +37,13 @@ import {
 import { spawnNations } from '../nations/NationSpawner'
 import { normalizeSeed } from '../random/seed'
 import { ExpansionSystem } from '../systems/ExpansionSystem'
+import { WanderSystem } from '../systems/WanderSystem'
+import type { CostGrid } from '../terrain/cost'
+import { Pathfinder, RouteCache } from '../terrain/pathing'
 import { stateHasher } from '../serialization/hash'
 import { generateTerrain } from '../terrain/pipeline'
 import { NO_PROVINCE, type ProvinceMap } from '../terrain/provinces'
+import { costGridOf } from './costGrid'
 import { buildProvinceLayer, type ProvinceLayer } from './provinceLayer'
 import { buildRegrowthTable, ResourceStocks, type ResourceLayerName } from './ResourceStocks'
 import { WorldMap } from './WorldMap'
@@ -102,6 +111,8 @@ export interface WorldState {
   nations: Nation[]
   /** One byte per tile: the index of the owning nation, or {@link UNCLAIMED}. */
   ownership: Uint8Array
+  /** The units, when restoring a world that has them (a new world is given its own). */
+  entities?: EntityStore
 }
 
 export class World {
@@ -126,8 +137,14 @@ export class World {
   private readonly expansion: ExpansionSystem
   /** Drawing resources down and letting the renewable ones grow back (it works on `terrain.resources`). */
   private readonly stocks: ResourceStocks
+  /** Everything that lives and acts: villagers for now (saved and hashed). */
+  readonly entities: EntityStore
+  /** The villagers' behaviour: they rest, walk and rest (derived timers: rebuilt from the rows). */
+  private readonly wander: WanderSystem
+  /** The cost of crossing the ground, on cells (derived; never saved). */
+  private readonly grid: CostGrid
 
-  private constructor(state: WorldState, layer: ProvinceLayer) {
+  private constructor(state: WorldState, layer: ProvinceLayer, grid: CostGrid) {
     this.seed = state.seed
     this.config = state.config
     this.clock = new SimulationClock(state.config.timestep, state.tick)
@@ -164,6 +181,19 @@ export class World {
       config: state.config.expansion,
       timestep: state.config.timestep
     })
+    this.grid = grid
+    this.entities = state.entities ?? new EntityStore()
+    this.wander = new WanderSystem({
+      entities: this.entities,
+      grid,
+      routes: new RouteCache(new Pathfinder(grid)),
+      config: state.config.units,
+      seed: state.seed,
+      width: state.terrain.width,
+      height: state.terrain.height,
+      land: (x, y) => state.terrain.elevation[y * state.terrain.width + x]! > state.terrain.seaLevel
+    })
+    if (state.entities !== undefined) this.wander.rebuild()
   }
 
   /** Generate a new world: terrain first, then nations placed on it. */
@@ -193,7 +223,8 @@ export class World {
       minLandRatio: config.map.minLandRatio
     })
 
-    const layer = buildProvinceLayer(terrain, config)
+    const grid = costGridOf(terrain, config)
+    const layer = buildProvinceLayer(terrain, config, grid)
 
     // The nations are placed on the world as generated, so use its effective sea level.
     const { nations } = spawnNations({
@@ -213,7 +244,9 @@ export class World {
       for (const province of nation.provinces) writeOwner(ownership, layer.map, province, index)
     })
 
-    return new World({ seed, config, tick: 0, terrain, nations, ownership }, layer)
+    const world = new World({ seed, config, tick: 0, terrain, nations, ownership }, layer, grid)
+    world.spawnStartingUnits()
+    return world
   }
 
   /**
@@ -222,7 +255,8 @@ export class World {
    */
   static restore(state: WorldState): World {
     assertValidWorldConfig(state.config)
-    const world = new World(state, buildProvinceLayer(state.terrain, state.config))
+    const grid = costGridOf(state.terrain, state.config)
+    const world = new World(state, buildProvinceLayer(state.terrain, state.config, grid), grid)
     const problems = world.validate()
     if (problems.length > 0) {
       throw new RangeError(`restored world is not valid:\n  ${problems.join('\n  ')}`)
@@ -234,6 +268,7 @@ export class World {
   step(): void {
     // Systems run here, as a flat, ordered list of calls.
     this.expansion.step(this.clock.tick)
+    this.wander.step(this.clock.tick)
     this.stocks.regrow(this.clock.tick)
     this.refreshDirtyProvinces()
     this.clock.advance()
@@ -313,6 +348,47 @@ export class World {
     }
   }
 
+  /** Each nation starts with its villagers, resting at its capital. */
+  private spawnStartingUnits(): void {
+    const { width } = this.terrain
+    const perNation = this.config.units.perNation
+    this.nations.forEach((nation, index) => {
+      const x = nation.capital % width
+      const y = (nation.capital - x) / width
+      const home = this.cellOf(x, y)
+      for (let k = 0; k < perNation; k += 1) this.wander.spawnVillager(x, y, index, home)
+    })
+  }
+
+  private cellOf(x: number, y: number): number {
+    return Math.floor(y / this.grid.cell) * this.grid.cols + Math.floor(x / this.grid.cell)
+  }
+
+  /** Where every living unit is now (between where it set off and where it is going, if it is walking). */
+  unitPositions(): UnitSnapshot {
+    const count = this.entities.count
+    const snapshot: UnitSnapshot = {
+      tick: this.clock.tick,
+      count,
+      id: new Uint32Array(count),
+      kind: new Uint8Array(count),
+      owner: new Uint8Array(count),
+      x: new Float32Array(count),
+      y: new Float32Array(count)
+    }
+    let i = 0
+    for (const id of this.entities.ids()) {
+      const [x, y] = this.wander.positionAt(id, this.clock.tick)
+      snapshot.id[i] = id
+      snapshot.kind[i] = this.entities.kind[id] as number
+      snapshot.owner[i] = this.entities.owner[id] as number
+      snapshot.x[i] = x
+      snapshot.y[i] = y
+      i += 1
+    }
+    return snapshot
+  }
+
   /** Advance the simulation by `ticks` ticks. */
   run(ticks: number): void {
     if (!Number.isSafeInteger(ticks) || ticks < 0) {
@@ -323,7 +399,7 @@ export class World {
 
   /**
    * A 128-bit fingerprint of the simulation state (see docs/simulation/determinism.md, section 7.3,
-   * "Version 4"). Equal hashes mean equal worlds on any engine.
+   * "Version 5"). Equal hashes mean equal worlds on any engine.
    */
   stateHash(): string {
     const h = stateHasher()
@@ -413,6 +489,19 @@ export class World {
       h.writeFloat64(n.expansionPoints)
       h.writeUint32(n.provinces.size)
       for (const province of n.provinces) h.writeUint32(province)
+    }
+
+    // the villagers (hash schema 5): every column of every row, empty rows included
+    const e = this.entities
+    const rows = e.highWater
+    h.writeUint32(rows)
+    for (const name of COLUMN_NAMES) {
+      const column = e[name]
+      if (column instanceof Uint8Array) {
+        h.writeUint8Array(column.subarray(0, rows))
+      } else {
+        for (let i = 0; i < rows; i += 1) h.writeUint32((column[i] as number) >>> 0)
+      }
     }
 
     return h.digest()
@@ -597,7 +686,75 @@ export class World {
       }
     }
 
+    this.validateEntities(problems)
+
     return problems
+  }
+
+  /** The units: what they are, where they stand, where they are going, when they next act. */
+  private validateEntities(problems: string[]): void {
+    const e = this.entities
+    const t = this.terrain
+    const cells = this.grid.cols * this.grid.rows
+    const landCell = (c: number): boolean =>
+      Number.isInteger(c) && c >= 0 && c < cells && this.grid.land[c] === 1
+    for (let id = 0; id < e.highWater; id += 1) {
+      const kind = e.kind[id] as number
+      if (kind === EntityKind.None) {
+        const zeroed =
+          e.x[id] === 0 &&
+          e.y[id] === 0 &&
+          e.owner[id] === NO_OWNER &&
+          e.state[id] === 0 &&
+          e.home[id] === 0 &&
+          e.target[id] === 0 &&
+          e.wake[id] === 0 &&
+          e.legStart[id] === 0 &&
+          e.legEnd[id] === 0
+        if (!zeroed) problems.push(`entity row ${id} is empty but not zeroed`)
+        continue
+      }
+      if (kind !== EntityKind.Villager) {
+        problems.push(`unit ${id} has the kind ${kind}, which is not a kind of unit`)
+        continue
+      }
+      const x = e.x[id] as number
+      const y = e.y[id] as number
+      if (x >= t.width || y >= t.height) {
+        problems.push(`unit ${id} is outside the map at (${x}, ${y})`)
+      } else if ((t.elevation[y * t.width + x] as number) <= t.seaLevel) {
+        problems.push(`unit ${id} is not on land at (${x}, ${y})`)
+      }
+      const owner = e.owner[id] as number
+      if (owner !== NO_OWNER && owner >= this.nations.length) {
+        problems.push(`unit ${id} has the owner ${owner}, which names no nation`)
+      }
+      if (!landCell(e.home[id] as number)) {
+        problems.push(`unit ${id} has the home ${e.home[id]}, which is not a land cell`)
+      }
+      const state = e.state[id] as number
+      if (state === UnitState.Walk) {
+        const target = e.target[id] as number
+        const start = e.legStart[id] as number
+        const end = e.legEnd[id] as number
+        if (!landCell(target))
+          problems.push(`unit ${id} is heading for ${target}, which is not a land cell`)
+        if (!(end > start))
+          problems.push(
+            `unit ${id} has a leg that ends at ${end}, no later than it starts at ${start}`
+          )
+        if (e.wake[id] !== end)
+          problems.push(`unit ${id} wakes at ${e.wake[id]} but its leg ends at ${end}`)
+        if (start > this.clock.tick)
+          problems.push(`unit ${id} set off at ${start}, which is in the future`)
+      } else if (state === UnitState.Rest) {
+        if ((e.wake[id] as number) < this.clock.tick) {
+          problems.push(`unit ${id} has a wake-up at tick ${e.wake[id]}, which is already past`)
+        }
+      } else {
+        problems.push(`unit ${id} has the state ${state}, which is not resting or walking`)
+      }
+    }
   }
 
   /** The two resource slots: array sizes, catalogue ids, the layer a resource lives in, and stocks. */

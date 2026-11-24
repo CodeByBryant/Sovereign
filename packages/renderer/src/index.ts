@@ -7,4 +7,5 @@
 export * from './Camera'
 export * from './layers'
 export * from './palettes'
+export * from './sprites'
 export * from './view'

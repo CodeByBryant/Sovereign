@@ -74,6 +74,7 @@ export class MinHeap {
     return top
   }
 
+  /** Forget every entry, keeping the storage, so one heap can serve many searches. */
   clear(): void {
     this.count = 0
   }

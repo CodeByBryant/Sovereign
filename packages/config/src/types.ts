@@ -314,6 +314,19 @@ export interface ProvincesConfig {
   costCap: number
 }
 
+/** The people who walk the world: how many there are to start with and how they move. */
+export interface UnitsConfig {
+  /** How many villagers each nation starts with, at its capital. 0 for none. */
+  perNation: number
+  /** Travel cost a walker pays per tick (a route's cost divided by this is the days it takes). */
+  walkSpeed: number
+  /** How far (in route cells of `routes.cell` tiles) a villager wanders from home. */
+  wanderRadius: number
+  /** The fewest and the most ticks a villager rests between walks. */
+  restMin: number
+  restMax: number
+}
+
 /** How nations grow into free provinces as time passes. */
 export interface ExpansionConfig {
   /**

@@ -33,7 +33,16 @@ const TICKED: WorldTicked = {
   time: 10,
   claims: 2,
   saturated: false,
-  nations: []
+  nations: [],
+  units: {
+    tick: 10,
+    count: 0,
+    id: new Uint32Array(0),
+    kind: new Uint8Array(0),
+    owner: new Uint8Array(0),
+    x: new Float32Array(0),
+    y: new Float32Array(0)
+  }
 }
 
 const setup = (): { host: SimulationHost; worker: FakeWorker } => {

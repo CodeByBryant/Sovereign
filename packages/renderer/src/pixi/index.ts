@@ -5,3 +5,4 @@
  */
 export { MapRenderer } from './MapRenderer'
 export type { MapRendererOptions } from './MapRenderer'
+export type { SpriteWorld } from './SpriteLayers'

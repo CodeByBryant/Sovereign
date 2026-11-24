@@ -87,6 +87,28 @@ describe('TickRunner: running the world', () => {
   })
 })
 
+describe('TickRunner: the units', () => {
+  it('says where every unit is after the run, in tiles', () => {
+    const { world, runner } = setup()
+    const { message } = runner.run(30)
+    expect(message.units).toEqual(world.unitPositions())
+    expect(message.units.tick).toBe(30)
+    expect(message.units.count).toBeGreaterThan(0)
+  })
+
+  it('sends units every time, even when nothing else changed, and they have moved on', () => {
+    const { runner } = setup()
+    const first = runner.run(1).message.units
+    const last = runner.run(40).message.units
+    expect(last.tick).toBe(first.tick + 40)
+    let moved = 0
+    for (let i = 0; i < first.count; i += 1) {
+      if (first.x[i] !== last.x[i] || first.y[i] !== last.y[i]) moved += 1
+    }
+    expect(moved).toBeGreaterThan(0)
+  })
+})
+
 describe('TickRunner: ownership and the political overlay', () => {
   it('sends nothing about ownership when nothing was claimed', () => {
     const { runner } = setup()
@@ -139,13 +161,18 @@ describe('TickRunner: ownership and the political overlay', () => {
   it('lists every buffer it sends for transfer', () => {
     const { runner } = setup()
     const { message, transfer } = runner.run(300, { political: true })
-    const buffers = [message.ownership, message.political].map((a) => a?.buffer)
+    const u = message.units
+    const buffers = [u.id, u.kind, u.owner, u.x, u.y, message.ownership, message.political].map(
+      (a) => a?.buffer
+    )
     expect(transfer).toEqual(buffers)
   })
 
-  it('has nothing to transfer when nothing is sent', () => {
+  it('transfers only the units when nothing else is sent', () => {
     const { runner } = setup()
-    expect(runner.run(0).transfer).toEqual([])
+    const { message, transfer } = runner.run(0)
+    const u = message.units
+    expect(transfer).toEqual([u.id, u.kind, u.owner, u.x, u.y].map((a) => a.buffer))
   })
 })
 
