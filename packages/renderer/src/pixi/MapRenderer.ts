@@ -49,6 +49,9 @@ export class MapRenderer {
     this.tileSize = tileSize
     this.app.stage.addChild(this.world)
     this.spriteLayers = new SpriteLayers(tileSize)
+    // the overlays are added later, so the sprites say they go on top
+    this.world.sortableChildren = true
+    this.spriteLayers.container.zIndex = 1000
     this.world.addChild(this.spriteLayers.container)
   }
 
