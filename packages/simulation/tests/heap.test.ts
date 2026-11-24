@@ -106,4 +106,25 @@ describe('MinHeap', () => {
     heap.push(1, 5)
     expect(heap.pop()).toBe(5)
   })
+
+  it('clear() empties the heap so it can be reused, and the order afterwards is as for a new heap', () => {
+    const heap = new MinHeap(2)
+    for (let i = 0; i < 50; i += 1) heap.push(50 - i, i)
+    heap.clear()
+    expect(heap.size).toBe(0)
+    expect(() => heap.pop()).toThrow(RangeError)
+    for (const [key, id] of [
+      [3, 7],
+      [1, 9],
+      [3, 2],
+      [2, 5]
+    ] as const)
+      heap.push(key, id)
+    expect(drain(heap)).toEqual([
+      [1, 9],
+      [2, 5],
+      [3, 2],
+      [3, 7]
+    ])
+  })
 })

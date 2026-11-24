@@ -24,3 +24,4 @@
 | [0005 Resources by geology](decisions/0005-resources-by-geology.md)                           | Why resources have rules, two slots and stocks, not noise                                                        |
 | [0006 Routes and nations from the land](decisions/0006-routes-and-nations-from-the-land.md)   | Why strategic points come from a route network and nation stats from their land                                  |
 | [0007 Provinces, ownership and a world that ticks](decisions/0007-provinces-and-expansion.md) | Why the land is cut into provinces by travel cost, how nations own and grow into them, and how the app runs time |
+| [0008 Units and a living world](decisions/0008-units-and-a-living-world.md)                   | Why units and resource nodes are entities, what the probes measured, and the stages from walking to nations      |
