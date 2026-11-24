@@ -12,6 +12,8 @@ import { Application, BufferImageSource, Container, Sprite, Texture } from 'pixi
 import type { Camera } from '../Camera'
 import type { LayerName } from '../layers'
 import { clampedViewport, tileAtScreen, viewTransform } from '../view'
+import type { UnitSnapshot } from '@sovereign/contracts'
+import { SpriteLayers, type SpriteWorld } from './SpriteLayers'
 
 export interface MapRendererOptions {
   /** CSS class given to the canvas the renderer creates. */
@@ -30,6 +32,7 @@ export class MapRenderer {
   private readonly tileSize: number
   private readonly world = new Container()
   private readonly sprites = new Map<LayerName, Sprite>()
+  private readonly spriteLayers: SpriteLayers
   private mapWidth = 0
   private mapHeight = 0
   private destroyed = false
@@ -45,6 +48,8 @@ export class MapRenderer {
     this.canvas = canvas
     this.tileSize = tileSize
     this.app.stage.addChild(this.world)
+    this.spriteLayers = new SpriteLayers(tileSize)
+    this.world.addChild(this.spriteLayers.container)
   }
 
   /**
@@ -128,6 +133,21 @@ export class MapRenderer {
     sprite.position.set((-width * this.tileSize) / 2, (-height * this.tileSize) / 2)
   }
 
+  /** Set what the sprite layers (resources, roads, halls) draw from; shown when the camera is close. */
+  setSpriteWorld(world: SpriteWorld): void {
+    this.spriteLayers.setWorld(world)
+  }
+
+  /** The nations' colours by index, used to tint their units and banners. */
+  setNationColors(colors: ReadonlyArray<readonly [number, number, number]>): void {
+    this.spriteLayers.setNationColors(colors)
+  }
+
+  /** The newest unit snapshot; the renderer glides the units to it. */
+  setUnits(snapshot: UnitSnapshot): void {
+    this.spriteLayers.setUnits(snapshot, performance.now())
+  }
+
   /** The largest texture side the GPU accepts; larger layers would silently draw nothing. */
   private maxTextureSize(): number {
     const gl = (this.app.renderer as { gl?: WebGL2RenderingContext }).gl
@@ -154,7 +174,23 @@ export class MapRenderer {
     const t = viewTransform(this.camera, width, height)
     this.world.scale.set(t.scale)
     this.world.position.set(t.x, t.y)
+    this.spriteLayers.update(this.camera, width, height, performance.now())
+    this.publishSpriteStats()
     this.app.renderer.render(this.app.stage)
+  }
+
+  /** Put what the sprite layers drew on the canvas as data attributes, so a page or a test can see it. */
+  private publishSpriteStats(): void {
+    const { stats } = this.spriteLayers
+    const data = this.canvas.dataset
+    const set = (key: string, value: string): void => {
+      if (data[key] !== value) data[key] = value
+    }
+    set('sprites', stats.active ? 'on' : 'off')
+    set('spriteRoads', String(stats.roads))
+    set('spriteResources', String(stats.resources))
+    set('spriteHalls', String(stats.halls))
+    set('spriteUnits', String(stats.units))
   }
 
   /** The canvas' size in CSS pixels (at least 1 x 1). */

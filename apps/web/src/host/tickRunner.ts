@@ -13,6 +13,7 @@
 import { biomeRgba, politicalRgba, type PoliticalStyle } from '@sovereign/renderer'
 import type { World } from '@sovereign/simulation'
 import type { RunOptions, WorldTicked } from './protocol'
+import { unitBuffers } from './readyMessage'
 
 export interface Ticked {
   message: WorldTicked
@@ -62,9 +63,10 @@ export class TickRunner {
       time: world.clock.time,
       claims,
       saturated: world.saturated,
-      nations: world.snapshot().nations
+      nations: world.snapshot().nations,
+      units: world.unitPositions()
     }
-    const transfer: ArrayBuffer[] = []
+    const transfer: ArrayBuffer[] = unitBuffers(message.units)
 
     const due =
       options.flush === true || world.saturated || this.now() - this.lastSent >= this.minOverlayMs

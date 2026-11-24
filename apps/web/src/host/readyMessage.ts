@@ -13,12 +13,13 @@ import {
   humidityRgba,
   politicalRgba,
   resourceRgba,
+  roadMaskFromRoutes,
   strategicRgba,
   temperatureRgba,
   type LayerName,
   type PoliticalStyle
 } from '@sovereign/renderer'
-import type { ResourceSlot } from '@sovereign/contracts'
+import type { ResourceSlot, UnitSnapshot } from '@sovereign/contracts'
 import type { World } from '@sovereign/simulation'
 import type { WorldFields, WorldReady } from './protocol'
 
@@ -34,6 +35,11 @@ function copySlot(slot: ResourceSlot): ResourceSlot {
 
 function slotArrays(slot: ResourceSlot): Uint8Array[] {
   return [slot.type, slot.richness, slot.stock]
+}
+
+/** The buffers of a unit snapshot, for a transfer list. */
+export function unitBuffers(units: UnitSnapshot): ArrayBuffer[] {
+  return [units.id, units.kind, units.owner, units.x, units.y].map((a) => a.buffer as ArrayBuffer)
 }
 
 export function buildReady(world: World, style: PoliticalStyle): Built {
@@ -72,20 +78,26 @@ export function buildReady(world: World, style: PoliticalStyle): Built {
     ownership: world.map.ownership.slice()
   }
 
+  const roads = roadMaskFromRoutes(t.routes, width, height)
+  const units = world.unitPositions()
   const { resources, ...flat } = fields
   const transfer = [
     ...Object.values(layers),
     ...Object.values(flat),
     ...slotArrays(resources.surface),
-    ...slotArrays(resources.ground)
+    ...slotArrays(resources.ground),
+    roads
   ].map((array) => array.buffer as ArrayBuffer)
+  transfer.push(...unitBuffers(units))
   return {
     message: {
       type: 'ready',
       snapshot: world.snapshot(),
       strategicPoints: t.strategicPoints.map((p) => ({ ...p })),
       layers,
-      fields
+      fields,
+      roads,
+      units
     },
     transfer
   }

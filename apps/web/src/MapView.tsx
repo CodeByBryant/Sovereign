@@ -303,6 +303,16 @@ const MapView: React.FC = () => {
 
           for (const name of LAYER_NAMES) renderer.setLayer(name, ready.layers[name], width, height)
 
+          renderer.setNationColors(ready.snapshot.nations.map((n) => n.color))
+          renderer.setSpriteWorld({
+            width,
+            height,
+            resources: ready.fields.resources,
+            roads: ready.roads,
+            halls: ready.snapshot.nations.map((n) => ({ tile: n.capital, color: n.color }))
+          })
+          renderer.setUnits(ready.units)
+
           mapSizeRef.current = { width, height, tileSize }
           biomeIdsRef.current = ready.fields.biomeIds
           baseLayerRef.current = ready.layers.biome
@@ -443,6 +453,7 @@ const MapView: React.FC = () => {
       timestep: store.timestep,
       saturated: ticked.saturated
     })
+    rendererRef.current?.setUnits(ticked.units)
     if (ticked.claims > 0) {
       nationsRef.current = ticked.nations
       store.setNations(ticked.nations)

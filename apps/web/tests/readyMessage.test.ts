@@ -6,11 +6,12 @@ import {
   humidityRgba,
   politicalRgba,
   resourceRgba,
+  roadMaskFromRoutes,
   strategicRgba,
   temperatureRgba
 } from '@sovereign/renderer'
 import { World } from '@sovereign/simulation'
-import type { ResourceSlot } from '@sovereign/contracts'
+import type { ResourceSlot, UnitSnapshot } from '@sovereign/contracts'
 import { buildReady } from '../src/host/readyMessage'
 import type { WorldFields } from '../src/host/protocol'
 
@@ -45,6 +46,14 @@ function fieldArrays(fields: WorldFields): Array<Float32Array | Uint8Array> {
     ])
   ]
 }
+
+const unitArrays = (u: UnitSnapshot): Array<Uint32Array | Uint8Array | Float32Array> => [
+  u.id,
+  u.kind,
+  u.owner,
+  u.x,
+  u.y
+]
 
 const make = (): World => World.create({ seed: 21, config: SMALL })
 
@@ -134,10 +143,31 @@ describe('buildReady', () => {
     for (const array of fieldArrays(message.fields)) expect(own.has(array.buffer)).toBe(false)
   })
 
+  it('carries the units as the world places them, in tiles', () => {
+    expect(message.units).toEqual(world.unitPositions())
+    expect(message.units.count).toBeGreaterThan(0)
+  })
+
+  it('carries a road byte per tile, made from the routes', () => {
+    expect(message.roads).toEqual(roadMaskFromRoutes(world.terrain.routes, width, height))
+    expect(message.roads.length).toBe(width * height)
+    expect(message.roads.some((v) => v !== 0)).toBe(true)
+  })
+
+  it("sends the units' own copies, never the engine's arrays", () => {
+    const again = world.unitPositions()
+    for (const key of ['id', 'kind', 'owner', 'x', 'y'] as const) {
+      expect(message.units[key].buffer).not.toBe(again[key].buffer)
+    }
+  })
+
   it('lists every buffer to transfer exactly once, and nothing else', () => {
-    const buffers = [...Object.values(message.layers), ...fieldArrays(message.fields)].map(
-      (a) => a.buffer
-    )
+    const buffers = [
+      ...Object.values(message.layers),
+      ...fieldArrays(message.fields),
+      message.roads,
+      ...unitArrays(message.units)
+    ].map((a) => a.buffer)
     expect(transfer.length).toBe(buffers.length)
     expect(new Set(transfer).size).toBe(transfer.length)
     for (const b of buffers) expect(transfer).toContain(b)
