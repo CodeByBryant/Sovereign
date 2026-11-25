@@ -32,6 +32,8 @@ The first screenshots of villagers gathering were a wall of icons: the placement
 - **Gathering moves nation stats.** A nation's profile and stats are measured from the stocks of the land it holds, so as villagers draw deposits down and they grow back, stats go on changing even after borders have settled. The determinism guard that said "no stat changes after the borders settle" now only says borders and claims hold still. Stats will be measured from stockpiles and population instead in M4.
 - **Villagers can find the world empty.** Nothing stops a hall's villagers from stripping every deposit in reach; renewable ones grow back on the existing table, ground ones do not.
 
+**The default map is now 1000 x 1000.** At 2000 x 2000 a village is a dot (WorldBox's standard map is 256 and its villages span 24 tiles), creation took 8 to 9 s and a save was 71 MB. At 1000 x 1000 creation is about 3 s, there are about 93,000 deposits, a save is 16.7 MB and a tick with 300 villagers costs about 1.9 ms. Larger maps stay configurable; the measurements below were taken at 2000 x 2000.
+
 ## What it costs (measured, 2000 x 2000, seed 1337, Node 22, one machine, borders settled)
 
 | Villagers                            | ms per tick | where it goes                                                      |

@@ -201,7 +201,7 @@ The pipeline stops at the fields. Turning them into pixels happens in `@sovereig
 The terrain parameters are the sections of `WorldConfig` in `packages/config/src/world.ts` (`defaultWorldConfig`), and they are part of a world's identity: they are saved with it and covered by its hash.
 
 ```ts
-map:         { width, height, seaLevel, islandMode }   // defaults tuned for 2000 x 2000
+map:         { width, height, seaLevel, islandMode }   // defaults tuned for 1000 x 1000
 elevation:   { scale, octaves, persistence, lacunarity, continentScale, oceanScale, ..., profile }
 temperature: { scale, octaves, latitudeStrength, elevationCooling, ..., profile }
 humidity:    { scale, octaves, coastalInfluence, elevationDrying, profile }
@@ -221,4 +221,4 @@ A `profile` is a list of `[quantile, value]` knots (see 1a); `validateWorldConfi
 
 `resolveWorldConfig(overrides)` merges per-section partial overrides over the defaults and `validateWorldConfig` rejects values the engine cannot use (side lengths 16 to 8192, at most 4096 x 4096 tiles, at most 255 nations, octaves 1 to 8, and so on) before anything is allocated. The seed is **not** configuration: it is an input to `World.create`.
 
-The spatial frequencies are tuned for a 2000 x 2000 map; a small test map multiplies them (see `packages/simulation/tests/support/worldOptions.ts`) to stay interesting.
+The spatial frequencies are tuned for a 1000 x 1000 map (the default; the first measurements below were taken at 2000 x 2000, the former default, and the shapes hold at both); a small test map multiplies them (see `packages/simulation/tests/support/worldOptions.ts`) to stay interesting.

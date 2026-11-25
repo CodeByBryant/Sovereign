@@ -27,8 +27,8 @@ usage: sovereign-sim [options]
 
 World to create:
   --seed <number|text>   world seed (default 1); text is hashed, digits are read as a number
-  --width <n>            map width in tiles (default 2000)
-  --height <n>           map height in tiles (default 2000)
+  --width <n>            map width in tiles (default 1000)
+  --height <n>           map height in tiles (default 1000)
   --nations <n>          number of nations to spawn (default 12)
   --spacing <n>          minimum tile distance between nations (default 70)
   --island               island mode: land falls off toward the edges

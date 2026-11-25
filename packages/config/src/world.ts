@@ -100,10 +100,10 @@ export const defaultWorldConfig: WorldConfig = {
    * ```
    */
   map: {
-    /** Map width in tiles. @default 2000 */
-    width: 2000,
-    /** Map height in tiles. @default 2000 */
-    height: 2000,
+    /** Map width in tiles. @default 1000 */
+    width: 1000,
+    /** Map height in tiles. @default 1000 */
+    height: 1000,
     /**
      * Elevation threshold separating ocean from land.
      * Range `[0, 1]`. Higher = more water.

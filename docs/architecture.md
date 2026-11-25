@@ -28,7 +28,7 @@ The exact rules, and the tool that enforces them, are in [architecture/dependenc
 ## How a world gets on screen
 
 1. The title screen picks a seed (typed, or a random one). The game store moves to the `generating` phase.
-2. `MapView` asks `SimulationHost` for a world. The host runs `World.create({ seed, config })` inside a Web Worker (`world.worker.ts`), so a 2000 x 2000 generation (about 6 seconds, see [development.md](development.md#performance)) never blocks the page.
+2. `MapView` asks `SimulationHost` for a world. The host runs `World.create({ seed, config })` inside a Web Worker (`world.worker.ts`), so a default 1000 x 1000 generation (about 3 seconds, see [development.md](development.md#performance)) never blocks the page.
 3. The worker answers with a snapshot (seed, size, sea level, nations, state hash) and the tile layers. The layers move by **transfer**, not copy.
 4. Palette functions in `@sovereign/renderer` turn each layer into RGBA for the seven overlays (elevation, temperature, humidity, biome, strategic, resource, political). The PixiJS `MapRenderer` owns its own canvas, uploads the layers as textures and draws the visible part.
 5. Hover and click are answered on the main thread from the same arrays: `WorldMap.at(x, y)` returns a `TileInfo`, and the UI components render it.
@@ -37,7 +37,7 @@ The worker and the CLI run the same engine code, so the same seed gives the same
 
 ## Data model
 
-Per-tile data is struct-of-arrays: one typed array per field (three `Float32Array`s for elevation, temperature and humidity; one byte per tile for biome, river mask, river width and ownership, plus six more for the two resource slots: type, richness and stock each). A 2000 x 2000 world is about 88 MB. Creating 4 million tile objects would cost more in garbage collection than the whole generation, so none exist: `WorldMap.at(x, y)` builds a `TileInfo` on demand.
+Per-tile data is struct-of-arrays: one typed array per field (three `Float32Array`s for elevation, temperature and humidity; one byte per tile for biome, river mask, river width and ownership, plus six more for the two resource slots: type, richness and stock each). A 1000 x 1000 world is about 22 MB (2000 x 2000 is about 88 MB). Creating 4 million tile objects would cost more in garbage collection than the whole generation, so none exist: `WorldMap.at(x, y)` builds a `TileInfo` on demand.
 
 Nations are plain serialisable data (`Nation`): identity (name, colour, flag), personality, stats and the tiles they own, as indices in claim order. Ownership is one byte per tile (`255` means unclaimed), so a world has at most 255 nations.
 

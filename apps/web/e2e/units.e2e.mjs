@@ -4,7 +4,7 @@
 //
 //   pnpm --filter @sovereign/web e2e:units
 //
-// It starts the Vite dev server itself and needs Chromium. The world is 2000 x 2000, so this takes a
+// It starts the Vite dev server itself and needs Chromium. The world is 1000 x 1000, so this takes a
 // few minutes in software GL.
 import { chromium } from 'playwright'
 import {

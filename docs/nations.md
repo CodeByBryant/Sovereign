@@ -85,7 +85,7 @@ The first system in `World.step()`. Every tick, in a rotating order (starting at
 2. buys, while it can pay, the free claimable province on its border with the best **value for the price**: what its land gives (1 + food + timber + stone + 2 x horses + 2 x metals + 2 x luxuries + defence) over `expansion.costPerTile x area x mean cost` (ties to the lower id);
 3. on each claim, the owner of the province and of its tiles is written, and the profile is re-summed and the stats re-derived (so a bigger nation feeds more people and expands faster, while the price grows with area).
 
-A nation with nothing to buy holds no points. **Nothing here is random.** Once every province a nation can reach is taken, nothing changes any more (`World.saturated`, "borders settled"); provinces on landmasses no nation can reach by land stay free. On a 2000 x 2000 world the 12 nations settle after about 57 years holding about 89% of the claimable provinces, a tick costs 0.006 ms, and the borders are the same on every run and every engine. See [decision 0007](decisions/0007-provinces-and-expansion.md).
+A nation with nothing to buy holds no points. **Nothing here is random.** Once every province a nation can reach is taken, nothing changes any more (`World.saturated`, "borders settled"); provinces on landmasses no nation can reach by land stay free. On a 2000 x 2000 world (the former default size, where this was measured) the 12 nations settle after about 57 years holding about 89% of the claimable provinces, a tick costs 0.006 ms, and the borders are the same on every run and every engine. See [decision 0007](decisions/0007-provinces-and-expansion.md).
 
 ---
 

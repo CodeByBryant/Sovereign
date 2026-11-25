@@ -4,7 +4,7 @@ Notes for the units-and-living-world work ([ADR 0008](../decisions/0008-units-an
 
 ## Scale
 
-- Default map sizes (Map Creation): tiny 128 x 128, small 192, standard 256, large 320, huge 384, gigantic 448, titanic 512, iceberg 576 (PC). A "zone" is **8 x 8 tiles**; a "chunk" is 16 x 16. Our world is 2000 x 2000: about 60 times a standard map. Things that read well at WorldBox's scale (a village is 3 x 3 zones, 24 x 24 tiles) are tiny dots at ours.
+- Default map sizes (Map Creation): tiny 128 x 128, small 192, standard 256, large 320, huge 384, gigantic 448, titanic 512, iceberg 576 (PC). A "zone" is **8 x 8 tiles**; a "chunk" is 16 x 16. Our default world is 1000 x 1000: about 15 times a standard map. Things that read well at WorldBox's scale (a village is 3 x 3 zones, 24 x 24 tiles) are tiny dots at ours.
 - World generation (Map Creation) is layered Perlin noise for height (main, details, bonus; "details" is a quarter and "bonus" a tenth of the scale), then template shapes, then **Random Biomes**, **Spawn Vegetation** and **Spawn Resources** as the last bonus stages. The wiki gives no densities.
 
 ## Trees, plants, resources

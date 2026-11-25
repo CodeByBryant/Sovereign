@@ -14,10 +14,10 @@ function clone(): WorldConfig {
 }
 
 describe('defaultWorldConfig', () => {
-  it('describes the 2000x2000 world the game starts with', () => {
+  it('describes the 1000x1000 world the game starts with', () => {
     expect(defaultWorldConfig.map).toEqual({
-      width: 2000,
-      height: 2000,
+      width: 1000,
+      height: 1000,
       seaLevel: 0.37,
       minLandRatio: 0.25,
       islandMode: false
@@ -86,7 +86,7 @@ describe('resolveWorldConfig', () => {
 
   it('ignores an override explicitly set to undefined, rather than erasing the default', () => {
     const resolved = resolveWorldConfig({ map: { width: undefined, height: 64 } })
-    expect(resolved.map.width).toBe(2000)
+    expect(resolved.map.width).toBe(1000)
     expect(resolved.map.height).toBe(64)
   })
 })

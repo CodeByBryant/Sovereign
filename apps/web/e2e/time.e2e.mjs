@@ -9,7 +9,7 @@
 //
 //   pnpm --filter @sovereign/web e2e:time
 //
-// It starts the Vite dev server itself and needs Chromium. The world is 2000 x 2000, so this takes a few
+// It starts the Vite dev server itself and needs Chromium. The world is 1000 x 1000, so this takes a few
 // minutes in software GL. Set E2E_SHOTS=<directory> to save screenshots there.
 import { chromium } from 'playwright'
 import { SOFTWARE_GL, centerOn, firstNationPoint, startDevServer, withTimeout } from './support.mjs'

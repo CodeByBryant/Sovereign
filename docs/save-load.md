@@ -4,7 +4,7 @@ The **bytes** of a save are the engine's business and are specified in [simulati
 
 ## IndexedDB
 
-`apps/web/src/state/persistence.ts` stores each save as a record in IndexedDB. A 2000 x 2000 world is about 72 MB, far beyond what `localStorage` can hold.
+`apps/web/src/state/persistence.ts` stores each save as a record in IndexedDB. A 1000 x 1000 world is about 17 MB (a 2000 x 2000 one is about 72 MB), far beyond what `localStorage` can hold.
 
 - **Database** `sovereign`, **version 3**, object store `saves` (key `id`).
 - **Record** `{ id, blob, meta }`: `blob` is the engine's bytes, `meta` is `{ id, name, seed, tick, createdAt, formatVersion }`.
