@@ -31,6 +31,16 @@ Jobs are assigned by what the village is short of (Jobs). Woodcutter: 1 if the v
 
 Gold is the only currency resource (max 999). Villages in a kingdom share surplus: a village gives when it holds more than 30 of a resource (100 wheat, 600 gold) to one that holds less than 10 (20 wheat), 10 at a time, on a timer of about 6 months. Units earn "loot" for building, claiming zones and hauling.
 
+## Yields are small (Category:Resources)
+
+Every gatherable is a small object worth a few units: tree 5 wood; stone deposit 3 stone; common metal ore 2 metal + 1 stone; gem ore 1 gem + 1 stone; silver 1 + 1 stone; gold ore (from a mine only) 20 gold + 20 stone; berry bush 3 berries; herbs, flowers, mushrooms and desert berries 1; a wheat tile 1 wheat; a beehive 10 honey; an ocean tile 1 fish (the water itself is the source, there is no fish object). Villages store these as counters, and share them in tens (give above 30, take below 10).
+
+## Tiles carry the ground look (Tiles, Category:Biomes)
+
+- 185 tiles, 71 unique before variants. Each biome has a **high** and a **low** ground tile (a slightly different shade) and **three art variants** of each, picked automatically "to add more diversity to your worldscape". That is where the textured grass comes from: a per-tile variant, not a noise overlay. Tiles also carry a burn chance, a walking-speed effect and a nutrition value (animals graze the tile).
+- 23 biomes plus special ones (sand, hill). Biomes spread into each other: each has a grow strength (5 or 6) and a ~5% chance to take over a neighbour of equal strength; ages speed up the dominant biomes. World generation gives each biome a "pot amount" (grass 8, jungle 6, savanna and maple 5, ...) deciding how much of the map it gets.
+- Size classes (Creature Size): chicken and rabbit 6, cat 7, fox 8, dog 10, sheep 11, wolf 12, human 13, cow 14, bear 15, buffalo 16, dragon 17; the same sprite grid is used for all, drawn larger for bigger classes.
+
 ## What this says about our design
 
 1. Our deposits hold up to 255 units and a villager takes about 8 a trip; WorldBox's are mostly **single-trip objects** (a tree is 5 wood). Small stocks make a forest visibly thin out and regrow, which is what makes the world read as alive.
@@ -38,3 +48,5 @@ Gold is the only currency resource (max 999). Villages in a kingdom share surplu
 3. A village is a small, spaced set of buildings joined by short roads, with a bonfire and a stockpile first; houses are paid for at placement.
 4. Borders are claimed in blocks (8 x 8) by what the village does, not bought with points.
 5. Trees, plants and animals live: seeds spread, plants are eaten, animals hunt and breed.
+6. The ground should be drawn from a few tile variants per biome (with a high and a low shade), chosen by a hash of the tile, so a meadow looks like one without an overlay.
+7. Yields should be a handful of units per object: timber 5, stone 3, metals 2, gems 1, berries 3, with a stock of one to a few yields.
