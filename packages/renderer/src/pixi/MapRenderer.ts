@@ -194,6 +194,9 @@ export class MapRenderer {
     set('spriteResources', String(stats.resources))
     set('spriteHalls', String(stats.halls))
     set('spriteUnits', String(stats.units))
+    set('spriteDrawn', String(stats.drawn))
+    set('spriteWorking', String(stats.working))
+    set('spriteCarrying', String(stats.carrying))
   }
 
   /** The canvas' size in CSS pixels (at least 1 x 1). */

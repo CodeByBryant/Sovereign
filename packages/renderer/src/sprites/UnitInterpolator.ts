@@ -25,6 +25,9 @@ export interface UnitFrame {
   id: Uint32Array
   kind: Uint8Array
   owner: Uint8Array
+  /** What each unit is doing (a `UnitState`) and the resource it carries (0 for none). */
+  state: Uint8Array
+  carry: Uint8Array
   x: Float32Array
   y: Float32Array
 }
@@ -37,6 +40,8 @@ export class UnitInterpolator {
   private id = new Uint32Array(0)
   private kind = new Uint8Array(0)
   private owner = new Uint8Array(0)
+  private state = new Uint8Array(0)
+  private carry = new Uint8Array(0)
   private fromX = new Float32Array(0)
   private fromY = new Float32Array(0)
   private toX = new Float32Array(0)
@@ -86,6 +91,8 @@ export class UnitInterpolator {
     this.id = Uint32Array.from(snapshot.id.subarray(0, n))
     this.kind = Uint8Array.from(snapshot.kind.subarray(0, n))
     this.owner = Uint8Array.from(snapshot.owner.subarray(0, n))
+    this.state = Uint8Array.from(snapshot.state.subarray(0, n))
+    this.carry = Uint8Array.from(snapshot.carry.subarray(0, n))
     this.toX = Float32Array.from(snapshot.x.subarray(0, n))
     this.toY = Float32Array.from(snapshot.y.subarray(0, n))
     this.fromX = fromX
@@ -108,6 +115,15 @@ export class UnitInterpolator {
       this.outX[i] = fx + ((this.toX[i] as number) - fx) * t
       this.outY[i] = fy + ((this.toY[i] as number) - fy) * t
     }
-    return { count: n, id: this.id, kind: this.kind, owner: this.owner, x: this.outX, y: this.outY }
+    return {
+      count: n,
+      id: this.id,
+      kind: this.kind,
+      owner: this.owner,
+      state: this.state,
+      carry: this.carry,
+      x: this.outX,
+      y: this.outY
+    }
   }
 }

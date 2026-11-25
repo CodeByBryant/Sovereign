@@ -13,7 +13,8 @@
     "e2e": "node e2e/strict-mode.e2e.mjs",
     "e2e:mobile": "node e2e/mobile.e2e.mjs",
     "e2e:time": "node e2e/time.e2e.mjs",
-    "e2e:units": "node e2e/units.e2e.mjs"
+    "e2e:units": "node e2e/units.e2e.mjs",
+    "e2e:gather": "node e2e/gather.e2e.mjs"
   },
   "dependencies": {
     "@sovereign/config": "workspace:*",

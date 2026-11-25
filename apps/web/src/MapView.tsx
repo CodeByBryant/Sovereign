@@ -18,6 +18,7 @@ import {
   type InspectorData
 } from '@sovereign/ui'
 import { FrameLoop } from './host/FrameLoop'
+import { applyStockChanges } from './host/stock'
 import { Pacer } from './host/Pacer'
 import type { WorldTicked } from './host/protocol'
 import { SimulationHost } from './host/SimulationHost'
@@ -58,6 +59,9 @@ interface ClientPoint {
 /** The zoom factor of one tap on the on-screen + / - buttons. */
 const ZOOM_BUTTON_STEP = 1.5
 
+/** The least time between two redraws of the resource overlay while stocks change under it. */
+const RESOURCE_OVERLAY_MS = 400
+
 /** Whether the page can go fullscreen: not so on an iPhone, where the button would do nothing. */
 const CAN_FULLSCREEN = typeof document !== 'undefined' && document.fullscreenEnabled === true
 
@@ -71,6 +75,9 @@ const MapView: React.FC = () => {
   // what the resource overlay is drawn from, so a change of focus can redraw it
   const baseLayerRef = useRef<Uint8ClampedArray | null>(null)
   const resourcesRef = useRef<ResourceSlots | null>(null)
+  // whether the resource overlay no longer shows the stocks, and when it was last drawn
+  const resourceOverlayStale = useRef(false)
+  const lastResourcePaint = useRef(0)
   const nationsRef = useRef<NationSnapshot[]>([])
   const strategicPointsRef = useRef<StrategicPoint[]>([])
   const strategicGridRef = useRef<Map<number, StrategicPoint>>(new Map())
@@ -309,7 +316,12 @@ const MapView: React.FC = () => {
             height,
             resources: ready.fields.resources,
             roads: ready.roads,
-            halls: ready.snapshot.nations.map((n) => ({ tile: n.capital, color: n.color }))
+            halls: ready.halls.map((h) => ({
+              tile: h.tile,
+              color:
+                ready.snapshot.nations[h.owner]?.color ??
+                ([200, 200, 200] as [number, number, number])
+            }))
           })
           renderer.setUnits(ready.units)
 
@@ -444,26 +456,54 @@ const MapView: React.FC = () => {
   /*  Time: the run loop                                               */
   /* ---------------------------------------------------------------- */
 
-  /** Take what a run sent back: the clock, the nations, and (when provinces changed hands) the map. */
-  const applyTicked = useCallback((ticked: WorldTicked): void => {
-    const store = useGameStore.getState()
-    store.setClock({
-      tick: ticked.tick,
-      time: ticked.time,
-      timestep: store.timestep,
-      saturated: ticked.saturated
-    })
-    rendererRef.current?.setUnits(ticked.units)
-    if (ticked.claims > 0) {
-      nationsRef.current = ticked.nations
-      store.setNations(ticked.nations)
-    }
-    if (ticked.ownership !== undefined) store.worldMap?.ownership.set(ticked.ownership)
-    if (ticked.political !== undefined) {
-      const { width, height } = mapSizeRef.current
-      rendererRef.current?.setLayer('political', ticked.political, width, height)
-    }
+  /** Redraw the resource overlay from the slot arrays as they are now (a heat map, or all resources). */
+  const paintResourceOverlay = useCallback((): void => {
+    const renderer = rendererRef.current
+    const base = baseLayerRef.current
+    const resources = resourcesRef.current
+    if (!renderer || !base || !resources) return
+    const { width, height } = mapSizeRef.current
+    const focus = useGameStore.getState().resourceFocus
+    renderer.setLayer('resource', resourceRgba(base, resources, focus), width, height)
+    resourceOverlayStale.current = false
+    lastResourcePaint.current = performance.now()
   }, [])
+
+  /** Take what a run sent back: the clock, the nations, and (when provinces changed hands) the map. */
+  const applyTicked = useCallback(
+    (ticked: WorldTicked): void => {
+      const store = useGameStore.getState()
+      store.setClock({
+        tick: ticked.tick,
+        time: ticked.time,
+        timestep: store.timestep,
+        saturated: ticked.saturated
+      })
+      rendererRef.current?.setUnits(ticked.units)
+      if (ticked.stock !== undefined && resourcesRef.current !== null) {
+        // the slot arrays are shared by the sprites, the inspector and the overlay: writing them updates all three
+        applyStockChanges(resourcesRef.current, ticked.stock)
+        resourceOverlayStale.current = true
+        // the 16 MB overlay is only redrawn when it is on screen, and not more than a few times a second
+        if (
+          useGameStore.getState().view === 'resource' &&
+          performance.now() - lastResourcePaint.current > RESOURCE_OVERLAY_MS
+        ) {
+          paintResourceOverlay()
+        }
+      }
+      if (ticked.claims > 0) {
+        nationsRef.current = ticked.nations
+        store.setNations(ticked.nations)
+      }
+      if (ticked.ownership !== undefined) store.worldMap?.ownership.set(ticked.ownership)
+      if (ticked.political !== undefined) {
+        const { width, height } = mapSizeRef.current
+        rendererRef.current?.setLayer('political', ticked.political, width, height)
+      }
+    },
+    [paintResourceOverlay]
+  )
 
   /** Ask for what the worker held back (the player paused, or switched to the political view). */
   const flush = useCallback(async (): Promise<void> => {
@@ -517,13 +557,13 @@ const MapView: React.FC = () => {
 
   // A change of focus redraws the resource overlay: one resource as a heat map, or all of them.
   useEffect(() => {
-    const renderer = rendererRef.current
-    const base = baseLayerRef.current
-    const resources = resourcesRef.current
-    if (!renderer || !base || !resources) return
-    const { width, height } = mapSizeRef.current
-    renderer.setLayer('resource', resourceRgba(base, resources, resourceFocus), width, height)
-  }, [resourceFocus])
+    paintResourceOverlay()
+  }, [resourceFocus, paintResourceOverlay])
+
+  // Showing the resource overlay brings it up to date if stocks changed while it was hidden.
+  useEffect(() => {
+    if (view === 'resource' && resourceOverlayStale.current) paintResourceOverlay()
+  }, [view, paintResourceOverlay])
 
   /** Zoom about the middle of the screen: the toolbar's + / - buttons, for devices with no wheel. */
   const zoomBy = useCallback(
