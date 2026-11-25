@@ -416,26 +416,26 @@ export const defaultWorldConfig: WorldConfig = {
     restMax: 6,
     carryCapacity: 20,
     searchRadius: 48,
-    // provisional numbers: work in days at the deposit, units per trip; the economy will give them weight
+    // provisional numbers: work in days at the deposit, units per trip. Yields are small, as in WorldBox (a tree is 5 wood, a stone deposit 3, an ore 2, a gem 1), so a deposit is a few trips and visibly runs out
     gather: {
-      timber: { work: 6, amount: 8 },
-      stone: { work: 8, amount: 6 },
-      iron: { work: 10, amount: 4 },
-      gold: { work: 12, amount: 2 },
-      grain: { work: 5, amount: 10 },
-      fish: { work: 4, amount: 6 },
-      fur: { work: 5, amount: 3 },
-      pasture: { work: 5, amount: 6 },
+      timber: { work: 6, amount: 5 },
+      stone: { work: 8, amount: 3 },
+      iron: { work: 10, amount: 2 },
+      gold: { work: 12, amount: 1 },
+      grain: { work: 5, amount: 3 },
+      fish: { work: 4, amount: 3 },
+      fur: { work: 5, amount: 2 },
+      pasture: { work: 5, amount: 3 },
       horses: { work: 8, amount: 2 },
-      cotton: { work: 5, amount: 6 },
-      spices: { work: 5, amount: 3 },
-      wine: { work: 5, amount: 4 },
-      tea: { work: 5, amount: 5 },
-      ivory: { work: 10, amount: 2 },
-      copper: { work: 10, amount: 4 },
-      coal: { work: 8, amount: 5 },
-      silver: { work: 12, amount: 3 },
-      salt: { work: 6, amount: 6 },
+      cotton: { work: 5, amount: 3 },
+      spices: { work: 5, amount: 2 },
+      wine: { work: 5, amount: 2 },
+      tea: { work: 5, amount: 2 },
+      ivory: { work: 10, amount: 1 },
+      copper: { work: 10, amount: 2 },
+      coal: { work: 8, amount: 2 },
+      silver: { work: 12, amount: 1 },
+      salt: { work: 6, amount: 3 },
       gems: { work: 14, amount: 1 }
     }
   },
@@ -569,6 +569,7 @@ export const defaultWorldConfig: WorldConfig = {
       // ---- surface, land: renewable ----
       timber: {
         share: 0.045,
+        maxRichness: 10,
         spacing: 3,
         coreSpacing: 1,
         biomes: {
@@ -589,6 +590,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       grain: {
         share: 0.025,
+        maxRichness: 6,
         spacing: 3,
         coreSpacing: 1,
         biomes: {
@@ -607,6 +609,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       pasture: {
         share: 0.018,
+        maxRichness: 6,
         spacing: 3,
         coreSpacing: 2,
         biomes: {
@@ -623,6 +626,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       horses: {
         share: 0.005,
+        maxRichness: 4,
         spacing: 3,
         biomes: { steppe: 1, grassland: 0.8, cold_steppe: 0.7, savanna: 0.6 },
         temperature: [0.2, 0.85],
@@ -631,6 +635,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       fur: {
         share: 0.01,
+        maxRichness: 4,
         spacing: 3,
         biomes: { taiga: 1, boreal_forest: 1, tundra: 0.8, cold_steppe: 0.4, alpine: 0.3 },
         temperature: [0, 0.45],
@@ -639,6 +644,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       cotton: {
         share: 0.008,
+        maxRichness: 6,
         spacing: 3,
         biomes: {
           savanna: 0.8,
@@ -655,6 +661,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       spices: {
         share: 0.006,
+        maxRichness: 4,
         spacing: 3,
         biomes: { tropical_forest: 1, rainforest: 1, savanna: 0.3, mangrove: 0.4 },
         temperature: [0.65, 1],
@@ -665,6 +672,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       wine: {
         share: 0.005,
+        maxRichness: 4,
         spacing: 3,
         biomes: { chaparral: 1, woodland: 0.6, grassland: 0.4, temperate_forest: 0.4, steppe: 0.2 },
         temperature: [0.45, 0.75],
@@ -675,6 +683,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       tea: {
         share: 0.003,
+        maxRichness: 4,
         spacing: 3,
         biomes: { highland: 1, tropical_forest: 0.6, temperate_forest: 0.5, woodland: 0.4 },
         temperature: [0.4, 0.8],
@@ -685,6 +694,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       ivory: {
         share: 0.002,
+        maxRichness: 3,
         spacing: 3,
         biomes: { savanna: 1, tropical_forest: 0.5, grassland: 0.3 },
         temperature: [0.6, 1],
@@ -694,6 +704,7 @@ export const defaultWorldConfig: WorldConfig = {
       // ---- ground: finite ----
       stone: {
         share: 0.025,
+        maxRichness: 9,
         spacing: 2,
         coreSpacing: 1,
         biomes: { mountain: 1, highland: 1, alpine: 1, badlands: 0.8 },
@@ -703,6 +714,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       iron: {
         share: 0.012,
+        maxRichness: 6,
         spacing: 2,
         elevation: [0.45, 1],
         prefer: { ridge: 2, height: 1 },
@@ -711,6 +723,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       copper: {
         share: 0.007,
+        maxRichness: 6,
         spacing: 2,
         elevation: [0.45, 1],
         prefer: { ridge: 1.5, slope: 0.5 },
@@ -719,6 +732,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       coal: {
         share: 0.012,
+        maxRichness: 6,
         spacing: 2,
         elevation: [0.38, 0.7],
         prefer: { basin: 2.5 },
@@ -735,6 +749,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       gold: {
         share: 0.0025,
+        maxRichness: 4,
         elevation: [0.5, 1],
         prefer: { ridge: 1.5, river: { within: 8, weight: 1.5 }, height: 1 },
         regional: 1,
@@ -742,6 +757,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       silver: {
         share: 0.005,
+        maxRichness: 4,
         elevation: [0.5, 1],
         prefer: { ridge: 1.5, slope: 1, height: 1 },
         regional: 1,
@@ -749,6 +765,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       salt: {
         share: 0.01,
+        maxRichness: 8,
         spacing: 2,
         biomes: {
           desert: 1,
@@ -764,6 +781,7 @@ export const defaultWorldConfig: WorldConfig = {
       },
       gems: {
         share: 0.003,
+        maxRichness: 3,
         elevation: [0.6, 1],
         prefer: { ridge: 2, slope: 1 },
         regional: 1,
@@ -772,6 +790,7 @@ export const defaultWorldConfig: WorldConfig = {
       // ---- surface, water: renewable ----
       fish: {
         share: 0.03,
+        maxRichness: 12,
         spacing: 2,
         coastDistance: [1, 60],
         prefer: { coast: { within: 60, weight: 1.5 } },
@@ -1203,6 +1222,12 @@ function validateResourcePlacement(settings: ResourcePlacementSettings, problems
         rule.coreSpacing > (rule.spacing ?? 1))
     ) {
       problems.push(`${name}.coreSpacing must be a whole number from 1 to ${name}.spacing`)
+    }
+    if (
+      rule.maxRichness !== undefined &&
+      (!Number.isInteger(rule.maxRichness) || rule.maxRichness < 1 || rule.maxRichness > 255)
+    ) {
+      problems.push(`${name}.maxRichness must be a whole number from 1 to 255`)
     }
     checkRange(`${name}.elevation`, rule.elevation)
     checkRange(`${name}.temperature`, rule.temperature)

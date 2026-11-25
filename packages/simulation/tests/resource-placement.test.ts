@@ -895,3 +895,39 @@ describe('placeResources: dense cores and sparse rims (coreSpacing)', () => {
     expect(() => placeResources(build({ timber: rule({ coreSpacing: 1 }) }))).not.toThrow()
   })
 })
+
+describe('placeResources: small deposits (maxRichness)', () => {
+  it('caps the richness and the stock of every object of a resource', () => {
+    const slots = placeResources(build({ timber: rule({ share: 0.08, maxRichness: 10 }) }))
+    const found = tilesOf(slots.surface, ResourceType.Timber)
+    expect(found.length).toBeGreaterThan(50)
+    const richness = found.map((i) => slots.surface.richness[i] as number)
+    expect(Math.max(...richness)).toBe(10)
+    expect(Math.min(...richness)).toBeGreaterThanOrEqual(1)
+    expect(found.every((i) => slots.surface.stock[i] === slots.surface.richness[i])).toBe(true)
+  })
+
+  it('keeps the same tiles and the same order of rich to poor as without it', () => {
+    const a = placeResources(build({ timber: rule({ share: 0.08, spacing: 3, coreSpacing: 1 }) }))
+    const b = placeResources(
+      build({ timber: rule({ share: 0.08, spacing: 3, coreSpacing: 1, maxRichness: 12 }) })
+    )
+    expect(tilesOf(b.surface, ResourceType.Timber)).toEqual(tilesOf(a.surface, ResourceType.Timber))
+    const found = tilesOf(a.surface, ResourceType.Timber)
+    const top = found.reduce((best, i) =>
+      (a.surface.richness[i] as number) > (a.surface.richness[best] as number) ? i : best
+    )
+    expect(b.surface.richness[top]).toBe(12)
+  })
+
+  it('rejects a cap that is not a whole number from 1 to 255', () => {
+    for (const maxRichness of [0, 256, 1.5, -3]) {
+      expect(
+        () => placeResources(build({ timber: rule({ maxRichness }) })),
+        String(maxRichness)
+      ).toThrow(RangeError)
+    }
+    expect(() => placeResources(build({ timber: rule({ maxRichness: 1 }) }))).not.toThrow()
+    expect(() => placeResources(build({ timber: rule({ maxRichness: 255 }) }))).not.toThrow()
+  })
+})

@@ -8,7 +8,7 @@ import {
 } from '@sovereign/contracts'
 import { describe, expect, it } from 'vitest'
 import { BIOME_DESIRABILITY } from '../src/terrain/suitability'
-import { measureProfile, type ProfileInput } from '../src/nations/profile'
+import { FOOD_GRAIN, measureProfile, type ProfileInput } from '../src/nations/profile'
 
 const W = 40
 const H = 30
@@ -28,6 +28,7 @@ interface World {
   water?: (x: number, y: number) => boolean
   river?: (x: number, y: number) => boolean
   resources?: ResourceSlots
+  fullStock?: ArrayLike<number>
   points?: StrategicPoint[]
   routes?: StrategicRoute[]
   contacts?: number
@@ -62,6 +63,7 @@ function measure(tiles: number[], w: World = {}) {
     biomeIds,
     riverMask,
     resources: w.resources ?? slots(),
+    ...(w.fullStock !== undefined ? { fullStock: w.fullStock } : {}),
     strategicPoints: w.points ?? [],
     routes: w.routes ?? [],
     tiles,
@@ -311,5 +313,30 @@ describe('measureProfile: ground, defence and routes', () => {
     expect(measure(territory, { river: (x) => x === 6, water: (x) => x < 4 })).toEqual(
       measure(territory, { river: (x) => x === 6, water: (x) => x < 4 })
     )
+  })
+})
+
+describe('measureProfile: deposits that hold little', () => {
+  const grainTile = (stock: number): ResourceSlots => {
+    const r = slots()
+    r.surface.type[tile(5, 5)] = ResourceType.Grain
+    r.surface.richness[tile(5, 5)] = 6
+    r.surface.stock[tile(5, 5)] = stock
+    return r
+  }
+  const base = measure([tile(5, 5)]).food
+
+  it('counts stock as a share of the most a deposit of that kind holds, not of 255', () => {
+    const full = new Float64Array(32).fill(255)
+    full[ResourceType.Grain] = 6
+    const half = measure([tile(5, 5)], { resources: grainTile(3), fullStock: full }).food
+    expect(half - base).toBeCloseTo(FOOD_GRAIN * 0.5, 9)
+    const whole = measure([tile(5, 5)], { resources: grainTile(6), fullStock: full }).food
+    expect(whole - base).toBeCloseTo(FOOD_GRAIN, 9)
+  })
+
+  it('still reads 255 as a whole deposit when no table is given', () => {
+    const food = measure([tile(5, 5)], { resources: grainTile(255) }).food
+    expect(food - base).toBeCloseTo(FOOD_GRAIN, 9)
   })
 })

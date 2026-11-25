@@ -256,6 +256,12 @@ export interface ResourceRule {
    */
   coreSpacing?: number
   /**
+   * The most one object holds (a whole number from 1 to 255; omit for 255). Richness still runs from the poorest
+   * tile of a patch to its core, but over 1 to this number instead of 1 to 255, so a deposit is a few trips of
+   * work and visibly runs out, as a tree does in WorldBox (a tree is one chop). Stock starts full at richness.
+   */
+  maxRichness?: number
+  /**
    * Oil and salt: the share of the **water** tiles within the coast distance range (and, if given, the
    * elevation range: how deep it can lie) that also hold it, under the sea. The rule's own elevation,
    * temperature and humidity limits are for the land and do not apply here.

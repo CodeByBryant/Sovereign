@@ -36,6 +36,7 @@ import {
   refreshProvinceFacts,
   type ProvinceFacts
 } from '../nations/provinceProfile'
+import { fullStockTable } from '../nations/profile'
 import { spawnNations } from '../nations/NationSpawner'
 import { normalizeSeed } from '../random/seed'
 import { ExpansionSystem } from '../systems/ExpansionSystem'
@@ -145,6 +146,8 @@ export class World {
   readonly claimable: Uint8Array
   /** Provinces whose land changed (a stock was drawn down or regrew) and must be measured again. */
   private readonly dirtyProvinces = new Set<number>()
+  /** What a full stock is for each kind of deposit (the profile counts stock against it). */
+  private readonly fullStock: Float64Array
   /** Nations growing into free provinces (derived state: its borders are rebuilt from the land held). */
   private readonly expansion: ExpansionSystem
   /** Every resource deposit as a row; the tile slot arrays in `terrain.resources` are its write-through views. */
@@ -170,6 +173,7 @@ export class World {
     this.nations = state.nations
     this.provinces = layer.map
     this.provinceFacts = layer.facts
+    this.fullStock = fullStockTable(state.config.resources.rules)
     this.provinceOwner = ownersOf(state.nations, layer.map.count)
     this.claimable = claimableProvinces(layer.map, state.terrain.biomeIds)
     this.map = new WorldMap({
@@ -361,6 +365,7 @@ export class World {
       biomeIds: t.biomeIds,
       riverMask: t.riverMask,
       resources: t.resources,
+      fullStock: this.fullStock,
       provinces: this.provinces,
       strategicPoints: t.strategicPoints,
       routes: t.routes

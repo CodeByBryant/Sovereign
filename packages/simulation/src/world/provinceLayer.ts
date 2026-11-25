@@ -6,6 +6,7 @@
  */
 import type { WorldConfig } from '@sovereign/config'
 import type { TerrainFields } from '@sovereign/contracts'
+import { fullStockTable } from '../nations/profile'
 import { buildProvinceFacts, type ProvinceFacts } from '../nations/provinceProfile'
 import type { CostGrid } from '../terrain/cost'
 import { buildProvinces, tileCosts, type ProvinceMap } from '../terrain/provinces'
@@ -42,6 +43,7 @@ export function buildProvinceLayer(
     biomeIds: terrain.biomeIds,
     riverMask: terrain.riverMask,
     resources: terrain.resources,
+    fullStock: fullStockTable(config.resources.rules),
     provinces: map,
     strategicPoints: terrain.strategicPoints,
     routes: terrain.routes

@@ -395,6 +395,9 @@ describe('resource placement rules (resources)', () => {
     ['a regional factor above 1', (c: WorldConfig) => (c.resources.rules.iron.regional = 1.2)],
     ['a negative regional factor', (c: WorldConfig) => (c.resources.rules.iron.regional = -0.1)],
     ['a region size of 0', (c: WorldConfig) => (c.resources.rules.iron.regionSize = 0)],
+    ['a richness cap of 0', (c: WorldConfig) => (c.resources.rules.iron.maxRichness = 0)],
+    ['a richness cap above 255', (c: WorldConfig) => (c.resources.rules.iron.maxRichness = 256)],
+    ['a fractional richness cap', (c: WorldConfig) => (c.resources.rules.iron.maxRichness = 2.5)],
     [
       'a range with min above max',
       (c: WorldConfig) => (c.resources.rules.iron.elevation = [0.9, 0.2])

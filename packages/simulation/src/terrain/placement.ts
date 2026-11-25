@@ -178,6 +178,11 @@ function validate(input: PlacementInput): void {
         throw new RangeError(`${key}.coreSpacing must be a whole number from 1 to its spacing`)
       }
     }
+    if (rule.maxRichness !== undefined) {
+      if (!Number.isInteger(rule.maxRichness) || rule.maxRichness < 1 || rule.maxRichness > 255) {
+        throw new RangeError(`${key}.maxRichness must be a whole number from 1 to 255`)
+      }
+    }
     for (const name of ['elevation', 'temperature', 'humidity', 'coastDistance'] as const) {
       checkRange(`${key}.${name}`, rule[name])
     }
@@ -431,7 +436,7 @@ export function placeResources(input: PlacementInput): ResourceSlots {
       for (let k = 0; k < placed; k += 1) {
         const c = chosen[k] as number
         const rank = span > 0 ? clamp((candidateScore[c] - worst) / span, 0, 1) : 1
-        const richness = 1 + Math.round(254 * rank)
+        const richness = 1 + Math.round(((rule.maxRichness ?? 255) - 1) * rank)
         const i = candidateIndex[c]
         slot.type[i] = def.id
         slot.richness[i] = richness
@@ -464,7 +469,7 @@ export function placeResources(input: PlacementInput): ResourceSlots {
       // richness from how far above the cut-off the tile scored: the core of a patch is richest
       const span = max - cutScore
       const rank = span > 0 ? clamp((candidateScore[c] - cutScore) / span, 0, 1) : 1
-      const richness = 1 + Math.round(254 * rank)
+      const richness = 1 + Math.round(((rule.maxRichness ?? 255) - 1) * rank)
       const i = candidateIndex[c]
       slot.type[i] = def.id
       slot.richness[i] = richness

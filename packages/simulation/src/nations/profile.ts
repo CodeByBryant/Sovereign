@@ -8,6 +8,7 @@
 import {
   BIOME_INDEX,
   BIOME_KEYS,
+  RESOURCE_CATALOG,
   ResourceType,
   resourceDef,
   type NationProfile,
@@ -43,6 +44,23 @@ export interface TileFactsInput {
   biomeIds: Uint8Array
   riverMask: Uint8Array
   resources: ResourceSlots
+  /**
+   * The most one deposit of each kind holds, by resource id (what a full stock is, so a deposit that is half
+   * gone counts as half). Omit for 255, the most a stock can be. See {@link fullStockTable}.
+   */
+  fullStock?: ArrayLike<number>
+}
+
+/** The full stock of every resource kind, by resource id, from the rules' `maxRichness` (255 where none). */
+export function fullStockTable(
+  rules: Readonly<Record<string, { maxRichness?: number }>>
+): Float64Array {
+  const table = new Float64Array(32).fill(255)
+  for (const def of RESOURCE_CATALOG) {
+    const cap = rules[def.key]?.maxRichness
+    if (cap !== undefined) table[def.id] = cap
+  }
+  return table
 }
 
 /** The facts that add up tile by tile. `kinds` has one bit per resource type present (bit `type - 1`). */
@@ -69,6 +87,7 @@ export function kindCount(kinds: number): number {
 /** Measure the facts that are sums over tiles: food, materials, luxuries, coast, rivers, high ground. */
 export function tileFacts(input: TileFactsInput, tiles: Iterable<number>): TileFacts {
   const { width, height, seaLevel, elevation, resources } = input
+  const full = input.fullStock
   const isWater = (tile: number): boolean => elevation[tile] <= seaLevel
 
   let food = 0
@@ -110,7 +129,7 @@ export function tileFacts(input: TileFactsInput, tiles: Iterable<number>): TileF
       if (n < 0 || !isWater(n)) continue
       wet = true
       if (resources.surface.type[n] === ResourceType.Fish) {
-        beside = Math.max(beside, resources.surface.stock[n] / 255)
+        beside = Math.max(beside, resources.surface.stock[n] / (full?.[ResourceType.Fish] ?? 255))
       }
     }
     if (wet) {
@@ -123,7 +142,7 @@ export function tileFacts(input: TileFactsInput, tiles: Iterable<number>): TileF
       const type = slot.type[tile]
       if (type === 0) continue
       kinds |= 1 << (type - 1)
-      const left = slot.stock[tile] / 255
+      const left = slot.stock[tile] / (full?.[type] ?? 255)
       if (type === ResourceType.Grain) food += FOOD_GRAIN * left
       else if (type === ResourceType.Pasture) food += FOOD_PASTURE * left
       else if (type === ResourceType.Timber) timber += left

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { contactCounts } from '../src/nations/capitals'
 import { deriveStats, GOVERNMENTS } from '../src/nations/derive'
 import { spawnNations } from '../src/nations/NationSpawner'
-import { measureProfile } from '../src/nations/profile'
+import { fullStockTable, measureProfile } from '../src/nations/profile'
 import { PROFILE_FIELDS, World } from '../src/world/World'
 import { hashNations } from './support/nationHash'
 import { smallWorldOverrides } from './support/worldOptions'
@@ -156,6 +156,7 @@ describe('spawnNations: stats follow from the land', () => {
       biomeIds: t.biomeIds,
       riverMask: t.riverMask,
       resources: t.resources,
+      fullStock: fullStockTable(world.config.resources.rules),
       strategicPoints: t.strategicPoints,
       routes: t.routes,
       tiles: [...n.provinces].flatMap((id) =>

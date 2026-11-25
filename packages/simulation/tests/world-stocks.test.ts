@@ -1,7 +1,7 @@
 import { ResourceType } from '@sovereign/contracts'
 import { describe, expect, it } from 'vitest'
 import { deriveStats } from '../src/nations/derive'
-import { FOOD_FISH, FOOD_GRAIN } from '../src/nations/profile'
+import { FOOD_FISH, FOOD_GRAIN, fullStockTable } from '../src/nations/profile'
 import { NO_PROVINCE } from '../src/terrain/provinces'
 import { buildProvinceLayer } from '../src/world/provinceLayer'
 import { decodeWorld, encodeWorld } from '../src/serialization/save'
@@ -11,14 +11,19 @@ import { smallWorldOverrides } from './support/worldOptions'
 const make = (seed = 11): World =>
   World.create({ seed, config: smallWorldOverrides({ nations: 6 }) })
 
-/** A land tile in a province held by a nation, whose slot of `layer` holds `type` (with stock to spare). */
-function ownedTile(world: World, layer: 'surface' | 'ground', type: ResourceType): number {
+/** A land tile in a province held by a nation, whose slot of `layer` holds `type` (with `minStock` to spare). */
+function ownedTile(
+  world: World,
+  layer: 'surface' | 'ground',
+  type: ResourceType,
+  minStock = 4
+): number {
   const slot = world.terrain.resources[layer]
   for (let i = 0; i < slot.type.length; i += 1) {
     const p = world.provinces.provinceOf[i]!
     if (
       slot.type[i] === type &&
-      slot.stock[i]! >= 100 &&
+      slot.stock[i]! >= minStock &&
       p !== NO_PROVINCE &&
       world.provinceOwner[p] !== UNCLAIMED
     ) {
@@ -56,9 +61,11 @@ describe('what a province holds follows what is left in the ground', () => {
     const province = w.provinces.provinceOf[tile]!
     const owner = w.nations[w.provinceOwner[province]!]!
     const before = owner.profile.food
-    const taken = w.extractResource('surface', tile, 100)
-    expect(taken).toBe(100)
-    expect(owner.profile.food).toBeCloseTo(before - (FOOD_GRAIN * 100) / 255, 9)
+    const stock = w.terrain.resources.surface.stock[tile]!
+    const full = fullStockTable(w.config.resources.rules)[ResourceType.Grain]!
+    const taken = w.extractResource('surface', tile, stock)
+    expect(taken).toBe(stock)
+    expect(owner.profile.food).toBeCloseTo(before - (FOOD_GRAIN * stock) / full, 9)
     expect(owner.stats).toEqual(deriveStats(owner.profile))
     expect(w.validate()).toEqual([])
     expectFactsFresh(w)
@@ -112,7 +119,7 @@ describe('what a province holds follows what is left in the ground', () => {
     let sea = -1
     let land = -1
     for (let i = 0; i < slot.type.length && sea < 0; i += 1) {
-      if (slot.type[i] !== ResourceType.Fish || slot.stock[i]! < 100) continue
+      if (slot.type[i] !== ResourceType.Fish || slot.stock[i]! < 6) continue
       const x = i % t.width
       const near = [x > 0 ? i - 1 : -1, x < t.width - 1 ? i + 1 : -1, i - t.width, i + t.width]
       for (const n of near) {
@@ -145,7 +152,7 @@ describe('what a province holds follows what is left in the ground', () => {
     const province = w.provinces.provinceOf[tile]!
     const owner = w.nations[w.provinceOwner[province]!]!
     const original = w.provinceFacts.food[province]!
-    w.extractResource('surface', tile, 100)
+    w.extractResource('surface', tile, w.terrain.resources.surface.stock[tile]!)
     expect(w.provinceFacts.food[province]).toBeLessThan(original)
     w.run(1) // one tick: the province is re-measured after the regrowth too
     expectFactsFresh(w)
