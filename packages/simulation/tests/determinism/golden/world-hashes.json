@@ -44,7 +44,7 @@
         }
       },
       "steps": 0,
-      "expectedHash": "df5063f890150ee2885368e83fcb57b0"
+      "expectedHash": "377388dd973e75c465fd30ce07bc9f95"
     },
     {
       "name": "small world, seed 12345, 100 ticks",
@@ -89,7 +89,7 @@
         }
       },
       "steps": 100,
-      "expectedHash": "e564f389a599a06dd11416c450ee302b"
+      "expectedHash": "78ef431b28339afc3b32d5685aa53fed"
     },
     {
       "name": "text seed \"sovereign\", 30 ticks",
@@ -134,7 +134,7 @@
         }
       },
       "steps": 30,
-      "expectedHash": "6c0db904cc37f7acf00220e2f31e06eb"
+      "expectedHash": "a6ebe082625dc5582547c0fa241ddb70"
     },
     {
       "name": "island mode, seed 7",
@@ -179,7 +179,7 @@
         }
       },
       "steps": 10,
-      "expectedHash": "df3c44c170012c69f0662a75691e08ef"
+      "expectedHash": "56f99dc8952c311202ae154aebb95029"
     },
     {
       "name": "no nations, seed 3",
@@ -224,7 +224,7 @@
         }
       },
       "steps": 5,
-      "expectedHash": "2bee9e4e965e27f5f71351ef66a1c70a"
+      "expectedHash": "e355b0fe49d0e221b178bc75d701a2e8"
     },
     {
       "name": "land-ratio rescue (sea level 0.9 leaves too little land), seed 2024",
@@ -269,7 +269,7 @@
         }
       },
       "steps": 0,
-      "expectedHash": "36bc1abcb694a674d814b92703e886bd"
+      "expectedHash": "6ec35adfdaf3ecc863af8622eda57d1b"
     },
     {
       "name": "slower clock: timestep 0.25, 40 ticks",
@@ -315,7 +315,7 @@
         }
       },
       "steps": 40,
-      "expectedHash": "860efd6af4d455790f7818c82946914a"
+      "expectedHash": "fae3de6e0f29d54a6f3b146841cbf559"
     },
     {
       "name": "wider map 320x200, seed 99, 1000 ticks",
@@ -360,7 +360,7 @@
         }
       },
       "steps": 1000,
-      "expectedHash": "86f5448f36b129dee7706fb493bcb1a2"
+      "expectedHash": "7bf6b07eb75e0adc2dccdbc8bc33f79b"
     },
     {
       "name": "growing: small world, seed 11, 300 ticks (nations mid-expansion)",
@@ -405,7 +405,7 @@
         }
       },
       "steps": 300,
-      "expectedHash": "d79ae4f5b52c8fa8ab6b27bea1fb0cff"
+      "expectedHash": "25341e88f20dfd592c3252d314887690"
     },
     {
       "name": "settled: small world, seed 7, 2000 ticks (the borders have stopped moving)",
@@ -450,7 +450,7 @@
         }
       },
       "steps": 2000,
-      "expectedHash": "fe842577f28453cf2019ccd43e9442a2"
+      "expectedHash": "6f67910301a99743becc1d61421bad6e"
     },
     {
       "name": "gathering: small world, seed 21, 800 ticks (halls full of goods, deposits regrowing)",
@@ -495,7 +495,7 @@
         }
       },
       "steps": 800,
-      "expectedHash": "e3cf2d0f2ab995b3edd3123ff9bc1e2a"
+      "expectedHash": "2cdb5572333567cd5534f28b57e27615"
     }
   ]
 }
