@@ -4,14 +4,14 @@
 
 ## Decisions that shape every phase
 
-| Topic          | Decision                                                                                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Player role    | **Observer and god tools first.** Playing a nation comes later, through the same logged, deterministic command channel the god tools use.                          |
-| Depth          | Individual **notables** plus **pops**.                                                                                                                             |
-| Substrate      | A 1000 x 1000 tile grid (default; configurable up to 2000 x 2000 and beyond) for terrain and rendering; the simulation runs on a **province graph** derived from it.                                                    |
-| Determinism    | Strict, with own math, own PRNG, banned APIs, golden state hashes and Linux + Windows CI ([ADR 0003](decisions/0003-determinism-policy.md)).                       |
-| Targets        | Web (GitHub Pages), desktop (Electron) and a headless simulator CLI.                                                                                               |
-| Native compute | **Deferred indefinitely.** Revisited only if a probe shows a measured bottleneck TypeScript cannot fix ([ADR 0001](decisions/0001-separate-simulation-engine.md)). |
+| Topic          | Decision                                                                                                                                                             |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Player role    | **Observer and god tools first.** Playing a nation comes later, through the same logged, deterministic command channel the god tools use.                            |
+| Depth          | Individual **notables** plus **pops**.                                                                                                                               |
+| Substrate      | A 1000 x 1000 tile grid (default; configurable up to 2000 x 2000 and beyond) for terrain and rendering; the simulation runs on a **province graph** derived from it. |
+| Determinism    | Strict, with own math, own PRNG, banned APIs, golden state hashes and Linux + Windows CI ([ADR 0003](decisions/0003-determinism-policy.md)).                         |
+| Targets        | Web (GitHub Pages), desktop (Electron) and a headless simulator CLI.                                                                                                 |
+| Native compute | **Deferred indefinitely.** Revisited only if a probe shows a measured bottleneck TypeScript cannot fix ([ADR 0001](decisions/0001-separate-simulation-engine.md)).   |
 
 ## Done: the restructure (R)
 
