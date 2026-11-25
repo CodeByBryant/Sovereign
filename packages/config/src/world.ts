@@ -568,8 +568,9 @@ export const defaultWorldConfig: WorldConfig = {
     rules: {
       // ---- surface, land: renewable ----
       timber: {
-        share: 0.035,
-        spacing: 2,
+        share: 0.045,
+        spacing: 3,
+        coreSpacing: 1,
         biomes: {
           boreal_forest: 1,
           taiga: 0.9,
@@ -587,8 +588,9 @@ export const defaultWorldConfig: WorldConfig = {
         regionSize: 150
       },
       grain: {
-        share: 0.02,
-        spacing: 2,
+        share: 0.025,
+        spacing: 3,
+        coreSpacing: 1,
         biomes: {
           grassland: 1,
           steppe: 0.7,
@@ -604,8 +606,9 @@ export const defaultWorldConfig: WorldConfig = {
         regionSize: 120
       },
       pasture: {
-        share: 0.015,
-        spacing: 2,
+        share: 0.018,
+        spacing: 3,
+        coreSpacing: 2,
         biomes: {
           steppe: 1,
           grassland: 0.9,
@@ -690,8 +693,9 @@ export const defaultWorldConfig: WorldConfig = {
       },
       // ---- ground: finite ----
       stone: {
-        share: 0.025,
-        spacing: 2,
+        share: 0.03,
+        spacing: 3,
+        coreSpacing: 1,
         biomes: { mountain: 1, highland: 1, alpine: 1, badlands: 0.8 },
         prefer: { height: 1.5, slope: 1 },
         regional: 0.2,
@@ -1191,6 +1195,14 @@ function validateResourcePlacement(settings: ResourcePlacementSettings, problems
       (!Number.isInteger(rule.spacing) || rule.spacing < 1 || rule.spacing > 8)
     ) {
       problems.push(`${name}.spacing must be a whole number from 1 to 8`)
+    }
+    if (
+      rule.coreSpacing !== undefined &&
+      (!Number.isInteger(rule.coreSpacing) ||
+        rule.coreSpacing < 1 ||
+        rule.coreSpacing > (rule.spacing ?? 1))
+    ) {
+      problems.push(`${name}.coreSpacing must be a whole number from 1 to ${name}.spacing`)
     }
     checkRange(`${name}.elevation`, rule.elevation)
     checkRange(`${name}.temperature`, rule.temperature)

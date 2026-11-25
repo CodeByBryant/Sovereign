@@ -207,10 +207,11 @@ describe(`resource coverage over ${SEEDS.length} worlds of ${SIDE} x ${SIDE}`, (
     expect(loose).toEqual([])
   })
 
-  it('leaves room: no resource with a spacing has two objects closer than that', () => {
+  it('leaves room: no resource that asks for room everywhere has two objects side by side', () => {
     // checked on the 1000 x 1000 worlds through the objects' neighbours one tile away
     for (const d of RESOURCE_CATALOG) {
-      const spacing = rules[d.key]?.spacing ?? 1
+      // a rule with a dense core lets its best tiles touch; the others never do
+      const spacing = rules[d.key]?.coreSpacing ?? rules[d.key]?.spacing ?? 1
       if (spacing < 2) continue
       for (const seed of SEEDS.slice(0, 1)) {
         const w = World.create({ seed, config: { map: { width: SIDE, height: SIDE } } })

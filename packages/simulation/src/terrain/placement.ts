@@ -169,6 +169,15 @@ function validate(input: PlacementInput): void {
         throw new RangeError(`${key}.spacing must be a whole number from 1 to ${MAX_SPACING}`)
       }
     }
+    if (rule.coreSpacing !== undefined) {
+      if (
+        !Number.isInteger(rule.coreSpacing) ||
+        rule.coreSpacing < 1 ||
+        rule.coreSpacing > (rule.spacing ?? 1)
+      ) {
+        throw new RangeError(`${key}.coreSpacing must be a whole number from 1 to its spacing`)
+      }
+    }
     for (const name of ['elevation', 'temperature', 'humidity', 'coastDistance'] as const) {
       checkRange(`${key}.${name}`, rule[name])
     }
@@ -383,7 +392,10 @@ export function placeResources(input: PlacementInput): ResourceSlots {
       order.sort(
         (a, b) => candidateScore[b] - candidateScore[a] || candidateIndex[a] - candidateIndex[b]
       )
-      const reach = spacing - 1
+      const core = rule.coreSpacing ?? spacing
+      // the room runs from `core` at the best tiles to `spacing` at the tiles around the cut-off
+      const cutScore = candidateScore[order[target - 1] as number] as number
+      const topSpan = max - cutScore
       const chosen = new Int32Array(target)
       let placed = 0
       for (let o = 0; o < count && placed < target; o += 1) {
@@ -391,6 +403,8 @@ export function placeResources(input: PlacementInput): ResourceSlots {
         const i = candidateIndex[c]
         const x = i % width
         const y = (i - x) / width
+        const near = topSpan > 0 ? clamp((candidateScore[c] - cutScore) / topSpan, 0, 1) : 1
+        const reach = Math.round(spacing + (core - spacing) * near) - 1
         let clear = true
         for (
           let ny = Math.max(0, y - reach);

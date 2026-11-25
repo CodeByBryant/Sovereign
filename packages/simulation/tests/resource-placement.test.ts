@@ -828,3 +828,70 @@ describe('placeResources: spacing (patches with room between the objects)', () =
     expect(() => placeResources(build({ timber: rule({ spacing: 8 }) }))).not.toThrow()
   })
 })
+
+describe('placeResources: dense cores and sparse rims (coreSpacing)', () => {
+  const neighbours = (tiles: Set<number>, i: number): number => {
+    let n = 0
+    for (let dy = -1; dy <= 1; dy += 1) {
+      for (let dx = -1; dx <= 1; dx += 1) {
+        if ((dx !== 0 || dy !== 0) && tiles.has(i + dy * W + dx)) n += 1
+      }
+    }
+    return n
+  }
+
+  it('lets the best tiles stand close and the poorest keep their distance', () => {
+    const input = build({
+      timber: rule({ share: 0.12, spacing: 4, coreSpacing: 1, prefer: { ridge: 3 } })
+    })
+    const slots = placeResources(input)
+    const found = tilesOf(slots.surface, ResourceType.Timber)
+    const set = new Set(found)
+    const rich = found.filter((i) => (slots.surface.richness[i] as number) >= 200)
+    const poor = found.filter((i) => (slots.surface.richness[i] as number) <= 60)
+    expect(rich.length).toBeGreaterThan(10)
+    expect(poor.length).toBeGreaterThan(10)
+    const mean = (tiles: number[]): number =>
+      tiles.reduce((n, i) => n + neighbours(set, i), 0) / tiles.length
+    expect(mean(rich)).toBeGreaterThan(1.5) // packed in the core
+    expect(mean(poor)).toBeLessThan(0.5) // alone at the rim
+  })
+
+  it('still reaches the share when it fits', () => {
+    const input = build({ timber: rule({ share: 0.08, spacing: 3, coreSpacing: 1 }) })
+    expect(tilesOf(placeResources(input).surface, ResourceType.Timber)).toHaveLength(
+      Math.round(0.08 * landCount(input))
+    )
+  })
+
+  it('is the same as a plain spacing when the core asks for no less room', () => {
+    const a = placeResources(build({ timber: rule({ share: 0.08, spacing: 3 }) }))
+    const b = placeResources(build({ timber: rule({ share: 0.08, spacing: 3, coreSpacing: 3 }) }))
+    expect(b.surface.type).toEqual(a.surface.type)
+    expect(b.surface.richness).toEqual(a.surface.richness)
+  })
+
+  it('is reproducible', () => {
+    const input = build({ timber: rule({ share: 0.1, spacing: 3, coreSpacing: 1, regional: 0.5 }) })
+    expect(placeResources(input).surface.type).toEqual(placeResources(input).surface.type)
+  })
+
+  it('rejects a core spacing that is not a whole number from 1 to 8, or that asks for more room than the rim', () => {
+    for (const [spacing, coreSpacing] of [
+      [3, 0],
+      [3, 1.5],
+      [3, 4],
+      [8, 9],
+      [undefined, 2]
+    ] as const) {
+      expect(
+        () => placeResources(build({ timber: rule({ spacing, coreSpacing }) })),
+        `${spacing}/${coreSpacing}`
+      ).toThrow(RangeError)
+    }
+    expect(() =>
+      placeResources(build({ timber: rule({ spacing: 3, coreSpacing: 3 }) }))
+    ).not.toThrow()
+    expect(() => placeResources(build({ timber: rule({ coreSpacing: 1 }) }))).not.toThrow()
+  })
+})

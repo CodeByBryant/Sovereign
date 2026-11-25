@@ -249,6 +249,13 @@ export interface ResourceRule {
    */
   spacing?: number
   /**
+   * The room (whole number, 1 to `spacing`) between objects at the best tiles of a patch. The room grows from this
+   * at the core to `spacing` at the rim, by how high a tile ranked, so a patch is packed in the middle and thins to
+   * lone objects at its edge, like a forest with a canopy and open ground beyond it. Omit for the same room
+   * everywhere.
+   */
+  coreSpacing?: number
+  /**
    * Oil and salt: the share of the **water** tiles within the coast distance range (and, if given, the
    * elevation range: how deep it can lie) that also hold it, under the sea. The rule's own elevation,
    * temperature and humidity limits are for the land and do not apply here.

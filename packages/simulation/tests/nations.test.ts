@@ -237,7 +237,8 @@ describe('spawnNations: stats follow from the land', () => {
   it('makes nations with more metals more heavily armed than the land alone would explain', () => {
     const metals: number[] = []
     const military: number[] = []
-    for (const seed of [11, 12, 13, 14]) {
+    // ten worlds: with four the rank correlation is mostly luck of where the metals fell
+    for (const seed of [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]) {
       for (const n of make(seed).nations) {
         metals.push(n.profile.metals)
         military.push(n.stats.military)
