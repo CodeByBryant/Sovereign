@@ -14,6 +14,7 @@
 | [terrain.md](terrain.md)                                                 | The terrain pipeline                         |
 | [nations.md](nations.md)                                                 | Nation spawning and the political map        |
 | [save-load.md](save-load.md)                                             | How the browser app stores saves             |
+| [research/worldbox.md](research/worldbox.md)                             | What WorldBox does, from its community wiki  |
 
 | Decisions                                                                                     |                                                                                                                  |
 | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
