@@ -126,20 +126,57 @@ export function applyRivers(
   }
 }
 
-/** The biome map: each tile in its biome colour, with rivers drawn over it. */
+/**
+ * How much the ground colour of a tile may differ from its biome's: a fine part per tile (the three art
+ * variants each biome has in WorldBox) and a patch part per 8 x 8 block (its high and low shades), so a
+ * meadow has texture and drifts a little from block to block without an overlay. A fraction of the colour.
+ */
+export const GROUND_DETAIL = { fine: 0.035, patch: 0.025 } as const
+
+/** A cheap integer hash of two numbers and a salt. */
+function hash2(x: number, y: number, salt: number): number {
+  let h = Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul(y | 0, 0x165667b1) ^ Math.imul(salt, 0x9e3779b1)
+  h ^= h >>> 15
+  h = Math.imul(h, 0x85ebca6b)
+  h ^= h >>> 13
+  h = Math.imul(h, 0xc2b2ae35)
+  h ^= h >>> 16
+  return h >>> 0
+}
+
+/** The factor a tile's biome colour is scaled by: 1 plus a fine and a patch variation, from its position alone. */
+export function groundShade(x: number, y: number): number {
+  const fine = (hash2(x, y, 1) % 3) - 1
+  const patch = (hash2(x >> 3, y >> 3, 2) % 3) - 1
+  return 1 + GROUND_DETAIL.fine * fine + GROUND_DETAIL.patch * patch
+}
+
+const clampColor = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : Math.round(v))
+
+/**
+ * The biome map: each tile in its biome colour, with rivers drawn over it. With `detail`, land tiles are
+ * shaded by {@link groundShade} (the sea keeps its colour); it is off by default so the plain colours stay
+ * available to anything that compares them.
+ */
 export function biomeRgba(
   biomeIds: Uint8Array,
   riverWidth: Uint8Array,
   width: number,
-  height: number
+  height: number,
+  detail = false
 ): Uint8ClampedArray {
   const rgba = new Uint8ClampedArray(biomeIds.length * 4)
   for (let i = 0; i < biomeIds.length; i += 1) {
-    const color = getBiomeColor(getBiomeById(biomeIds[i] as number).key)
+    const key = getBiomeById(biomeIds[i] as number).key
+    const color = getBiomeColor(key)
+    const k =
+      detail && key !== 'ocean' && key !== 'deep_ocean'
+        ? groundShade(i % width, (i / width) | 0)
+        : 1
     const p = i * 4
-    rgba[p] = color[0]
-    rgba[p + 1] = color[1]
-    rgba[p + 2] = color[2]
+    rgba[p] = clampColor(color[0] * k)
+    rgba[p + 1] = clampColor(color[1] * k)
+    rgba[p + 2] = clampColor(color[2] * k)
     rgba[p + 3] = 255
   }
   applyRivers(rgba, width, height, riverWidth)

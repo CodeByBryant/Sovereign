@@ -102,7 +102,7 @@ export class TickRunner {
     const world = this.world
     const t = world.terrain
     // the base map never changes: paint it once
-    this.base ??= biomeRgba(t.biomeIds, t.riverWidth, t.width, t.height)
+    this.base ??= biomeRgba(t.biomeIds, t.riverWidth, t.width, t.height, true)
     return politicalRgba(
       this.base,
       world.map.ownership,

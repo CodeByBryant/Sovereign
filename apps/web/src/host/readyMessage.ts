@@ -48,7 +48,7 @@ export function buildReady(world: World, style: PoliticalStyle): Built {
   const t = world.terrain
   const { width, height } = t
 
-  const biome = biomeRgba(t.biomeIds, t.riverWidth, width, height)
+  const biome = biomeRgba(t.biomeIds, t.riverWidth, width, height, true)
   const layers: Record<LayerName, Uint8ClampedArray> = {
     elevation: elevationRgba(t.elevation, t.seaLevel),
     temperature: temperatureRgba(t.temperature),

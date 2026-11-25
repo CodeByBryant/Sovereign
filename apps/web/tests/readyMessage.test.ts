@@ -84,7 +84,7 @@ describe('buildReady', () => {
   })
 
   it('draws the biome and political overlays exactly as the renderer does, province lines included', () => {
-    const biome = biomeRgba(world.terrain.biomeIds, world.terrain.riverWidth, width, height)
+    const biome = biomeRgba(world.terrain.biomeIds, world.terrain.riverWidth, width, height, true)
     expect(message.layers.biome).toEqual(biome)
     expect(message.layers.political).toEqual(
       politicalRgba(
@@ -101,7 +101,7 @@ describe('buildReady', () => {
 
   it('draws every other overlay exactly as the renderer does, each from its own field', () => {
     const tf = world.terrain
-    const biome = biomeRgba(tf.biomeIds, tf.riverWidth, width, height)
+    const biome = biomeRgba(tf.biomeIds, tf.riverWidth, width, height, true)
     expect(message.layers.elevation).toEqual(elevationRgba(tf.elevation, tf.seaLevel))
     expect(message.layers.temperature).toEqual(temperatureRgba(tf.temperature))
     expect(message.layers.humidity).toEqual(humidityRgba(tf.humidity))

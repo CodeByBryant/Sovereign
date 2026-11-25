@@ -11,8 +11,10 @@ import {
   type StrategicRoute
 } from '@sovereign/contracts'
 import {
+  GROUND_DETAIL,
   biomeRgba,
   dominantResource,
+  groundShade,
   elevationRgba,
   humidityRgba,
   politicalRgba,
@@ -73,6 +75,84 @@ describe('biomeRgba', () => {
     const rgba = biomeRgba(f.biomeIds, f.riverWidth, f.width, f.height)
     expectOpaque(rgba)
     expect(checksum(rgba)).toBe('7da87274')
+  })
+})
+
+describe('ground detail: tiles of one biome differ a little, as WorldBox tiles come in variants', () => {
+  it('shades a tile the same way every time, from its position alone', () => {
+    for (const [x, y] of [
+      [0, 0],
+      [17, 3],
+      [999, 999]
+    ] as const) {
+      expect(groundShade(x, y)).toBe(groundShade(x, y))
+    }
+  })
+
+  it('stays within the stated spread and does not brighten or darken the map on average', () => {
+    let sum = 0
+    let lo = Infinity
+    let hi = -Infinity
+    const n = 200
+    for (let y = 0; y < n; y += 1) {
+      for (let x = 0; x < n; x += 1) {
+        const k = groundShade(x, y)
+        sum += k
+        lo = Math.min(lo, k)
+        hi = Math.max(hi, k)
+      }
+    }
+    expect(hi).toBeLessThanOrEqual(1 + GROUND_DETAIL.fine + GROUND_DETAIL.patch + 1e-9)
+    expect(lo).toBeGreaterThanOrEqual(1 - GROUND_DETAIL.fine - GROUND_DETAIL.patch - 1e-9)
+    expect(Math.abs(sum / (n * n) - 1)).toBeLessThan(0.002)
+  })
+
+  it('has several distinct shades, so a meadow is not one flat colour', () => {
+    const seen = new Set<number>()
+    for (let y = 0; y < 40; y += 1) for (let x = 0; x < 40; x += 1) seen.add(groundShade(x, y))
+    expect(seen.size).toBeGreaterThanOrEqual(5)
+  })
+
+  it('moves in patches: most neighbours in the same 8 x 8 block share the coarse part', () => {
+    // inside one block the shade differs only by the fine part, so it varies by at most 2 x fine
+    for (let y = 0; y < 8; y += 1) {
+      for (let x = 0; x < 7; x += 1) {
+        expect(Math.abs(groundShade(x, y) - groundShade(x + 1, y))).toBeLessThanOrEqual(
+          2 * GROUND_DETAIL.fine + 1e-9
+        )
+      }
+    }
+  })
+
+  it('is off by default: biomeRgba paints the plain biome colours', () => {
+    const plain = biomeRgba(f.biomeIds, noRivers, f.width, f.height)
+    expect(plain).toEqual(biomeRgba(f.biomeIds, noRivers, f.width, f.height, false))
+    for (let i = 0; i < pixels; i += 1) {
+      const c = getBiomeColor(BIOME_KEYS[f.biomeIds[i] as number] as (typeof BIOME_KEYS)[number])
+      expect([...plain.slice(i * 4, i * 4 + 3)]).toEqual(c)
+    }
+  })
+
+  it('shades land a little and leaves the sea its colour when on', () => {
+    const rgba = biomeRgba(f.biomeIds, noRivers, f.width, f.height, true)
+    expectOpaque(rgba)
+    let landDiffers = 0
+    let lands = 0
+    for (let i = 0; i < pixels; i += 1) {
+      const key = BIOME_KEYS[f.biomeIds[i] as number] as (typeof BIOME_KEYS)[number]
+      const c = getBiomeColor(key)
+      const got = [...rgba.slice(i * 4, i * 4 + 3)]
+      if (key === 'ocean' || key === 'deep_ocean') {
+        expect(got).toEqual(c)
+        continue
+      }
+      lands += 1
+      const k = groundShade(i % f.width, Math.floor(i / f.width))
+      expect(got).toEqual(c.map((v) => Math.min(255, Math.max(0, Math.round(v * k)))))
+      if (got.some((v, j) => v !== c[j])) landDiffers += 1
+    }
+    expect(lands).toBeGreaterThan(50)
+    expect(landDiffers).toBeGreaterThan(lands * 0.4)
   })
 })
 

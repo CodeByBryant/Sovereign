@@ -187,7 +187,7 @@ describe('TickRunner: ownership and the political overlay', () => {
     const { message } = runner.run(300, { political: true })
     const t = world.terrain
     const expected = politicalRgba(
-      biomeRgba(t.biomeIds, t.riverWidth, t.width, t.height),
+      biomeRgba(t.biomeIds, t.riverWidth, t.width, t.height, true),
       world.map.ownership,
       world.nations.map((n) => n.color),
       t.width,
