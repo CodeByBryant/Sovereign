@@ -28,6 +28,17 @@ After M1 villagers could walk and be seen, but nothing they did mattered: resour
 - **Gathering moves nation stats.** A nation's profile and stats are measured from the stocks of the land it holds, so as villagers draw deposits down and they grow back, stats go on changing even after borders have settled. The determinism guard that said "no stat changes after the borders settle" now only says borders and claims hold still. Stats will be measured from stockpiles and population instead in M4.
 - **Villagers can find the world empty.** Nothing stops a hall's villagers from stripping every deposit in reach; renewable ones grow back on the existing table, ground ones do not.
 
+## What it costs (measured, 2000 x 2000, seed 1337, Node 22, one machine, borders settled)
+
+| Villagers                            | ms per tick | where it goes                                                      |
+| ------------------------------------ | ----------- | ------------------------------------------------------------------ |
+| 0                                    | 0.00        | nothing is happening                                               |
+| 288 (the default, 24 a nation)       | 3.5         | mostly re-measuring provinces whose stock changed                  |
+| 1,200 (100 a nation), wandering only | 6.5         | route searches for random walks (no shared routes to reuse)        |
+| 1,200, gathering                     | 8.3         | 1.6 for the villagers and deposits, 6.6 for re-measuring provinces |
+
+Gathering itself is cheap (it revisits the same deposits, so routes are shared). The cost is that every drawn-down deposit marks its province for measuring again, and measuring a province re-sums all its tiles (about 450). That is the old nation-profile design, and it is not made incremental here on purpose: a delta would sum floats in a different order, change every hash again and need the same care to keep a save and a restore equal. M4 measures stats from stockpiles and population instead, which removes the coupling. Until then, 1,200 villagers run at about 100 ticks a second, so the top speeds are requests the world will not always meet.
+
 ## Limits (honest)
 
 - **Balance is not tuned.** Work times, amounts and the carrying limit are provisional numbers, and nobody eats what is stored: stockpiles only grow (M4 gives them a purpose).
