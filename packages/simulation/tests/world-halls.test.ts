@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EntityKind, ResourceType } from '@sovereign/contracts'
+import { EntityKind, ResourceType, UnitState } from '@sovereign/contracts'
 import { decodeWorld, encodeWorld } from '../src/serialization/save'
 import { World } from '../src/world/World'
 import { smallWorldOverrides } from './support/worldOptions'
@@ -164,6 +164,7 @@ describe('what validate says about halls', () => {
   it('a villager after a node that does not exist (the last node is fine)', () => {
     const a = make()
     const v = villagers(a)[0]!
+    a.entities.state[v] = UnitState.Work // a villager at work has a goal
     a.entities.goal[v] = a.nodes.count // node count - 1, plus one
     expect(a.validate()).toEqual([])
     a.entities.goal[v] = a.nodes.count + 1
@@ -181,5 +182,58 @@ describe('what validate says about halls', () => {
     const c = make()
     c.entities.carriedType[villagers(c)[0]!] = 3
     expect(problems(c)).toMatch(/carries/)
+  })
+})
+
+describe('what validate says about villagers at work and hauling', () => {
+  const problems = (w: World): string => w.validate().join('\n')
+  const pick = (w: World): number => villagers(w)[0]!
+  it('a villager at work with no goal', () => {
+    const w = make()
+    w.entities.state[pick(w)] = UnitState.Work
+    expect(problems(w)).toMatch(/goal/)
+  })
+  it('a resting villager that has a goal', () => {
+    const w = make()
+    w.entities.goal[pick(w)] = 1
+    expect(problems(w)).toMatch(/goal/)
+  })
+  it('a villager at work with a goal is fine, and so is a walker with one', () => {
+    const w = make()
+    const v = pick(w)
+    w.entities.state[v] = UnitState.Work
+    w.entities.goal[v] = 1
+    expect(w.validate()).toEqual([])
+  })
+  it('a villager hauling nothing, or carrying while it rests', () => {
+    const a = make()
+    a.entities.state[pick(a)] = UnitState.Haul
+    expect(problems(a)).toMatch(/carries/)
+    const b = make()
+    b.entities.carriedType[pick(b)] = 2
+    b.entities.carriedCount[pick(b)] = 3
+    expect(problems(b)).toMatch(/carries/)
+  })
+  it('a hauler needs a leg to walk like a walker does', () => {
+    const w = make()
+    const v = pick(w)
+    w.entities.state[v] = UnitState.Haul
+    w.entities.carriedType[v] = 2
+    w.entities.carriedCount[v] = 3
+    expect(problems(w)).toMatch(/leg|heading/)
+  })
+  it('a worker whose finishing time is already past', () => {
+    const w = make()
+    w.run(40)
+    const v = pick(w)
+    w.entities.state[v] = UnitState.Work
+    w.entities.goal[v] = 1
+    w.entities.wake[v] = 1
+    expect(problems(w)).toMatch(/wake-up/)
+  })
+  it('a villager in a state that is not one of the four', () => {
+    const w = make()
+    w.entities.state[pick(w)] = 7
+    expect(problems(w)).toMatch(/hauling/)
   })
 })

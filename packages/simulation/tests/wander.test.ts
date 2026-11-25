@@ -1,7 +1,7 @@
 import { EntityKind, UnitState } from '@sovereign/contracts'
 import { describe, expect, it } from 'vitest'
 import { EntityStore } from '../src/entities/EntityStore'
-import { WanderSystem } from '../src/systems/WanderSystem'
+import { UnitSystem } from '../src/systems/UnitSystem'
 import { Pathfinder, RouteCache, routePosition } from '../src/terrain/pathing'
 import { drawGrid } from './support/costGrid'
 
@@ -31,9 +31,12 @@ function setup(o: Options = {}) {
     walkSpeed: o.walkSpeed ?? 5,
     wanderRadius: o.radius ?? 4,
     restMin: o.restMin ?? 1,
-    restMax: o.restMax ?? 4
+    restMax: o.restMax ?? 4,
+    carryCapacity: 20,
+    searchRadius: 40,
+    gather: {}
   }
-  const system = new WanderSystem({
+  const system = new UnitSystem({
     entities,
     grid,
     routes,
@@ -94,7 +97,7 @@ describe('spawnVillager', () => {
   })
 })
 
-describe('WanderSystem: a villager rests, walks, arrives, rests', () => {
+describe('UnitSystem: a villager rests, walks, arrives, rests', () => {
   it('sets off from rest toward a land cell near home, never the one it is on', () => {
     const s = setup({ units: [{ x: 34, y: 22 }] })
     const id = s.ids[0]!
@@ -192,7 +195,7 @@ describe('WanderSystem: a villager rests, walks, arrives, rests', () => {
   })
 })
 
-describe('WanderSystem: the choices it makes', () => {
+describe('UnitSystem: the choices it makes', () => {
   it('rests exactly as long as asked when the shortest and longest rest are the same', () => {
     const s = setup({
       restMin: 3,
@@ -303,7 +306,7 @@ describe('WanderSystem: the choices it makes', () => {
   })
 })
 
-describe('WanderSystem: standing in a cell whose middle is water', () => {
+describe('UnitSystem: standing in a cell whose middle is water', () => {
   // each cell is 4 x 4 tiles; its middle tiles are (2,2) from the corner. Make the middle of every cell sea.
   const middleIsSea = (x: number, y: number): boolean =>
     !(x % 4 >= 1 && x % 4 <= 2 && y % 4 >= 1 && y % 4 <= 2)
@@ -356,7 +359,7 @@ describe('WanderSystem: standing in a cell whose middle is water', () => {
   })
 })
 
-describe('WanderSystem: where a walker is', () => {
+describe('UnitSystem: where a walker is', () => {
   it('is where it rests while it rests', () => {
     const s = setup()
     const id = s.ids[0]!
@@ -400,7 +403,7 @@ describe('WanderSystem: where a walker is', () => {
   })
 })
 
-describe('WanderSystem: the same world, however it was reached', () => {
+describe('UnitSystem: the same world, however it was reached', () => {
   const crowd = Array.from({ length: 30 }, (_, k) => ({ x: 20 + (k % 5) * 4, y: 18 + (k % 3) * 4 }))
   const snapshot = (s: ReturnType<typeof setup>): string =>
     JSON.stringify([
@@ -478,7 +481,7 @@ describe('WanderSystem: the same world, however it was reached', () => {
   })
 })
 
-describe('WanderSystem: awkward cases', () => {
+describe('UnitSystem: awkward cases', () => {
   it('lets a villager on an island of one cell rest and try again, never setting off', () => {
     const s = setup({ rows: ['.x.', 'xxx', '.x.'], units: [{ x: 2, y: 2 }], radius: 2 })
     const id = s.ids[0]!

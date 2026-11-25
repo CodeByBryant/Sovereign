@@ -413,7 +413,31 @@ export const defaultWorldConfig: WorldConfig = {
     walkSpeed: 5,
     wanderRadius: 10,
     restMin: 1,
-    restMax: 6
+    restMax: 6,
+    carryCapacity: 20,
+    searchRadius: 48,
+    // provisional numbers: work in days at the deposit, units per trip; the economy will give them weight
+    gather: {
+      timber: { work: 6, amount: 8 },
+      stone: { work: 8, amount: 6 },
+      iron: { work: 10, amount: 4 },
+      gold: { work: 12, amount: 2 },
+      grain: { work: 5, amount: 10 },
+      fish: { work: 4, amount: 6 },
+      fur: { work: 5, amount: 3 },
+      pasture: { work: 5, amount: 6 },
+      horses: { work: 8, amount: 2 },
+      cotton: { work: 5, amount: 6 },
+      spices: { work: 5, amount: 3 },
+      wine: { work: 5, amount: 4 },
+      tea: { work: 5, amount: 5 },
+      ivory: { work: 10, amount: 2 },
+      copper: { work: 10, amount: 4 },
+      coal: { work: 8, amount: 5 },
+      silver: { work: 12, amount: 3 },
+      salt: { work: 6, amount: 6 },
+      gems: { work: 14, amount: 1 }
+    }
   },
 
   /* ------------------------------------------------------------ */
@@ -966,6 +990,26 @@ function validateUnits(units: UnitsConfig, problems: string[]): void {
   }
   if (!isInteger(units.restMax) || units.restMax < units.restMin) {
     problems.push(`${at}.restMax must be a whole number, at least ${at}.restMin`)
+  }
+  if (!isInteger(units.carryCapacity) || units.carryCapacity < 1 || units.carryCapacity > 255) {
+    problems.push(`${at}.carryCapacity must be a whole number from 1 to 255`)
+  }
+  if (!isInteger(units.searchRadius) || units.searchRadius < 1 || units.searchRadius > 100000) {
+    problems.push(`${at}.searchRadius must be a whole number of tiles from 1 to 100000`)
+  }
+  const known = new Set(RESOURCE_CATALOG.map((d) => d.key))
+  // Enumerating the rules only validates them: whether this reports does not depend on the order.
+  for (const [key, rule] of Object.entries(units.gather)) {
+    if (!known.has(key)) {
+      problems.push(`${at}.gather.${key} is not a resource`)
+      continue
+    }
+    if (!isInteger(rule.work) || rule.work < 1 || rule.work > 365) {
+      problems.push(`${at}.gather.${key}.work must be a whole number of ticks from 1 to 365`)
+    }
+    if (!isInteger(rule.amount) || rule.amount < 1 || rule.amount > 255) {
+      problems.push(`${at}.gather.${key}.amount must be a whole number from 1 to 255`)
+    }
   }
 }
 

@@ -325,6 +325,24 @@ export interface UnitsConfig {
   /** The fewest and the most ticks a villager rests between walks. */
   restMin: number
   restMax: number
+  /** The most units a villager carries home in one trip (1 to 255). */
+  carryCapacity: number
+  /** How far (in tiles) from where it rests a villager looks for something to gather. */
+  searchRadius: number
+  /**
+   * What villagers gather, by catalogue key: the ticks of work at the deposit and the units taken from it per
+   * trip (also limited by `carryCapacity` and by what is left). A resource not listed is not gathered. An override
+   * of this table replaces the whole table, like the regrowth table does.
+   */
+  gather: Record<string, GatherRule>
+}
+
+/** How one resource is gathered. */
+export interface GatherRule {
+  /** Ticks (days) a villager works at the deposit before it has anything to carry (1 to 365). */
+  work: number
+  /** Units taken per trip (1 to 255). */
+  amount: number
 }
 
 /** How nations grow into free provinces as time passes. */

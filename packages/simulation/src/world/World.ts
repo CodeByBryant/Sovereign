@@ -37,7 +37,7 @@ import {
 import { spawnNations } from '../nations/NationSpawner'
 import { normalizeSeed } from '../random/seed'
 import { ExpansionSystem } from '../systems/ExpansionSystem'
-import { WanderSystem } from '../systems/WanderSystem'
+import { UnitSystem } from '../systems/UnitSystem'
 import type { CostGrid } from '../terrain/cost'
 import { Pathfinder, RouteCache } from '../terrain/pathing'
 import { stateHasher } from '../serialization/hash'
@@ -45,6 +45,7 @@ import { generateTerrain } from '../terrain/pipeline'
 import { NO_PROVINCE, type ProvinceMap } from '../terrain/provinces'
 import { costGridOf } from './costGrid'
 import { buildProvinceLayer, type ProvinceLayer } from './provinceLayer'
+import { NodeIndex } from '../resources/NodeIndex'
 import { NodeStore } from '../resources/NodeStore'
 import { Stockpiles } from './Stockpiles'
 import { buildRegrowthTable, ResourceStocks, type ResourceLayerName } from './ResourceStocks'
@@ -146,6 +147,8 @@ export class World {
   private readonly expansion: ExpansionSystem
   /** Every resource deposit as a row; the tile slot arrays in `terrain.resources` are its write-through views. */
   readonly nodes: NodeStore
+  /** "The nearest tree": where the deposits of each kind are (derived from the nodes; never saved). */
+  private readonly nodeIndex: NodeIndex
   /** Drawing resources down and letting the renewable ones grow back (it works through the node store). */
   private readonly stocks: ResourceStocks
   /** Everything that lives and acts: villagers and the halls they belong to (saved and hashed). */
@@ -153,7 +156,7 @@ export class World {
   /** What each hall holds (saved and hashed): villagers drop what they gather here. */
   readonly stockpiles: Stockpiles
   /** The villagers' behaviour: they rest, walk and rest (derived timers: rebuilt from the rows). */
-  private readonly wander: WanderSystem
+  private readonly units: UnitSystem
   /** The cost of crossing the ground, on cells (derived; never saved). */
   private readonly grid: CostGrid
 
@@ -183,6 +186,7 @@ export class World {
       throw new RangeError('the nodes and the terrain must share the resource slot arrays')
     }
     this.nodes = state.nodes ?? NodeStore.fromSlots(state.terrain.resources)
+    this.nodeIndex = new NodeIndex(this.nodes, state.terrain.width, state.terrain.height)
     this.stocks = new ResourceStocks(
       this.nodes,
       buildRegrowthTable(state.config.resources.regrowth),
@@ -201,7 +205,7 @@ export class World {
     this.grid = grid
     this.entities = state.entities ?? new EntityStore()
     this.stockpiles = state.stockpiles ?? new Stockpiles()
-    this.wander = new WanderSystem({
+    this.units = new UnitSystem({
       entities: this.entities,
       grid,
       routes: new RouteCache(new Pathfinder(grid)),
@@ -209,9 +213,16 @@ export class World {
       seed: state.seed,
       width: state.terrain.width,
       height: state.terrain.height,
-      land: (x, y) => state.terrain.elevation[y * state.terrain.width + x]! > state.terrain.seaLevel
+      land: (x, y) =>
+        state.terrain.elevation[y * state.terrain.width + x]! > state.terrain.seaLevel,
+      gather: {
+        nodes: this.nodes,
+        index: this.nodeIndex,
+        stockpiles: this.stockpiles,
+        extract: (node, amount) => this.stocks.extractNode(node, amount)
+      }
     })
-    if (state.entities !== undefined) this.wander.rebuild()
+    if (state.entities !== undefined) this.units.rebuild()
   }
 
   /** Generate a new world: terrain first, then nations placed on it. */
@@ -286,7 +297,7 @@ export class World {
   step(): void {
     // Systems run here, as a flat, ordered list of calls.
     this.expansion.step(this.clock.tick)
-    this.wander.step(this.clock.tick)
+    this.units.step(this.clock.tick)
     this.stocks.regrow(this.clock.tick)
     this.refreshDirtyProvinces()
     this.clock.advance()
@@ -377,7 +388,7 @@ export class World {
       const hall = this.entities.spawn({ kind: EntityKind.Hall, x, y, owner: index, home })
       this.stockpiles.open(hall)
       for (let k = 0; k < perNation; k += 1) {
-        this.wander.spawnVillager(x, y, index, home, 0, hall + 1)
+        this.units.spawnVillager(x, y, index, home, 0, hall + 1)
       }
     })
   }
@@ -403,7 +414,7 @@ export class World {
     let i = 0
     for (const id of this.entities.ids()) {
       if (this.entities.kind[id] !== EntityKind.Villager) continue
-      const [x, y] = this.wander.positionAt(id, this.clock.tick)
+      const [x, y] = this.units.positionAt(id, this.clock.tick)
       snapshot.id[i] = id
       snapshot.kind[i] = this.entities.kind[id] as number
       snapshot.owner[i] = this.entities.owner[id] as number
@@ -806,7 +817,13 @@ export class World {
         )
       }
       const state = e.state[id] as number
-      if (state === UnitState.Walk) {
+      if ((state === UnitState.Haul) !== (carriedCount !== 0)) {
+        problems.push(`unit ${id} is in the state ${state} but carries ${carriedCount}`)
+      }
+      if ((state === UnitState.Work) !== (goal !== 0) && state !== UnitState.Walk) {
+        problems.push(`unit ${id} is in the state ${state} with the goal ${goal}`)
+      }
+      if (state === UnitState.Walk || state === UnitState.Haul) {
         const target = e.target[id] as number
         const start = e.legStart[id] as number
         const end = e.legEnd[id] as number
@@ -820,12 +837,14 @@ export class World {
           problems.push(`unit ${id} wakes at ${e.wake[id]} but its leg ends at ${end}`)
         if (start > this.clock.tick)
           problems.push(`unit ${id} set off at ${start}, which is in the future`)
-      } else if (state === UnitState.Rest) {
+      } else if (state === UnitState.Rest || state === UnitState.Work) {
         if ((e.wake[id] as number) < this.clock.tick) {
           problems.push(`unit ${id} has a wake-up at tick ${e.wake[id]}, which is already past`)
         }
       } else {
-        problems.push(`unit ${id} has the state ${state}, which is not resting or walking`)
+        problems.push(
+          `unit ${id} has the state ${state}, which is not resting, walking, working or hauling`
+        )
       }
     }
     for (const hall of this.stockpiles.halls()) {
