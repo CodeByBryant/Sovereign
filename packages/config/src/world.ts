@@ -693,8 +693,8 @@ export const defaultWorldConfig: WorldConfig = {
       },
       // ---- ground: finite ----
       stone: {
-        share: 0.03,
-        spacing: 3,
+        share: 0.025,
+        spacing: 2,
         coreSpacing: 1,
         biomes: { mountain: 1, highland: 1, alpine: 1, badlands: 0.8 },
         prefer: { height: 1.5, slope: 1 },
