@@ -22,6 +22,10 @@ After M1 villagers could walk and be seen, but nothing they did mattered: resour
 
 **The page keeps up by deltas.** `World.drainStockChanges()` lists the deposits whose stock changed since the host last heard (a deduplicated list kept by `NodeStore`). `ticked` carries it, `applyStockChanges` writes it into the app's copy of the slot arrays, and the sprite layers, the inspector and the overlay all read that copy. The 16 MB resource overlay is only redrawn when it is on screen, and at most every 400 ms.
 
+## Sparse placement (added in the same milestone)
+
+The first screenshots of villagers gathering were a wall of icons: the placement engine gives each resource its top share of the land by suitability, and the shares added up to about 72% of land, so near a capital 74% of land tiles held a surface resource. A rule now has an optional `spacing` (see docs/terrain.md): tiles are still taken best first, but one is skipped if an object of the same kind is closer than that. The default shares were cut (timber 17% to 3.5% of land, grain 13% to 2%, and so on) and the common resources ask for room, which brings the surface coverage around a capital to about 15% and the global figure (offshore fish included) to about 21%. Other games do this the same way in outline (a noise mask for the zones, thinning inside them, minimum spacing, vein rarity); WorldBox's changelog gives no numbers, so none are borrowed. This changes every world, so the goldens were regenerated a second time in their own commit, and the determinism guards that assumed solid blocks (four-neighbour clustering, exact shares) now check that objects are grouped within six tiles and that spaced objects never touch.
+
 ## Consequences
 
 - **Every world, save, hash and golden changes again** (pre-1.0): hash 6, save 7, web database 8, goldens regenerated in their own commit. All 22 golden values (and their save round trips) match on Node 22, Chromium 157 and QuickJS.
