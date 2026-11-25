@@ -237,3 +237,31 @@ describe('what validate says about villagers at work and hauling', () => {
     expect(problems(w)).toMatch(/hauling/)
   })
 })
+
+describe('what the app is told about units and halls', () => {
+  it('lists every hall with its tile and owner', () => {
+    const w = make()
+    const list = w.hallList()
+    expect(list.length).toBe(w.nations.length)
+    list.forEach((h, i) => {
+      expect(h.tile).toBe(w.nations[i]!.capital)
+      expect(h.owner).toBe(i)
+    })
+  })
+  it('says what every villager is doing and what it carries, beside where it is', () => {
+    const w = make()
+    w.run(150)
+    const snap = w.unitPositions()
+    expect(snap.state.length).toBe(snap.count)
+    expect(snap.carry.length).toBe(snap.count)
+    snap.id.forEach((id, i) => {
+      expect(snap.state[i]).toBe(w.entities.state[id])
+      expect(snap.carry[i]).toBe(w.entities.carriedType[id])
+    })
+    // by now somebody is working or hauling
+    expect(Array.from(snap.state).some((s) => s === UnitState.Work || s === UnitState.Haul)).toBe(
+      true
+    )
+    expect(Array.from(snap.carry).some((c) => c !== 0)).toBe(true)
+  })
+})

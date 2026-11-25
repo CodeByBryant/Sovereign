@@ -100,3 +100,47 @@ describe('the resource nodes of a world', () => {
     ).toThrow(RangeError)
   })
 })
+
+describe('drainStockChanges: what changed since the app last heard', () => {
+  it('is empty for a world nothing has happened to', () => {
+    const c = make().drainStockChanges()
+    expect(c.tile.length).toBe(0)
+    expect(c.layer.length).toBe(0)
+    expect(c.value.length).toBe(0)
+  })
+  it('lists a drawn-down deposit once, with its tile, layer and what is left', () => {
+    const w = make()
+    const id = loaded(w)
+    const tile = w.nodes.tile[id] as number
+    w.extractResource('surface', tile, 3)
+    w.extractResource('surface', tile, 2)
+    const c = w.drainStockChanges()
+    expect(Array.from(c.tile)).toEqual([tile])
+    expect(Array.from(c.layer)).toEqual([0])
+    expect(Array.from(c.value)).toEqual([w.nodes.stock[id]])
+  })
+  it('says 1 for a ground deposit', () => {
+    const w = make()
+    const id = loaded(w, 'ground')
+    w.extractResource('ground', w.nodes.tile[id] as number, 1)
+    expect(Array.from(w.drainStockChanges().layer)).toEqual([1])
+  })
+  it('hands each change over once', () => {
+    const w = make()
+    const id = loaded(w)
+    w.extractResource('surface', w.nodes.tile[id] as number, 3)
+    expect(w.drainStockChanges().tile.length).toBe(1)
+    expect(w.drainStockChanges().tile.length).toBe(0)
+  })
+  it('lists what villagers gather and what grows back, as a run goes on', () => {
+    const w = make()
+    w.run(200)
+    const c = w.drainStockChanges()
+    expect(c.tile.length).toBeGreaterThan(5)
+    c.tile.forEach((tile, i) => {
+      const id = w.nodes.nodeAt(tile, c.layer[i] === 1 ? 'ground' : 'surface')
+      expect(id).toBeGreaterThanOrEqual(0)
+      expect(c.value[i]).toBe(w.nodes.stock[id])
+    })
+  })
+})

@@ -40,7 +40,29 @@ export interface UnitSnapshot {
   kind: Uint8Array
   /** The index of the nation it belongs to, or {@link NO_OWNER}. */
   owner: Uint8Array
+  /** What it is doing: a {@link UnitState}. */
+  state: Uint8Array
+  /** The resource id it carries, or 0. */
+  carry: Uint8Array
   /** Position in tiles (fractional while walking). */
   x: Float32Array
   y: Float32Array
+}
+
+/** A hall, for a host to draw. */
+export interface HallSnapshot {
+  /** Its tile (`y * width + x`). */
+  tile: number
+  /** The index of the nation it belongs to, or {@link NO_OWNER}. */
+  owner: number
+}
+
+/** Deposits whose stock changed since the host last heard: one entry per deposit, in the order they first changed. */
+export interface StockChanges {
+  /** The tile each deposit is on. */
+  tile: Uint32Array
+  /** 0 for the surface slot, 1 for the ground slot. */
+  layer: Uint8Array
+  /** What is left in it now. */
+  value: Uint8Array
 }

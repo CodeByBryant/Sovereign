@@ -21,6 +21,8 @@ import {
   type NationProfile,
   type NationSnapshot,
   type TerrainFields,
+  type HallSnapshot,
+  type StockChanges,
   type UnitSnapshot,
   type WorldSnapshot
 } from '@sovereign/contracts'
@@ -397,6 +399,20 @@ export class World {
     return Math.floor(y / this.grid.cell) * this.grid.cols + Math.floor(x / this.grid.cell)
   }
 
+  /** Every hall, in row order, for a host to draw. */
+  hallList(): HallSnapshot[] {
+    const { width } = this.terrain
+    const out: HallSnapshot[] = []
+    for (const id of this.entities.ids()) {
+      if (this.entities.kind[id] !== EntityKind.Hall) continue
+      out.push({
+        tile: (this.entities.y[id] as number) * width + (this.entities.x[id] as number),
+        owner: this.entities.owner[id] as number
+      })
+    }
+    return out
+  }
+
   /** Where every living unit is now (between where it set off and where it is going, if it is walking). */
   unitPositions(): UnitSnapshot {
     let count = 0
@@ -408,6 +424,8 @@ export class World {
       id: new Uint32Array(count),
       kind: new Uint8Array(count),
       owner: new Uint8Array(count),
+      state: new Uint8Array(count),
+      carry: new Uint8Array(count),
       x: new Float32Array(count),
       y: new Float32Array(count)
     }
@@ -418,11 +436,33 @@ export class World {
       snapshot.id[i] = id
       snapshot.kind[i] = this.entities.kind[id] as number
       snapshot.owner[i] = this.entities.owner[id] as number
+      snapshot.state[i] = this.entities.state[id] as number
+      snapshot.carry[i] = this.entities.carriedType[id] as number
       snapshot.x[i] = x
       snapshot.y[i] = y
       i += 1
     }
     return snapshot
+  }
+
+  /**
+   * The deposits whose stock changed since this was last called (gathered, or grown back), for a host that keeps
+   * its own copy of the tile slot arrays. Each deposit appears once, with what is left in it now.
+   */
+  drainStockChanges(): StockChanges {
+    const ids = this.nodes.drainChanges()
+    const changes: StockChanges = {
+      tile: new Uint32Array(ids.length),
+      layer: new Uint8Array(ids.length),
+      value: new Uint8Array(ids.length)
+    }
+    for (let i = 0; i < ids.length; i += 1) {
+      const id = ids[i] as number
+      changes.tile[i] = this.nodes.tile[id] as number
+      changes.layer[i] = this.nodes.layerOf(id) === 'ground' ? 1 : 0
+      changes.value[i] = this.nodes.stock[id] as number
+    }
+    return changes
   }
 
   /** Advance the simulation by `ticks` ticks. */

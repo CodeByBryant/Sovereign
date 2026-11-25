@@ -39,7 +39,9 @@ function slotArrays(slot: ResourceSlot): Uint8Array[] {
 
 /** The buffers of a unit snapshot, for a transfer list. */
 export function unitBuffers(units: UnitSnapshot): ArrayBuffer[] {
-  return [units.id, units.kind, units.owner, units.x, units.y].map((a) => a.buffer as ArrayBuffer)
+  return [units.id, units.kind, units.owner, units.state, units.carry, units.x, units.y].map(
+    (a) => a.buffer as ArrayBuffer
+  )
 }
 
 export function buildReady(world: World, style: PoliticalStyle): Built {
@@ -78,6 +80,8 @@ export function buildReady(world: World, style: PoliticalStyle): Built {
     ownership: world.map.ownership.slice()
   }
 
+  // the copies below are made from the world as it is now, so what changed before is already in them
+  world.drainStockChanges()
   const roads = roadMaskFromRoutes(t.routes, width, height)
   const units = world.unitPositions()
   const { resources, ...flat } = fields
@@ -97,7 +101,8 @@ export function buildReady(world: World, style: PoliticalStyle): Built {
       layers,
       fields,
       roads,
-      units
+      units,
+      halls: world.hallList()
     },
     transfer
   }
