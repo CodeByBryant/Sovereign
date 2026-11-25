@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { resolveWorldConfig } from '@sovereign/config'
 import type { WorldSnapshot } from '@sovereign/contracts'
 import { EntityStore } from '../src/entities/EntityStore'
+import { Stockpiles } from '../src/world/Stockpiles'
 import { spawnNations } from '../src/nations/NationSpawner'
 import { generateTerrain } from '../src/terrain/pipeline'
 import { decodeWorld, encodeWorld } from '../src/serialization/save'
@@ -99,7 +100,8 @@ describe('World.restore', () => {
     terrain: w.terrain,
     nations: [...w.nations],
     ownership: w.map.ownership,
-    entities: EntityStore.fromColumns(w.entities.toColumns())
+    entities: EntityStore.fromColumns(w.entities.toColumns()),
+    stockpiles: Stockpiles.fromJson(w.stockpiles.toJson())
   })
 
   it('rebuilds a world with the same state hash, keeping its tick', () => {
@@ -368,7 +370,8 @@ describe('resources in the world', () => {
       terrain: structuredClone(world.terrain),
       nations,
       ownership: world.map.ownership.slice(),
-      entities: EntityStore.fromColumns(world.entities.toColumns())
+      entities: EntityStore.fromColumns(world.entities.toColumns()),
+      stockpiles: Stockpiles.fromJson(world.stockpiles.toJson())
     })
     world.run(500)
     copy.run(500)
@@ -635,12 +638,14 @@ describe('what the state hash covers', () => {
       (w: World) => (w.terrain.riverMask[40] = 1 - (w.terrain.riverMask[40] as number))
     ],
     ['a river width', (w: World) => (w.terrain.riverWidth[2] = 9)],
-    ['a surface resource type', (w: World) => (w.terrain.resources.surface.type[8] ^= 1)],
-    ['a surface richness', (w: World) => (w.terrain.resources.surface.richness[1] ^= 1)],
-    ['a surface stock', (w: World) => (w.terrain.resources.surface.stock[2] ^= 1)],
-    ['a ground resource type', (w: World) => (w.terrain.resources.ground.type[3] ^= 1)],
-    ['a ground richness', (w: World) => (w.terrain.resources.ground.richness[4] ^= 1)],
-    ['a ground stock', (w: World) => (w.terrain.resources.ground.stock[5] ^= 1)],
+    [
+      'a resource node kind',
+      (w: World) => (w.nodes.kind[8] = ((w.nodes.kind[8] as number) % 22) + 1)
+    ],
+    ['a resource node richness', (w: World) => (w.nodes.richness[1] ^= 1)],
+    ['a resource node stock', (w: World) => (w.nodes.stock[2] ^= 1)],
+    ['a resource node tile', (w: World) => (w.nodes.tile[3] = (w.nodes.tile[3] as number) + 1)],
+    ['the last resource node', (w: World) => (w.nodes.stock[w.nodes.count - 1] ^= 1)],
     [
       'the sea level',
       (w: World) =>

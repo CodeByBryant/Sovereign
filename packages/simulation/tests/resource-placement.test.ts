@@ -706,3 +706,125 @@ describe('regionalSampler', () => {
     }
   })
 })
+
+describe('placeResources: spacing (patches with room between the objects)', () => {
+  /** The smallest king-move distance between any two of the tiles. */
+  const closest = (tiles: number[]): number => {
+    let best = Infinity
+    for (let a = 0; a < tiles.length; a += 1) {
+      for (let b = a + 1; b < tiles.length; b += 1) {
+        const dx = Math.abs(xOf(tiles[a]!) - xOf(tiles[b]!))
+        const dy = Math.abs(Math.floor(tiles[a]! / W) - Math.floor(tiles[b]! / W))
+        best = Math.min(best, Math.max(dx, dy))
+      }
+    }
+    return best
+  }
+
+  it('leaves a resource packed solid when no spacing is given (as before)', () => {
+    const input = build({ timber: rule({ share: 0.3 }) })
+    expect(closest(tilesOf(placeResources(input).surface, ResourceType.Timber))).toBe(1)
+  })
+
+  it('keeps every object at least `spacing` tiles from the next of its kind', () => {
+    for (const spacing of [2, 3]) {
+      const input = build({ timber: rule({ share: 0.08, spacing }) })
+      const found = tilesOf(placeResources(input).surface, ResourceType.Timber)
+      expect(found.length).toBeGreaterThan(100)
+      expect(closest(found), `spacing ${spacing}`).toBeGreaterThanOrEqual(spacing)
+    }
+  })
+
+  it('still gives exactly the share when it fits with the room asked for', () => {
+    const input = build({ timber: rule({ share: 0.08, spacing: 2 }) })
+    expect(tilesOf(placeResources(input).surface, ResourceType.Timber)).toHaveLength(
+      Math.round(0.08 * landCount(input))
+    )
+  })
+
+  it('gives as many as fit when the share asks for more than the room allows', () => {
+    const input = build({ timber: rule({ share: 0.9, spacing: 2 }) })
+    const found = tilesOf(placeResources(input).surface, ResourceType.Timber)
+    const land = landCount(input)
+    expect(found.length).toBeLessThan(0.4 * land) // at most about a quarter of a map
+    expect(found.length).toBeGreaterThan(0.15 * land) // but a good packing of it
+    expect(closest(found)).toBeGreaterThanOrEqual(2)
+  })
+
+  it('keeps the best tiles first: a ridge-loving resource still sits on its ridge', () => {
+    const input = build({ iron: rule({ share: 0.008, prefer: { ridge: 3 }, spacing: 2 }) })
+    const found = tilesOf(placeResources(input).ground, ResourceType.Iron)
+    expect(found.length).toBeGreaterThan(40)
+    const nearRidge = found.filter((i) => xOf(i) >= 55 && xOf(i) <= 68).length
+    expect(nearRidge / found.length).toBeGreaterThan(0.9)
+  })
+
+  it('gives the most richness to the best tile and less as the patch thins out', () => {
+    const input = build({ iron: rule({ share: 0.05, prefer: { ridge: 3 }, spacing: 2 }) })
+    const slots = placeResources(input)
+    const found = tilesOf(slots.ground, ResourceType.Iron)
+    const richness = found.map((i) => slots.ground.richness[i] as number)
+    expect(Math.max(...richness)).toBe(255)
+    expect(Math.min(...richness)).toBe(1) // the last tile that fit is the poorest
+  })
+
+  it('only keeps room between objects of the same kind: another resource may stand right beside', () => {
+    const input = build({
+      horses: rule({ share: 0.03, spacing: 3 }),
+      timber: rule({ share: 0.2, spacing: 2 })
+    })
+    const slots = placeResources(input)
+    const horses = tilesOf(slots.surface, ResourceType.Horses)
+    const timber = tilesOf(slots.surface, ResourceType.Timber)
+    expect(horses.length).toBeGreaterThan(100)
+    expect(timber.length).toBeGreaterThan(300)
+    expect(closest(horses)).toBeGreaterThanOrEqual(3)
+    expect(closest(timber)).toBeGreaterThanOrEqual(2)
+    expect(horses.filter((i) => timber.includes(i))).toEqual([]) // never the same tile
+    let beside = 0
+    for (const t of timber) {
+      for (const h of horses) {
+        if (
+          Math.max(Math.abs(xOf(t) - xOf(h)), Math.abs(Math.floor(t / W) - Math.floor(h / W))) === 1
+        )
+          beside += 1
+      }
+    }
+    expect(beside).toBeGreaterThan(0)
+  })
+  it('does not make a ground resource keep clear of surface ones (they are different slots)', () => {
+    const input = build({
+      timber: rule({ share: 0.3, spacing: 2 }),
+      iron: rule({ share: 0.3, spacing: 2 })
+    })
+    const slots = placeResources(input)
+    let both = 0
+    for (let i = 0; i < W * H; i += 1) {
+      if (
+        slots.surface.type[i] === ResourceType.Timber &&
+        slots.ground.type[i] === ResourceType.Iron
+      )
+        both += 1
+    }
+    expect(both).toBeGreaterThan(50)
+  })
+
+  it('spaces water resources too', () => {
+    const input = build({ fish: rule({ share: 0.1, spacing: 2 }) })
+    const found = tilesOf(placeResources(input).surface, ResourceType.Fish)
+    expect(found.length).toBeGreaterThan(50)
+    expect(closest(found)).toBeGreaterThanOrEqual(2)
+  })
+
+  it('is reproducible', () => {
+    const input = build({ timber: rule({ share: 0.1, spacing: 2, regional: 0.5 }) })
+    expect(placeResources(input).surface.type).toEqual(placeResources(input).surface.type)
+  })
+
+  it('rejects a spacing that is not a whole number from 1 to 8', () => {
+    for (const spacing of [0, 1.5, 9, -1]) {
+      expect(() => placeResources(build({ timber: rule({ spacing }) }))).toThrow(RangeError)
+    }
+    expect(() => placeResources(build({ timber: rule({ spacing: 8 }) }))).not.toThrow()
+  })
+})

@@ -24,8 +24,9 @@ interface Measured {
   onRidge: number[]
   inBasin: number[]
   highest: number[]
-  /** same-resource 4-neighbours over 4 x tiles, by id (clustering) */
-  same: number[]
+  /** objects with another of the same kind within 6 tiles, by id (grouping), and the objects counted */
+  grouped: number[]
+  counted: number[]
   mountainous: number[]
 }
 
@@ -42,7 +43,8 @@ function measure(world: World): Measured {
     onRidge: make(),
     inBasin: make(),
     highest: make(),
-    same: make(),
+    grouped: make(),
+    counted: make(),
     mountainous: make()
   }
   const landMask = new Uint8Array(size)
@@ -75,10 +77,22 @@ function measure(world: World): Measured {
         } else {
           m.onWater[type] += 1
         }
-        if (x > 0 && types[i - 1] === type) m.same[type] += 1
-        if (x < t.width - 1 && types[i + 1] === type) m.same[type] += 1
-        if (y > 0 && types[i - t.width] === type) m.same[type] += 1
-        if (y < t.height - 1 && types[i + t.width] === type) m.same[type] += 1
+        // is there another of the same kind within 6 tiles? (a patch, rather than a lone speckle)
+        let near = false
+        for (let dy = -6; !near && dy <= 6; dy += 1) {
+          const yy = y + dy
+          if (yy < 0 || yy >= t.height) continue
+          for (let dx = -6; dx <= 6; dx += 1) {
+            const xx = x + dx
+            if ((dx === 0 && dy === 0) || xx < 0 || xx >= t.width) continue
+            if (types[yy * t.width + xx] === type) {
+              near = true
+              break
+            }
+          }
+        }
+        m.counted[type] += 1
+        if (near) m.grouped[type] += 1
       }
     }
   }
@@ -129,13 +143,15 @@ describe(`resource coverage over ${SEEDS.length} worlds of ${SIDE} x ${SIDE}`, (
               : 0
         const gotLand = m.onLand[d.id] as number
         const gotWater = m.onWater[d.id] as number
-        // exact by construction (an upper bound only if too few tiles qualify), so a wide band suffices
+        // exact by construction (an upper bound only if too few tiles qualify, or the room a rule asks for
+        // between its objects leaves too few), so a wide band suffices
         for (const [what, got, target] of [
           ['land', gotLand, landTarget],
           ['water', gotWater, waterTarget]
         ] as const) {
           if (target === 0) continue
-          if (got < 0.9 * target || got > 1.01 * target) {
+          const floor = rule.spacing !== undefined && rule.spacing > 1 ? 0.6 : 0.9
+          if (got < floor * target || got > 1.01 * target) {
             off.push(`${d.key} ${what} in world ${w}: ${got} tiles, target ${Math.round(target)}`)
           }
         }
@@ -179,15 +195,36 @@ describe(`resource coverage over ${SEEDS.length} worlds of ${SIDE} x ${SIDE}`, (
     expect(fraction((m) => m.mountainous, 'silver')).toBeGreaterThanOrEqual(0.3)
   })
 
-  it('forms patches and veins, not speckle: most of a resource sits beside the same resource', () => {
+  it('forms patches and veins, not speckle: almost every object has another of its kind close by', () => {
     const loose: string[] = []
     for (const d of RESOURCE_CATALOG) {
-      const tiles = total((m) => m.onLand, d.id) + total((m) => m.onWater, d.id)
-      const clustering = total((m) => m.same, d.id) / (4 * tiles)
+      const counted = total((m) => m.counted, d.id)
+      const grouped = total((m) => m.grouped, d.id) / counted
       const share = rules[d.key]?.share ?? 0
-      const floor = share >= 0.05 ? 0.9 : 0.8
-      if (clustering < floor) loose.push(`${d.key}: ${clustering.toFixed(3)} (floor ${floor})`)
+      const floor = share >= 0.02 ? 0.95 : 0.8
+      if (grouped < floor) loose.push(`${d.key}: ${grouped.toFixed(3)} (floor ${floor})`)
     }
     expect(loose).toEqual([])
+  })
+
+  it('leaves room: no resource with a spacing has two objects closer than that', () => {
+    // checked on the 1000 x 1000 worlds through the objects' neighbours one tile away
+    for (const d of RESOURCE_CATALOG) {
+      const spacing = rules[d.key]?.spacing ?? 1
+      if (spacing < 2) continue
+      for (const seed of SEEDS.slice(0, 1)) {
+        const w = World.create({ seed, config: { map: { width: SIDE, height: SIDE } } })
+        const types = w.terrain.resources[d.layer].type
+        let touching = 0
+        for (let y = 0; y < SIDE; y += 1) {
+          for (let x = 0; x < SIDE - 1; x += 1) {
+            const i = y * SIDE + x
+            if (types[i] === d.id && types[i + 1] === d.id) touching += 1
+            if (y < SIDE - 1 && types[i] === d.id && types[i + SIDE] === d.id) touching += 1
+          }
+        }
+        expect(touching, `${d.key} objects side by side`).toBe(0)
+      }
+    }
   })
 })

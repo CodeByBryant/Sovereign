@@ -679,6 +679,67 @@ describe('unit settings (units)', () => {
     expect(problems.join('\n')).toMatch(/units/)
   })
 
+  it('has a gather table for the land resources, a carrying limit and a search radius', () => {
+    expect(units.carryCapacity).toBe(20)
+    expect(units.searchRadius).toBe(48)
+    for (const key of ['timber', 'grain', 'stone', 'iron', 'gold', 'fish', 'pasture']) {
+      expect(units.gather[key], key).toBeDefined()
+    }
+    for (const key of ['whales', 'pearls', 'oil']) expect(units.gather[key], key).toBeUndefined()
+    for (const [key, rule] of Object.entries(units.gather)) {
+      expect(rule.work, key).toBeGreaterThanOrEqual(1)
+      expect(rule.amount, key).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  it.each([
+    ['a carrying limit of 0', (c: WorldConfig) => (c.units.carryCapacity = 0)],
+    ['a carrying limit above a byte', (c: WorldConfig) => (c.units.carryCapacity = 256)],
+    ['a fractional carrying limit', (c: WorldConfig) => (c.units.carryCapacity = 2.5)],
+    ['a search radius of 0', (c: WorldConfig) => (c.units.searchRadius = 0)],
+    ['a fractional search radius', (c: WorldConfig) => (c.units.searchRadius = 1.5)],
+    ['a search radius beyond the map', (c: WorldConfig) => (c.units.searchRadius = 100001)],
+    [
+      'a resource that does not exist',
+      (c: WorldConfig) => (c.units.gather.unicorn = { work: 1, amount: 1 })
+    ],
+    ['work of 0 ticks', (c: WorldConfig) => (c.units.gather.timber!.work = 0)],
+    ['work of more than a year', (c: WorldConfig) => (c.units.gather.timber!.work = 366)],
+    ['a fractional amount', (c: WorldConfig) => (c.units.gather.timber!.amount = 1.5)],
+    ['an amount of 0', (c: WorldConfig) => (c.units.gather.timber!.amount = 0)],
+    ['an amount above a byte', (c: WorldConfig) => (c.units.gather.timber!.amount = 256)]
+  ])('rejects %s', (_label, edit) => {
+    const problems = bad(edit)
+    expect(problems.length).toBeGreaterThan(0)
+    expect(problems.join('\n')).toMatch(/units/)
+  })
+
+  it('takes the edges: work of a year, the largest amount and a one-tile radius', () => {
+    expect(
+      bad((c) => {
+        c.units.gather.timber = { work: 365, amount: 255 }
+        c.units.searchRadius = 1
+        c.units.carryCapacity = 255
+      })
+    ).toEqual([])
+  })
+
+  it('takes an empty gather table, so a world can have villagers that only wander', () => {
+    expect(bad((c) => (c.units.gather = {}))).toEqual([])
+  })
+
+  it('replaces the whole table when an override gives one (a section merges one level deep)', () => {
+    const resolved = resolveWorldConfig({ units: { gather: { whales: { work: 20, amount: 4 } } } })
+    expect(resolved.units.gather).toEqual({ whales: { work: 20, amount: 4 } })
+    expect(resolved.units.walkSpeed).toBe(units.walkSpeed)
+  })
+
+  it('does not share the table with the defaults', () => {
+    const resolved = resolveWorldConfig()
+    resolved.units.gather.timber!.work = 99
+    expect(defaultWorldConfig.units.gather.timber!.work).toBe(6)
+  })
+
   it('takes a count of 0, so a world can have no units at all', () => {
     expect(bad((c) => (c.units.perNation = 0))).toEqual([])
   })

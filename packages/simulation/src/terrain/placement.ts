@@ -50,6 +50,8 @@ export interface PlacementInput {
 const DISTANCE_LIMIT = 255
 /** The smallest score a tile can have once it passes the gates, so a strong dislike never zeroes it. */
 const SCORE_FLOOR = 0.05
+/** The most room a rule may ask for between its objects, in tiles. */
+const MAX_SPACING = 8
 /** Bins of the score histogram that picks the top tiles. */
 const SCORE_BINS = 65536
 
@@ -162,6 +164,11 @@ function validate(input: PlacementInput): void {
       throw new RangeError(`${key}.regional must be from 0 to 1`)
     }
     if (!(rule.regionSize > 0)) throw new RangeError(`${key}.regionSize must be greater than 0`)
+    if (rule.spacing !== undefined) {
+      if (!Number.isInteger(rule.spacing) || rule.spacing < 1 || rule.spacing > MAX_SPACING) {
+        throw new RangeError(`${key}.spacing must be a whole number from 1 to ${MAX_SPACING}`)
+      }
+    }
     for (const name of ['elevation', 'temperature', 'humidity', 'coastDistance'] as const) {
       checkRange(`${key}.${name}`, rule[name])
     }
@@ -273,6 +280,9 @@ export function placeResources(input: PlacementInput): ResourceSlots {
   // rarest first, so a rare resource gets its best sites before a common one takes them
   passes.sort((a, b) => a.share - b.share || a.def.id - b.def.id)
 
+  // the tiles one rule has taken, so it can keep room between its own objects (cleared after each rule)
+  const taken = new Uint8Array(size)
+
   const candidateIndex = new Int32Array(size)
   const candidateScore = new Float32Array(size)
   const bins = new Uint32Array(SCORE_BINS)
@@ -364,6 +374,57 @@ export function placeResources(input: PlacementInput): ResourceSlots {
     const denominator = pass.water ? waterCount : landCount
     const target = Math.min(count, Math.round(pass.share * denominator))
     if (target <= 0) continue
+
+    const spacing = rule.spacing ?? 1
+    if (spacing > 1) {
+      // ---- with room between the objects: best tiles first, skipping any too close to one of its own already placed ----
+      const order = new Int32Array(count)
+      for (let c = 0; c < count; c += 1) order[c] = c
+      order.sort(
+        (a, b) => candidateScore[b] - candidateScore[a] || candidateIndex[a] - candidateIndex[b]
+      )
+      const reach = spacing - 1
+      const chosen = new Int32Array(target)
+      let placed = 0
+      for (let o = 0; o < count && placed < target; o += 1) {
+        const c = order[o]
+        const i = candidateIndex[c]
+        const x = i % width
+        const y = (i - x) / width
+        let clear = true
+        for (
+          let ny = Math.max(0, y - reach);
+          clear && ny <= Math.min(height - 1, y + reach);
+          ny += 1
+        ) {
+          for (let nx = Math.max(0, x - reach); nx <= Math.min(width - 1, x + reach); nx += 1) {
+            if (taken[ny * width + nx] !== 0) {
+              clear = false
+              break
+            }
+          }
+        }
+        if (!clear) continue
+        chosen[placed] = c
+        placed += 1
+        taken[i] = 1
+      }
+      for (let k = 0; k < placed; k += 1) taken[candidateIndex[chosen[k] as number] as number] = 0
+      if (placed === 0) continue
+      // richness from how far above the last tile taken each scored: the core of a patch is richest
+      const worst = candidateScore[chosen[placed - 1] as number]
+      const span = max - worst
+      for (let k = 0; k < placed; k += 1) {
+        const c = chosen[k] as number
+        const rank = span > 0 ? clamp((candidateScore[c] - worst) / span, 0, 1) : 1
+        const richness = 1 + Math.round(254 * rank)
+        const i = candidateIndex[c]
+        slot.type[i] = def.id
+        slot.richness[i] = richness
+        slot.stock[i] = richness
+      }
+      continue
+    }
 
     // ---- take the highest-scoring `target` tiles: a histogram finds the cut-off ----
     const range = max - min

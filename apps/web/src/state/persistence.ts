@@ -17,7 +17,8 @@ const DB_NAME = 'sovereign'
 // 5: engine save format 4 (a route network, and the profile of each nation's land); older records are dropped.
 // 6: engine save format 5 (nations own provinces, with expansion points); older records are dropped.
 // 7: engine save format 6 (the world has units: the entity store is saved); older records are dropped.
-const DB_VERSION = 7
+// 8: engine save format 7 (resource deposits are saved as node rows, not tile layers); older records are dropped.
+const DB_VERSION = 8
 const STORE_NAME = 'saves'
 
 /* ------------------------------------------------------------------ */

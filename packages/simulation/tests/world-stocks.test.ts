@@ -136,7 +136,11 @@ describe('what a province holds follows what is left in the ground', () => {
   })
 
   it('grows back as the stock regrows, the profile and stats with it', () => {
-    const w = make()
+    // nobody gathers here, so the tile that was drawn down is left to grow back by itself
+    const w = World.create({
+      seed: 11,
+      config: { ...smallWorldOverrides({ nations: 6 }), units: { gather: {} } }
+    })
     const tile = ownedTile(w, 'surface', ResourceType.Grain)
     const province = w.provinces.provinceOf[tile]!
     const owner = w.nations[w.provinceOwner[province]!]!

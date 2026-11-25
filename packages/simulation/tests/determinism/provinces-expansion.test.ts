@@ -202,20 +202,17 @@ describe('growth over 3 worlds of 1000 x 1000', () => {
     }
   })
 
-  it('holds still once settled: more time changes no border, no stat, no point', () => {
+  it('holds still once settled: more time changes no border and claims nothing', () => {
+    // Stats are not part of this: villagers keep drawing deposits down and they keep growing back, and a
+    // nation's profile and stats are measured from those stocks, so they go on moving (see the next test for
+    // what must always hold of them). The borders and the claims do not.
     for (const { w } of grown) {
       const owners = Array.from(w.provinceOwner)
-      const state = JSON.stringify(
-        w.nations.map((n) => [[...n.provinces], n.expansionPoints, n.profile, n.stats])
-      )
+      const held = JSON.stringify(w.nations.map((n) => [...n.provinces]))
       const claims = w.expansionClaims
       w.run(2000)
       expect(Array.from(w.provinceOwner)).toEqual(owners)
-      expect(
-        JSON.stringify(
-          w.nations.map((n) => [[...n.provinces], n.expansionPoints, n.profile, n.stats])
-        )
-      ).toBe(state)
+      expect(JSON.stringify(w.nations.map((n) => [...n.provinces]))).toBe(held)
       expect(w.expansionClaims).toBe(claims)
     }
   })

@@ -1,7 +1,15 @@
 import type { ResourceSlot, ResourceSlots } from '@sovereign/contracts'
 import { ResourceType } from '@sovereign/contracts'
 import { describe, expect, it } from 'vitest'
+import { NodeStore } from '../src/resources/NodeStore'
 import { ResourceStocks, buildRegrowthTable } from '../src/world/ResourceStocks'
+
+/** Stocks over a set of tile slots, through the node store that owns their stock. */
+const stocksOf = (
+  s: ResourceSlots,
+  t: ReturnType<typeof buildRegrowthTable>,
+  onChange?: (tile: number) => void
+): ResourceStocks => new ResourceStocks(NodeStore.fromSlots(s), t, onChange)
 
 const N = 64
 
@@ -56,7 +64,7 @@ describe('buildRegrowthTable', () => {
 describe('extract', () => {
   it('takes what it can and returns what it took, clamped to the stock', () => {
     const s = slots(slot([[5, ResourceType.Grain, 100]]), slot([[9, ResourceType.Iron, 40]]))
-    const stocks = new ResourceStocks(s, table)
+    const stocks = stocksOf(s, table)
     expect(stocks.extract('surface', 5, 30)).toBe(30)
     expect(s.surface.stock[5]).toBe(70)
     expect(stocks.extract('surface', 5, 500)).toBe(70)
@@ -68,7 +76,7 @@ describe('extract', () => {
 
   it('takes nothing from a tile that holds nothing, or when asked for nothing', () => {
     const s = slots(slot([[5, ResourceType.Grain, 100]]))
-    const stocks = new ResourceStocks(s, table)
+    const stocks = stocksOf(s, table)
     expect(stocks.extract('surface', 6, 10)).toBe(0)
     expect(stocks.extract('surface', 5, 0)).toBe(0)
     expect(s.surface.stock[5]).toBe(100)
@@ -76,7 +84,7 @@ describe('extract', () => {
 
   it('leaves the richness and the resource type alone: a depleted mine is still a mine', () => {
     const s = slots(slot([]), slot([[9, ResourceType.Gold, 60]]))
-    const stocks = new ResourceStocks(s, table)
+    const stocks = stocksOf(s, table)
     stocks.extract('ground', 9, 1000)
     expect(s.ground.stock[9]).toBe(0)
     expect(s.ground.type[9]).toBe(ResourceType.Gold)
@@ -84,7 +92,7 @@ describe('extract', () => {
   })
 
   it('rejects a negative or fractional amount, a tile off the map, and an unknown layer', () => {
-    const stocks = new ResourceStocks(slots(slot([[5, ResourceType.Grain, 100]])), table)
+    const stocks = stocksOf(slots(slot([[5, ResourceType.Grain, 100]])), table)
     expect(() => stocks.extract('surface', 5, -1)).toThrow(RangeError)
     expect(() => stocks.extract('surface', 5, 1.5)).toThrow(RangeError)
     expect(() => stocks.extract('surface', 5, Number.NaN)).toThrow(RangeError)
@@ -97,7 +105,7 @@ describe('extract', () => {
 
 describe('regrowth', () => {
   it('tracks only the tiles that have been drawn down', () => {
-    const stocks = new ResourceStocks(
+    const stocks = stocksOf(
       slots(
         slot([
           [1, ResourceType.Grain, 100],
@@ -118,7 +126,7 @@ describe('regrowth', () => {
   it('regrows a renewable stock by its rate on its own tick of each period', () => {
     // grain: 2 units per 10 ticks, on ticks where (tick + tile) % 10 === 0; tile 7 regrows at ticks 3, 13, 23
     const s = slots(slot([[7, ResourceType.Grain, 100]]))
-    const stocks = new ResourceStocks(s, table)
+    const stocks = stocksOf(s, table)
     stocks.extract('surface', 7, 50)
     const seen: number[] = []
     for (let tick = 0; tick < 25; tick += 1) {
@@ -136,7 +144,7 @@ describe('regrowth', () => {
   it('never regrows past the richness, and stops tracking a tile once it is full', () => {
     // fish: 5 units per 4 ticks; tile 2 regrows when (tick + 2) % 4 === 0
     const s = slots(slot([[2, ResourceType.Fish, 12]]))
-    const stocks = new ResourceStocks(s, table)
+    const stocks = stocksOf(s, table)
     stocks.extract('surface', 2, 12)
     for (let tick = 0; tick < 40; tick += 1) stocks.regrow(tick)
     expect(s.surface.stock[2]).toBe(12)
@@ -145,7 +153,7 @@ describe('regrowth', () => {
 
   it('does not regrow ground resources, or a resource with no regrowth rate', () => {
     const s = slots(slot([[4, ResourceType.Pasture, 80]]), slot([[9, ResourceType.Iron, 50]]))
-    const stocks = new ResourceStocks(s, table)
+    const stocks = stocksOf(s, table)
     stocks.extract('surface', 4, 40) // pasture has no entry in the table
     stocks.extract('ground', 9, 20)
     for (let tick = 0; tick < 500; tick += 1) stocks.regrow(tick)
@@ -158,7 +166,7 @@ describe('regrowth', () => {
     const tiles: Array<[number, number, number]> = []
     for (let t = 0; t < 10; t += 1) tiles.push([t, ResourceType.Grain, 100])
     const s = slots(slot(tiles))
-    const stocks = new ResourceStocks(s, table)
+    const stocks = stocksOf(s, table)
     for (let t = 0; t < 10; t += 1) stocks.extract('surface', t, 50)
     stocks.regrow(0)
     // period 10: of ten consecutive tiles exactly one has (0 + tile) % 10 === 0
@@ -171,15 +179,14 @@ describe('regrowth', () => {
     const s = slots(
       slot([
         [1, ResourceType.Grain, 100],
-        [2, ResourceType.Grain, 100],
-        [3, ResourceType.Iron, 100]
+        [2, ResourceType.Grain, 100]
       ])
     )
     s.surface.stock[1] = 40
     s.ground.type[3] = ResourceType.Iron
     s.ground.richness[3] = 100
     s.ground.stock[3] = 10
-    const stocks = new ResourceStocks(s, table)
+    const stocks = stocksOf(s, table)
     expect(stocks.pending).toBe(1) // tile 1 only: tile 2 is full, tile 3 is a finite mineral
     // 60 units to go at 2 per 10 ticks is 30 regrowths, so 300 ticks; allow 400
     for (let tick = 0; tick < 400; tick += 1) stocks.regrow(tick)
@@ -192,7 +199,7 @@ describe('regrowth', () => {
       for (let t = 0; t < 40; t += 1)
         tiles.push([t, t % 2 === 0 ? ResourceType.Grain : ResourceType.Timber, 30 + t])
       const s = slots(slot(tiles))
-      return { s, stocks: new ResourceStocks(s, table) }
+      return { s, stocks: stocksOf(s, table) }
     }
     const a = build()
     const b = build()
@@ -211,7 +218,12 @@ describe('regrowth', () => {
       richness: new Uint8Array(size).fill(20),
       stock: new Uint8Array(size).fill(20)
     }
-    const stocks = new ResourceStocks({ surface: big, ground: slot([]) }, table)
+    const none: ResourceSlot = {
+      type: new Uint8Array(size),
+      richness: new Uint8Array(size),
+      stock: new Uint8Array(size)
+    }
+    const stocks = stocksOf({ surface: big, ground: none }, table)
     for (let tile = 0; tile < 3000; tile += 1) stocks.extract('surface', tile, 20)
     expect(stocks.pending).toBe(3000)
     // 20 units at 2 per 10 ticks is 100 ticks
@@ -221,9 +233,53 @@ describe('regrowth', () => {
   })
 
   it('rejects a tick that is not a non-negative integer', () => {
-    const stocks = new ResourceStocks(slots(slot([])), table)
+    const stocks = stocksOf(slots(slot([])), table)
     expect(() => stocks.regrow(-1)).toThrow(RangeError)
     expect(() => stocks.regrow(1.5)).toThrow(RangeError)
     expect(() => stocks.regrow(Number.NaN)).toThrow(RangeError)
+  })
+})
+
+describe('extractNode', () => {
+  it('takes from a node by id, like extract does from a tile, and tells the slot views', () => {
+    const s = slots(slot([[5, ResourceType.Grain, 100]]), slot([[9, ResourceType.Iron, 40]]))
+    const nodes = NodeStore.fromSlots(s)
+    const seen: number[] = []
+    const stocks = new ResourceStocks(nodes, table, (tile) => seen.push(tile))
+    const grain = nodes.nodeAt(5, 'surface')
+    expect(stocks.extractNode(grain, 30)).toBe(30)
+    expect(nodes.stock[grain]).toBe(70)
+    expect(s.surface.stock[5]).toBe(70)
+    expect(seen).toEqual([5])
+    expect(stocks.extractNode(grain, 500)).toBe(70)
+    expect(stocks.extractNode(grain, 5)).toBe(0)
+    expect(seen).toEqual([5, 5])
+  })
+  it('puts a drawn-down renewable node on the regrowth list and a finite one not', () => {
+    const s = slots(slot([[5, ResourceType.Grain, 100]]), slot([[9, ResourceType.Iron, 40]]))
+    const nodes = NodeStore.fromSlots(s)
+    const stocks = new ResourceStocks(nodes, table)
+    stocks.extractNode(nodes.nodeAt(9, 'ground'), 10)
+    expect(stocks.pending).toBe(0)
+    stocks.extractNode(nodes.nodeAt(5, 'surface'), 10)
+    expect(stocks.pending).toBe(1)
+  })
+  it('refuses a node that is not there and a bad amount', () => {
+    const nodes = NodeStore.fromSlots(slots(slot([[5, ResourceType.Grain, 100]])))
+    const stocks = new ResourceStocks(nodes, table)
+    expect(() => stocks.extractNode(1, 1)).toThrow(RangeError)
+    expect(() => stocks.extractNode(-1, 1)).toThrow(RangeError)
+    expect(() => stocks.extractNode(0, -1)).toThrow(RangeError)
+    expect(() => stocks.extractNode(0, 1.5)).toThrow(RangeError)
+  })
+  it('regrows through the node store so the slot views grow too', () => {
+    const s = slots(slot([[5, ResourceType.Grain, 100]]))
+    const nodes = NodeStore.fromSlots(s)
+    const stocks = new ResourceStocks(nodes, table)
+    stocks.extractNode(0, 50)
+    for (let tick = 0; tick < 10; tick += 1) stocks.regrow(tick)
+    expect(nodes.stock[0]).toBe(52)
+    expect(s.surface.stock[5]).toBe(52)
+    expect(Array.from(nodes.drainChanges())).toEqual([0])
   })
 })

@@ -51,6 +51,8 @@ const unitArrays = (u: UnitSnapshot): Array<Uint32Array | Uint8Array | Float32Ar
   u.id,
   u.kind,
   u.owner,
+  u.state,
+  u.carry,
   u.x,
   u.y
 ]
@@ -146,6 +148,18 @@ describe('buildReady', () => {
   it('carries the units as the world places them, in tiles', () => {
     expect(message.units).toEqual(world.unitPositions())
     expect(message.units.count).toBeGreaterThan(0)
+  })
+
+  it('lists the halls, at the capitals', () => {
+    expect(message.halls).toEqual(world.hallList())
+    expect(message.halls.length).toBe(world.nations.length)
+  })
+
+  it('starts from a clean slate of stock changes: what happened before is already in the copy it sends', () => {
+    const w = make()
+    w.run(120) // villagers have gathered by now
+    buildReady(w, STYLE)
+    expect(w.drainStockChanges().tile.length).toBe(0)
   })
 
   it('carries a road byte per tile, made from the routes', () => {

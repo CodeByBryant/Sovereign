@@ -21,6 +21,8 @@ import {
   type NationProfile,
   type NationSnapshot,
   type TerrainFields,
+  type HallSnapshot,
+  type StockChanges,
   type UnitSnapshot,
   type WorldSnapshot
 } from '@sovereign/contracts'
@@ -37,7 +39,7 @@ import {
 import { spawnNations } from '../nations/NationSpawner'
 import { normalizeSeed } from '../random/seed'
 import { ExpansionSystem } from '../systems/ExpansionSystem'
-import { WanderSystem } from '../systems/WanderSystem'
+import { UnitSystem } from '../systems/UnitSystem'
 import type { CostGrid } from '../terrain/cost'
 import { Pathfinder, RouteCache } from '../terrain/pathing'
 import { stateHasher } from '../serialization/hash'
@@ -45,6 +47,9 @@ import { generateTerrain } from '../terrain/pipeline'
 import { NO_PROVINCE, type ProvinceMap } from '../terrain/provinces'
 import { costGridOf } from './costGrid'
 import { buildProvinceLayer, type ProvinceLayer } from './provinceLayer'
+import { NodeIndex } from '../resources/NodeIndex'
+import { NodeStore } from '../resources/NodeStore'
+import { Stockpiles } from './Stockpiles'
 import { buildRegrowthTable, ResourceStocks, type ResourceLayerName } from './ResourceStocks'
 import { WorldMap } from './WorldMap'
 
@@ -113,6 +118,13 @@ export interface WorldState {
   ownership: Uint8Array
   /** The units, when restoring a world that has them (a new world is given its own). */
   entities?: EntityStore
+  /**
+   * The resource nodes, when restoring a world that has them: their slot arrays must be the terrain's
+   * `resources`. A new world makes its own from the terrain.
+   */
+  nodes?: NodeStore
+  /** What each hall holds, when restoring a world that has halls (a new world opens its own). */
+  stockpiles?: Stockpiles
 }
 
 export class World {
@@ -135,12 +147,18 @@ export class World {
   private readonly dirtyProvinces = new Set<number>()
   /** Nations growing into free provinces (derived state: its borders are rebuilt from the land held). */
   private readonly expansion: ExpansionSystem
-  /** Drawing resources down and letting the renewable ones grow back (it works on `terrain.resources`). */
+  /** Every resource deposit as a row; the tile slot arrays in `terrain.resources` are its write-through views. */
+  readonly nodes: NodeStore
+  /** "The nearest tree": where the deposits of each kind are (derived from the nodes; never saved). */
+  private readonly nodeIndex: NodeIndex
+  /** Drawing resources down and letting the renewable ones grow back (it works through the node store). */
   private readonly stocks: ResourceStocks
-  /** Everything that lives and acts: villagers for now (saved and hashed). */
+  /** Everything that lives and acts: villagers and the halls they belong to (saved and hashed). */
   readonly entities: EntityStore
+  /** What each hall holds (saved and hashed): villagers drop what they gather here. */
+  readonly stockpiles: Stockpiles
   /** The villagers' behaviour: they rest, walk and rest (derived timers: rebuilt from the rows). */
-  private readonly wander: WanderSystem
+  private readonly units: UnitSystem
   /** The cost of crossing the ground, on cells (derived; never saved). */
   private readonly grid: CostGrid
 
@@ -166,8 +184,13 @@ export class World {
       resources: state.terrain.resources,
       ownership: state.ownership
     })
+    if (state.nodes !== undefined && state.nodes.slots !== state.terrain.resources) {
+      throw new RangeError('the nodes and the terrain must share the resource slot arrays')
+    }
+    this.nodes = state.nodes ?? NodeStore.fromSlots(state.terrain.resources)
+    this.nodeIndex = new NodeIndex(this.nodes, state.terrain.width, state.terrain.height)
     this.stocks = new ResourceStocks(
-      state.terrain.resources,
+      this.nodes,
       buildRegrowthTable(state.config.resources.regrowth),
       (tile) => this.noteStockChange(tile)
     )
@@ -183,7 +206,8 @@ export class World {
     })
     this.grid = grid
     this.entities = state.entities ?? new EntityStore()
-    this.wander = new WanderSystem({
+    this.stockpiles = state.stockpiles ?? new Stockpiles()
+    this.units = new UnitSystem({
       entities: this.entities,
       grid,
       routes: new RouteCache(new Pathfinder(grid)),
@@ -191,9 +215,16 @@ export class World {
       seed: state.seed,
       width: state.terrain.width,
       height: state.terrain.height,
-      land: (x, y) => state.terrain.elevation[y * state.terrain.width + x]! > state.terrain.seaLevel
+      land: (x, y) =>
+        state.terrain.elevation[y * state.terrain.width + x]! > state.terrain.seaLevel,
+      gather: {
+        nodes: this.nodes,
+        index: this.nodeIndex,
+        stockpiles: this.stockpiles,
+        extract: (node, amount) => this.stocks.extractNode(node, amount)
+      }
     })
-    if (state.entities !== undefined) this.wander.rebuild()
+    if (state.entities !== undefined) this.units.rebuild()
   }
 
   /** Generate a new world: terrain first, then nations placed on it. */
@@ -268,7 +299,7 @@ export class World {
   step(): void {
     // Systems run here, as a flat, ordered list of calls.
     this.expansion.step(this.clock.tick)
-    this.wander.step(this.clock.tick)
+    this.units.step(this.clock.tick)
     this.stocks.regrow(this.clock.tick)
     this.refreshDirtyProvinces()
     this.clock.advance()
@@ -348,7 +379,7 @@ export class World {
     }
   }
 
-  /** Each nation starts with its villagers, resting at its capital. */
+  /** Each nation starts with a hall at its capital, and its villagers resting there. */
   private spawnStartingUnits(): void {
     const { width } = this.terrain
     const perNation = this.config.units.perNation
@@ -356,7 +387,11 @@ export class World {
       const x = nation.capital % width
       const y = (nation.capital - x) / width
       const home = this.cellOf(x, y)
-      for (let k = 0; k < perNation; k += 1) this.wander.spawnVillager(x, y, index, home)
+      const hall = this.entities.spawn({ kind: EntityKind.Hall, x, y, owner: index, home })
+      this.stockpiles.open(hall)
+      for (let k = 0; k < perNation; k += 1) {
+        this.units.spawnVillager(x, y, index, home, 0, hall + 1)
+      }
     })
   }
 
@@ -364,29 +399,70 @@ export class World {
     return Math.floor(y / this.grid.cell) * this.grid.cols + Math.floor(x / this.grid.cell)
   }
 
+  /** Every hall, in row order, for a host to draw. */
+  hallList(): HallSnapshot[] {
+    const { width } = this.terrain
+    const out: HallSnapshot[] = []
+    for (const id of this.entities.ids()) {
+      if (this.entities.kind[id] !== EntityKind.Hall) continue
+      out.push({
+        tile: (this.entities.y[id] as number) * width + (this.entities.x[id] as number),
+        owner: this.entities.owner[id] as number
+      })
+    }
+    return out
+  }
+
   /** Where every living unit is now (between where it set off and where it is going, if it is walking). */
   unitPositions(): UnitSnapshot {
-    const count = this.entities.count
+    let count = 0
+    for (const id of this.entities.ids())
+      if (this.entities.kind[id] === EntityKind.Villager) count += 1
     const snapshot: UnitSnapshot = {
       tick: this.clock.tick,
       count,
       id: new Uint32Array(count),
       kind: new Uint8Array(count),
       owner: new Uint8Array(count),
+      state: new Uint8Array(count),
+      carry: new Uint8Array(count),
       x: new Float32Array(count),
       y: new Float32Array(count)
     }
     let i = 0
     for (const id of this.entities.ids()) {
-      const [x, y] = this.wander.positionAt(id, this.clock.tick)
+      if (this.entities.kind[id] !== EntityKind.Villager) continue
+      const [x, y] = this.units.positionAt(id, this.clock.tick)
       snapshot.id[i] = id
       snapshot.kind[i] = this.entities.kind[id] as number
       snapshot.owner[i] = this.entities.owner[id] as number
+      snapshot.state[i] = this.entities.state[id] as number
+      snapshot.carry[i] = this.entities.carriedType[id] as number
       snapshot.x[i] = x
       snapshot.y[i] = y
       i += 1
     }
     return snapshot
+  }
+
+  /**
+   * The deposits whose stock changed since this was last called (gathered, or grown back), for a host that keeps
+   * its own copy of the tile slot arrays. Each deposit appears once, with what is left in it now.
+   */
+  drainStockChanges(): StockChanges {
+    const ids = this.nodes.drainChanges()
+    const changes: StockChanges = {
+      tile: new Uint32Array(ids.length),
+      layer: new Uint8Array(ids.length),
+      value: new Uint8Array(ids.length)
+    }
+    for (let i = 0; i < ids.length; i += 1) {
+      const id = ids[i] as number
+      changes.tile[i] = this.nodes.tile[id] as number
+      changes.layer[i] = this.nodes.layerOf(id) === 'ground' ? 1 : 0
+      changes.value[i] = this.nodes.stock[id] as number
+    }
+    return changes
   }
 
   /** Advance the simulation by `ticks` ticks. */
@@ -418,12 +494,13 @@ export class World {
     h.writeUint8Array(t.biomeIds)
     h.writeUint8Array(t.riverMask)
     h.writeUint8Array(t.riverWidth)
-    for (const layer of ['surface', 'ground'] as const) {
-      h.writeUint8Array(t.resources[layer].type)
-      h.writeUint8Array(t.resources[layer].richness)
-      h.writeUint8Array(t.resources[layer].stock)
-    }
     h.writeUint8Array(this.map.ownership)
+
+    // the resource deposits (hash schema 6), as rows rather than the six tile layers they mirror
+    h.writeUint8Array(this.nodes.kind)
+    h.writeUint8Array(this.nodes.stock)
+    h.writeUint8Array(this.nodes.richness)
+    h.writeUint32Array(this.nodes.tile)
 
     // the province cut is derived, but its fingerprint catches an engine that cuts it differently
     h.writeUint32(this.provinces.count)
@@ -491,7 +568,7 @@ export class World {
       for (const province of n.provinces) h.writeUint32(province)
     }
 
-    // the villagers (hash schema 5): every column of every row, empty rows included
+    // the villagers and halls (hash schema 5): every column of every row, empty rows included
     const e = this.entities
     const rows = e.highWater
     h.writeUint32(rows)
@@ -502,6 +579,14 @@ export class World {
       } else {
         for (let i = 0; i < rows; i += 1) h.writeUint32((column[i] as number) >>> 0)
       }
+    }
+
+    // what each hall holds (hash schema 6): the halls with a stockpile, lowest row first, then their counters
+    const halls = this.stockpiles.halls()
+    h.writeUint32(halls.length)
+    for (const hall of halls) {
+      h.writeUint32(hall)
+      h.writeUint32Array(this.stockpiles.counts(hall))
     }
 
     return h.digest()
@@ -587,6 +672,7 @@ export class World {
     checkRange('biome ids', t.biomeIds, BIOME_KEYS.length - 1)
     checkRange('river mask', t.riverMask, 1)
     this.validateResources(problems)
+    this.validateNodes(problems)
 
     for (const p of t.strategicPoints) {
       if (p.x < 0 || p.x >= t.width || p.y < 0 || p.y >= t.height) {
@@ -698,6 +784,9 @@ export class World {
     const cells = this.grid.cols * this.grid.rows
     const landCell = (c: number): boolean =>
       Number.isInteger(c) && c >= 0 && c < cells && this.grid.land[c] === 1
+    // a reference to a hall is its row id plus one (0 is none)
+    const isHallRef = (ref: number): boolean =>
+      e.alive(ref - 1) && e.kind[ref - 1] === EntityKind.Hall
     for (let id = 0; id < e.highWater; id += 1) {
       const kind = e.kind[id] as number
       if (kind === EntityKind.None) {
@@ -710,30 +799,71 @@ export class World {
           e.target[id] === 0 &&
           e.wake[id] === 0 &&
           e.legStart[id] === 0 &&
-          e.legEnd[id] === 0
+          e.legEnd[id] === 0 &&
+          e.hall[id] === 0 &&
+          e.goal[id] === 0 &&
+          e.carriedType[id] === 0 &&
+          e.carriedCount[id] === 0
         if (!zeroed) problems.push(`entity row ${id} is empty but not zeroed`)
         continue
       }
-      if (kind !== EntityKind.Villager) {
+      if (kind !== EntityKind.Villager && kind !== EntityKind.Hall) {
         problems.push(`unit ${id} has the kind ${kind}, which is not a kind of unit`)
         continue
       }
+      const noun = kind === EntityKind.Hall ? 'hall' : 'unit'
       const x = e.x[id] as number
       const y = e.y[id] as number
       if (x >= t.width || y >= t.height) {
-        problems.push(`unit ${id} is outside the map at (${x}, ${y})`)
+        problems.push(`${noun} ${id} is outside the map at (${x}, ${y})`)
       } else if ((t.elevation[y * t.width + x] as number) <= t.seaLevel) {
-        problems.push(`unit ${id} is not on land at (${x}, ${y})`)
+        problems.push(`${noun} ${id} is not on land at (${x}, ${y})`)
       }
       const owner = e.owner[id] as number
       if (owner !== NO_OWNER && owner >= this.nations.length) {
-        problems.push(`unit ${id} has the owner ${owner}, which names no nation`)
+        problems.push(`${noun} ${id} has the owner ${owner}, which names no nation`)
       }
       if (!landCell(e.home[id] as number)) {
-        problems.push(`unit ${id} has the home ${e.home[id]}, which is not a land cell`)
+        problems.push(`${noun} ${id} has the home ${e.home[id]}, which is not a land cell`)
+      }
+      if (kind === EntityKind.Hall) {
+        const still =
+          e.state[id] === UnitState.Rest &&
+          e.target[id] === 0 &&
+          e.wake[id] === 0 &&
+          e.legStart[id] === 0 &&
+          e.legEnd[id] === 0 &&
+          e.hall[id] === 0 &&
+          e.goal[id] === 0 &&
+          e.carriedType[id] === 0 &&
+          e.carriedCount[id] === 0
+        if (!still) problems.push(`hall ${id} is not standing still and empty-handed`)
+        if (!this.stockpiles.has(id)) problems.push(`hall ${id} has no stockpile`)
+        continue
+      }
+      const hall = e.hall[id] as number
+      if (hall !== 0 && !isHallRef(hall)) {
+        problems.push(`unit ${id} belongs to the hall row ${hall - 1}, which is not a hall`)
+      }
+      const goal = e.goal[id] as number
+      if (goal > this.nodes.count) {
+        problems.push(`unit ${id} is after the node ${goal - 1}, which does not exist`)
+      }
+      const carriedType = e.carriedType[id] as number
+      const carriedCount = e.carriedCount[id] as number
+      if (carriedType > RESOURCE_CATALOG.length || (carriedType === 0) !== (carriedCount === 0)) {
+        problems.push(
+          `unit ${id} carries ${carriedCount} of the resource ${carriedType}, which is not a stack`
+        )
       }
       const state = e.state[id] as number
-      if (state === UnitState.Walk) {
+      if ((state === UnitState.Haul) !== (carriedCount !== 0)) {
+        problems.push(`unit ${id} is in the state ${state} but carries ${carriedCount}`)
+      }
+      if ((state === UnitState.Work) !== (goal !== 0) && state !== UnitState.Walk) {
+        problems.push(`unit ${id} is in the state ${state} with the goal ${goal}`)
+      }
+      if (state === UnitState.Walk || state === UnitState.Haul) {
         const target = e.target[id] as number
         const start = e.legStart[id] as number
         const end = e.legEnd[id] as number
@@ -747,13 +877,19 @@ export class World {
           problems.push(`unit ${id} wakes at ${e.wake[id]} but its leg ends at ${end}`)
         if (start > this.clock.tick)
           problems.push(`unit ${id} set off at ${start}, which is in the future`)
-      } else if (state === UnitState.Rest) {
+      } else if (state === UnitState.Rest || state === UnitState.Work) {
         if ((e.wake[id] as number) < this.clock.tick) {
           problems.push(`unit ${id} has a wake-up at tick ${e.wake[id]}, which is already past`)
         }
       } else {
-        problems.push(`unit ${id} has the state ${state}, which is not resting or walking`)
+        problems.push(
+          `unit ${id} has the state ${state}, which is not resting, walking, working or hauling`
+        )
       }
+    }
+    for (const hall of this.stockpiles.halls()) {
+      if (!isHallRef(hall + 1))
+        problems.push(`there is a stockpile for ${hall}, which is not a hall`)
     }
   }
 
@@ -808,6 +944,38 @@ export class World {
           problems.push(`${layer} stock ${stock} at tile ${i} is above its richness ${richness}`)
           break
         }
+      }
+    }
+  }
+
+  /** The node store and the tile slot arrays that mirror it must say the same thing. */
+  private validateNodes(problems: string[]): void {
+    const size = this.terrain.width * this.terrain.height
+    const nodes = this.nodes
+    let filled = 0
+    for (const layer of ['surface', 'ground'] as const) {
+      const slot = this.terrain.resources[layer]
+      if (slot.type.length !== size) return // already reported
+      for (let i = 0; i < size; i += 1) if (slot.type[i] !== 0) filled += 1
+    }
+    if (filled !== nodes.count) {
+      problems.push(
+        `the slots hold ${filled} resources but the node store has ${nodes.count} nodes`
+      )
+      return
+    }
+    for (let id = 0; id < nodes.count; id += 1) {
+      const tile = nodes.tile[id] as number
+      const slot = this.terrain.resources[nodes.layerOf(id)]
+      if (
+        slot.type[tile] !== nodes.kind[id] ||
+        slot.stock[tile] !== nodes.stock[id] ||
+        slot.richness[tile] !== nodes.richness[id]
+      ) {
+        problems.push(
+          `node ${id} on tile ${tile} disagrees with the ${nodes.layerOf(id)} slot there`
+        )
+        return
       }
     }
   }

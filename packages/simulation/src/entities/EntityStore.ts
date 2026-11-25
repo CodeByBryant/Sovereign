@@ -30,6 +30,13 @@ export interface SpawnInput {
   /** The tick its current leg started and the tick it arrives. */
   legStart?: number
   legEnd?: number
+  /** The row of the hall it belongs to, plus one (0 for none). */
+  hall?: number
+  /** The resource node it is working or walking to, plus one (0 for none). */
+  goal?: number
+  /** What it carries: a resource id (0 for nothing) and how many units. */
+  carriedType?: number
+  carriedCount?: number
 }
 
 const INITIAL_CAPACITY = 256
@@ -47,6 +54,10 @@ export interface EntityColumns {
   wake: number[]
   legStart: number[]
   legEnd: number[]
+  hall: number[]
+  goal: number[]
+  carriedType: number[]
+  carriedCount: number[]
 }
 
 /** The columns, in the order they are saved and hashed. */
@@ -60,7 +71,11 @@ export const COLUMN_NAMES = [
   'target',
   'wake',
   'legStart',
-  'legEnd'
+  'legEnd',
+  'hall',
+  'goal',
+  'carriedType',
+  'carriedCount'
 ] as const
 
 /** The columns and the range each value must be in (the width of the typed array that holds it). */
@@ -74,7 +89,11 @@ const COLUMN_RANGES = {
   target: [-2147483648, 2147483647],
   wake: [-2147483648, 2147483647],
   legStart: [-2147483648, 2147483647],
-  legEnd: [-2147483648, 2147483647]
+  legEnd: [-2147483648, 2147483647],
+  hall: [0, 2147483647],
+  goal: [0, 2147483647],
+  carriedType: [0, 255],
+  carriedCount: [0, 255]
 } as const
 
 export class EntityStore {
@@ -88,6 +107,10 @@ export class EntityStore {
   wake: Int32Array
   legStart: Int32Array
   legEnd: Int32Array
+  hall: Int32Array
+  goal: Int32Array
+  carriedType: Uint8Array
+  carriedCount: Uint8Array
 
   private alive_ = 0
   private highWater_ = 0
@@ -106,6 +129,10 @@ export class EntityStore {
     this.wake = new Int32Array(n)
     this.legStart = new Int32Array(n)
     this.legEnd = new Int32Array(n)
+    this.hall = new Int32Array(n)
+    this.goal = new Int32Array(n)
+    this.carriedType = new Uint8Array(n)
+    this.carriedCount = new Uint8Array(n)
   }
 
   /** How many rows are alive. */
@@ -150,6 +177,10 @@ export class EntityStore {
     this.wake[id] = input.wake ?? 0
     this.legStart[id] = input.legStart ?? 0
     this.legEnd[id] = input.legEnd ?? 0
+    this.hall[id] = input.hall ?? 0
+    this.goal[id] = input.goal ?? 0
+    this.carriedType[id] = input.carriedType ?? 0
+    this.carriedCount[id] = input.carriedCount ?? 0
     this.alive_ += 1
     this.firstFree = id + 1
     return id
@@ -168,6 +199,10 @@ export class EntityStore {
     this.wake[id] = 0
     this.legStart[id] = 0
     this.legEnd[id] = 0
+    this.hall[id] = 0
+    this.goal[id] = 0
+    this.carriedType[id] = 0
+    this.carriedCount[id] = 0
     this.alive_ -= 1
     if (id < this.firstFree) this.firstFree = id
   }
@@ -186,7 +221,11 @@ export class EntityStore {
       target: Array.from(this.target.subarray(0, n)),
       wake: Array.from(this.wake.subarray(0, n)),
       legStart: Array.from(this.legStart.subarray(0, n)),
-      legEnd: Array.from(this.legEnd.subarray(0, n))
+      legEnd: Array.from(this.legEnd.subarray(0, n)),
+      hall: Array.from(this.hall.subarray(0, n)),
+      goal: Array.from(this.goal.subarray(0, n)),
+      carriedType: Array.from(this.carriedType.subarray(0, n)),
+      carriedCount: Array.from(this.carriedCount.subarray(0, n))
     }
   }
 
@@ -220,6 +259,10 @@ export class EntityStore {
       store.wake[id] = columns.wake[id] as number
       store.legStart[id] = columns.legStart[id] as number
       store.legEnd[id] = columns.legEnd[id] as number
+      store.hall[id] = columns.hall[id] as number
+      store.goal[id] = columns.goal[id] as number
+      store.carriedType[id] = columns.carriedType[id] as number
+      store.carriedCount[id] = columns.carriedCount[id] as number
       if (store.kind[id] === EntityKind.None) {
         const zero =
           store.x[id] === 0 &&
@@ -230,7 +273,11 @@ export class EntityStore {
           store.target[id] === 0 &&
           store.wake[id] === 0 &&
           store.legStart[id] === 0 &&
-          store.legEnd[id] === 0
+          store.legEnd[id] === 0 &&
+          store.hall[id] === 0 &&
+          store.goal[id] === 0 &&
+          store.carriedType[id] === 0 &&
+          store.carriedCount[id] === 0
         if (!zero) throw new RangeError(`row ${id} is empty but not zeroed`)
       } else {
         alive += 1
@@ -267,5 +314,9 @@ export class EntityStore {
     this.wake = widen(this.wake)
     this.legStart = widen(this.legStart)
     this.legEnd = widen(this.legEnd)
+    this.hall = widen(this.hall)
+    this.goal = widen(this.goal)
+    this.carriedType = widen(this.carriedType)
+    this.carriedCount = widen(this.carriedCount)
   }
 }

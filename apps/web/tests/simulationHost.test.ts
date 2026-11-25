@@ -40,6 +40,8 @@ const TICKED: WorldTicked = {
     id: new Uint32Array(0),
     kind: new Uint8Array(0),
     owner: new Uint8Array(0),
+    state: new Uint8Array(0),
+    carry: new Uint8Array(0),
     x: new Float32Array(0),
     y: new Float32Array(0)
   }

@@ -5,8 +5,10 @@
  */
 import type { WorldConfigOverrides } from '@sovereign/config'
 import type {
+  HallSnapshot,
   NationSnapshot,
   ResourceSlots,
+  StockChanges,
   StrategicPoint,
   UnitSnapshot,
   WorldSnapshot
@@ -51,6 +53,8 @@ export interface WorldReady {
   roads: Uint8Array
   /** Where every unit is. */
   units: UnitSnapshot
+  /** Every hall. */
+  halls: HallSnapshot[]
 }
 
 /** The world after some ticks. */
@@ -71,6 +75,8 @@ export interface WorldTicked {
   political?: Uint8ClampedArray
   /** Where every unit is now (sent every time: they walk). */
   units: UnitSnapshot
+  /** The deposits whose stock changed in this run (gathered or grown back); absent when none did. */
+  stock?: StockChanges
 }
 
 export type WorldResponse =

@@ -242,6 +242,13 @@ export interface ResourceRule {
   /** The size of those regions, in tiles. */
   regionSize: number
   /**
+   * The room between objects, in tiles (a whole number from 1 to 8; omit or 1 for none). Tiles are taken best
+   * first as before, but a tile is skipped if an object of this resource already placed is closer than this, so a patch is a scatter of objects with open ground between them instead of a
+   * solid block. The share still counts what is placed: it is reached with the best tiles that leave the room, or
+   * as many as fit.
+   */
+  spacing?: number
+  /**
    * Oil and salt: the share of the **water** tiles within the coast distance range (and, if given, the
    * elevation range: how deep it can lie) that also hold it, under the sea. The rule's own elevation,
    * temperature and humidity limits are for the land and do not apply here.
@@ -325,6 +332,24 @@ export interface UnitsConfig {
   /** The fewest and the most ticks a villager rests between walks. */
   restMin: number
   restMax: number
+  /** The most units a villager carries home in one trip (1 to 255). */
+  carryCapacity: number
+  /** How far (in tiles) from where it rests a villager looks for something to gather. */
+  searchRadius: number
+  /**
+   * What villagers gather, by catalogue key: the ticks of work at the deposit and the units taken from it per
+   * trip (also limited by `carryCapacity` and by what is left). A resource not listed is not gathered. An override
+   * of this table replaces the whole table, like the regrowth table does.
+   */
+  gather: Record<string, GatherRule>
+}
+
+/** How one resource is gathered. */
+export interface GatherRule {
+  /** Ticks (days) a villager works at the deposit before it has anything to carry (1 to 365). */
+  work: number
+  /** Units taken per trip (1 to 255). */
+  amount: number
 }
 
 /** How nations grow into free provinces as time passes. */

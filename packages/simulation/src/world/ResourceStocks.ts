@@ -1,22 +1,24 @@
 /**
  * @module ResourceStocks
- * @description Drawing resources down and letting renewable ones grow back. A tile's stock is mutable
+ * @description Drawing resources down and letting renewable ones grow back. A node's stock is mutable
  * simulation state (hashed and saved); its richness, the potential it started with, is not.
  *
- * - `extract` takes up to an amount from a tile's slot and returns what it actually took. The economy
- *   and god tools will call it; nothing does yet.
+ * - `extract` / `extractNode` take up to an amount from a node and return what was actually taken.
+ *   Villagers gather through them; so will god tools.
  * - `regrow(tick)` runs from `World.step()`. A renewable stock that has been drawn down regrows by its
  *   catalogue rate every `period` ticks, on the tick where `(tick + tile) % period === 0` so tiles do
  *   not all grow on the same tick, up to its richness. Ground resources (and any resource without a
  *   rate) never regrow.
  *
- * To stay cheap over hundreds of thousands of ticks only **drawn-down tiles** are tracked and visited:
+ * To stay cheap over hundreds of thousands of ticks only **drawn-down nodes** are tracked and visited:
  * a world nobody has extracted from costs nothing per tick. The tracked set is not state; it is
- * derived from the stocks, so `new ResourceStocks(slots, table)` after a load finds it again.
- * Integer arithmetic only, no randomness, and each tile's update is independent of the others, so the
- * result does not depend on the order tiles are visited.
+ * derived from the stocks, so `new ResourceStocks(nodes, table)` after a load finds it again.
+ * Integer arithmetic only, no randomness, and each node's update is independent of the others, so the
+ * result does not depend on the order nodes are visited. Stock only ever changes through
+ * `NodeStore.setStock`, which keeps the tile slot arrays in step.
  */
-import { RESOURCE_CATALOG, type ResourceSlot, type ResourceSlots } from '@sovereign/contracts'
+import { RESOURCE_CATALOG } from '@sovereign/contracts'
+import type { NodeStore } from '../resources/NodeStore'
 
 /** Regrowth by resource id (index 0 is "none"): units per period, and the period in ticks (0 = no regrowth). */
 export interface RegrowthTable {
@@ -53,47 +55,35 @@ export function buildRegrowthTable(
   return table
 }
 
-/** The drawn-down tiles of one slot: a growable list plus a flag per tile saying it is in the list. */
-interface Pending {
-  tiles: Int32Array
-  count: number
-  flag: Uint8Array
-}
-
 export class ResourceStocks {
-  private readonly pendingBy: { surface: Pending; ground: Pending }
+  /** The drawn-down renewable nodes: a growable list plus a flag per node saying it is in the list. */
+  private pendingIds = new Int32Array(1024)
+  private pendingCount = 0
+  private readonly flag: Uint8Array
 
   /**
    * `onChange(tile)` is told of every tile whose stock changed (taken or regrown), so what depends on
    * stocks (the profile of the nation that holds the tile) can be measured again.
    */
   constructor(
-    private readonly slots: ResourceSlots,
+    private readonly nodes: NodeStore,
     private readonly table: RegrowthTable,
     private readonly onChange?: (tile: number) => void
   ) {
-    const size = slots.surface.type.length
-    this.pendingBy = {
-      surface: { tiles: new Int32Array(1024), count: 0, flag: new Uint8Array(size) },
-      ground: { tiles: new Int32Array(1024), count: 0, flag: new Uint8Array(size) }
-    }
-    for (const layer of ['surface', 'ground'] as const) {
-      const slot = slots[layer]
-      for (let i = 0; i < size; i += 1) {
-        if (
-          slot.type[i] !== 0 &&
-          this.table.period[slot.type[i]] > 0 &&
-          slot.stock[i] < slot.richness[i]
-        ) {
-          this.track(layer, i)
-        }
+    this.flag = new Uint8Array(nodes.count)
+    for (let id = 0; id < nodes.count; id += 1) {
+      if (
+        this.table.period[nodes.kind[id] as number] !== 0 &&
+        nodes.stock[id] < nodes.richness[id]
+      ) {
+        this.track(id)
       }
     }
   }
 
-  /** How many drawn-down tiles are waiting to regrow. */
+  /** How many drawn-down nodes are waiting to regrow. */
   get pending(): number {
-    return this.pendingBy.surface.count + this.pendingBy.ground.count
+    return this.pendingCount
   }
 
   /**
@@ -103,62 +93,77 @@ export class ResourceStocks {
   extract(layer: ResourceLayerName, tile: number, amount: number): number {
     if (layer !== 'surface' && layer !== 'ground')
       throw new RangeError(`unknown layer "${String(layer)}"`)
-    const slot: ResourceSlot = this.slots[layer]
-    if (!Number.isInteger(tile) || tile < 0 || tile >= slot.type.length) {
+    const size = this.nodes.slots[layer].type.length
+    if (!Number.isInteger(tile) || tile < 0 || tile >= size) {
       throw new RangeError('tile must be an integer index inside the map')
     }
     if (!Number.isInteger(amount) || amount < 0) {
       throw new RangeError('amount must be a non-negative integer')
     }
-    if (slot.type[tile] === 0) return 0
-    const taken = Math.min(amount, slot.stock[tile])
+    const id = this.nodes.nodeAt(tile, layer)
+    return id < 0 ? 0 : this.take(id, amount)
+  }
+
+  /** Take up to `amount` units from node `id`; returns how much was taken. */
+  extractNode(id: number, amount: number): number {
+    if (!Number.isInteger(id) || id < 0 || id >= this.nodes.count) {
+      throw new RangeError(`no node ${id}`)
+    }
+    if (!Number.isInteger(amount) || amount < 0) {
+      throw new RangeError('amount must be a non-negative integer')
+    }
+    return this.take(id, amount)
+  }
+
+  private take(id: number, amount: number): number {
+    const nodes = this.nodes
+    const taken = Math.min(amount, nodes.stock[id] as number)
     if (taken === 0) return 0
-    slot.stock[tile] -= taken
-    this.onChange?.(tile)
-    if (this.table.period[slot.type[tile]] > 0) this.track(layer, tile)
+    nodes.setStock(id, (nodes.stock[id] as number) - taken)
+    this.onChange?.(nodes.tile[id] as number)
+    if (this.table.period[nodes.kind[id] as number] !== 0) this.track(id)
     return taken
   }
 
-  /** Let every drawn-down renewable tile whose turn it is regrow, up to its richness. */
+  /** Let every drawn-down renewable node whose turn it is regrow, up to its richness. */
   regrow(tick: number): void {
     if (!Number.isInteger(tick) || tick < 0)
       throw new RangeError('tick must be a non-negative integer')
-    for (const layer of ['surface', 'ground'] as const) {
-      const slot = this.slots[layer]
-      const pending = this.pendingBy[layer]
-      let write = 0
-      for (let read = 0; read < pending.count; read += 1) {
-        const tile = pending.tiles[read]
-        const type = slot.type[tile]
-        const period = this.table.period[type]
-        if ((tick + tile) % period === 0) {
-          slot.stock[tile] = Math.min(
-            slot.richness[tile],
-            slot.stock[tile] + this.table.units[type]
+    const nodes = this.nodes
+    let write = 0
+    for (let read = 0; read < this.pendingCount; read += 1) {
+      const id = this.pendingIds[read] as number
+      const tile = nodes.tile[id] as number
+      const kind = nodes.kind[id] as number
+      if ((tick + tile) % (this.table.period[kind] as number) === 0) {
+        nodes.setStock(
+          id,
+          Math.min(
+            nodes.richness[id] as number,
+            (nodes.stock[id] as number) + (this.table.units[kind] as number)
           )
-          this.onChange?.(tile)
-        }
-        if (slot.stock[tile] >= slot.richness[tile]) {
-          pending.flag[tile] = 0
-        } else {
-          pending.tiles[write] = tile
-          write += 1
-        }
+        )
+        this.onChange?.(tile)
       }
-      pending.count = write
+      if ((nodes.stock[id] as number) >= (nodes.richness[id] as number)) {
+        this.flag[id] = 0
+      } else {
+        this.pendingIds[write] = id
+        write += 1
+      }
     }
+    this.pendingCount = write
   }
 
-  private track(layer: ResourceLayerName, tile: number): void {
-    const pending = this.pendingBy[layer]
-    if (pending.flag[tile] !== 0) return
-    if (pending.count === pending.tiles.length) {
-      const bigger = new Int32Array(pending.tiles.length * 2)
-      bigger.set(pending.tiles)
-      pending.tiles = bigger
+  private track(id: number): void {
+    if (this.flag[id] !== 0) return
+    if (this.pendingCount === this.pendingIds.length) {
+      const bigger = new Int32Array(this.pendingIds.length * 2)
+      bigger.set(this.pendingIds)
+      this.pendingIds = bigger
     }
-    pending.tiles[pending.count] = tile
-    pending.count += 1
-    pending.flag[tile] = 1
+    this.pendingIds[this.pendingCount] = id
+    this.pendingCount += 1
+    this.flag[id] = 1
   }
 }

@@ -67,6 +67,15 @@ export class TickRunner {
       units: world.unitPositions()
     }
     const transfer: ArrayBuffer[] = unitBuffers(message.units)
+    const stock = world.drainStockChanges()
+    if (stock.tile.length > 0) {
+      message.stock = stock
+      transfer.push(
+        stock.tile.buffer as ArrayBuffer,
+        stock.layer.buffer as ArrayBuffer,
+        stock.value.buffer as ArrayBuffer
+      )
+    }
 
     const due =
       options.flush === true || world.saturated || this.now() - this.lastSent >= this.minOverlayMs

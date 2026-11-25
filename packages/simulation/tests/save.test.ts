@@ -35,20 +35,21 @@ describe('SAVE_FORMAT_VERSION and layout', () => {
   const bytes = encodeWorld(make(7))
   const view = new DataView(bytes.buffer, bytes.byteOffset)
 
-  it('is version 6', () => {
-    expect(SAVE_FORMAT_VERSION).toBe(6)
+  it('is version 7', () => {
+    expect(SAVE_FORMAT_VERSION).toBe(7)
   })
 
   it('starts with the magic "SOVW", the version (uint32, big-endian) and the header length', () => {
     expect([...bytes.subarray(0, 4)]).toEqual(MAGIC)
-    expect(view.getUint32(4, false)).toBe(6)
+    expect(view.getUint32(4, false)).toBe(7)
     expect(view.getUint32(8, false)).toBeGreaterThan(0)
   })
 
-  it('has exactly the header plus thirteen tile layers (3 x float32, 10 x byte) after it', () => {
+  it('has the header, seven tile layers (3 x float32, 4 x byte) and then the node block', () => {
     const headerLength = view.getUint32(8, false)
     const tiles = 160 * 96
-    expect(bytes.length).toBe(12 + headerLength + tiles * (3 * 4 + 10))
+    const nodes = make(7).nodes.byteLength
+    expect(bytes.length).toBe(12 + headerLength + tiles * (3 * 4 + 4) + nodes)
   })
 })
 
@@ -161,7 +162,7 @@ describe('decodeWorld rejects a file that is not a good save', () => {
     rejects(bad, /not a Sovereign save/)
   })
 
-  it.each([0, 1, 2, 3, 4, 5, 7, 99])('a file of unsupported format version %d', (version) => {
+  it.each([0, 1, 2, 3, 4, 5, 6, 8, 99])('a file of unsupported format version %d', (version) => {
     const bad = good.slice()
     new DataView(bad.buffer).setUint32(4, version, false)
     rejects(bad, /unsupported save format version/)
@@ -288,11 +289,18 @@ describe('decodeWorld rejects a file that is not a good save', () => {
     )
   })
 
-  it('a layer section that is one byte short, or one byte too long', () => {
-    rejects(good.subarray(0, good.length - 1), /size/)
+  it('a file that is one byte short, or one byte too long (the node block must fit exactly)', () => {
+    rejects(good.subarray(0, good.length - 1), /resource nodes|size/)
     const long = new Uint8Array(good.length + 1)
     long.set(good)
-    rejects(long, /size/)
+    rejects(long, /resource nodes/)
+  })
+
+  it('a file cut off inside the tile layers', () => {
+    rejects(
+      good.subarray(0, 12 + new DataView(good.buffer, good.byteOffset).getUint32(8, false) + 100),
+      /size/
+    )
   })
 
   it('keeps the expansion points a nation has saved up', () => {
@@ -446,8 +454,49 @@ describe('decodeWorld rejects a file that is not a good save', () => {
 
   it('an ownership byte that names no nation', () => {
     const bad = good.slice()
-    bad[bad.length - 1] = 254
+    const headerLength = new DataView(bad.buffer).getUint32(8, false)
+    bad[12 + headerLength + 160 * 96 * 16 - 1] = 254 // the last byte of the ownership layer
     rejects(bad, /ownership/)
+  })
+
+  describe('the resource nodes', () => {
+    const nodeStart = (bytes: Uint8Array): number => bytes.length - make(7).nodes.byteLength
+
+    it('a node kind that is not a resource', () => {
+      const bad = good.slice()
+      bad[nodeStart(bad) + 4] = 0
+      rejects(bad, /resource nodes/)
+    })
+    it('a node count that does not match the bytes', () => {
+      const bad = good.slice()
+      new DataView(bad.buffer).setUint32(nodeStart(bad), 3, true)
+      rejects(bad, /resource nodes/)
+    })
+    it('a node stock above its richness', () => {
+      const bad = good.slice()
+      const count = make(7).nodes.count
+      bad[nodeStart(bad) + 4 + count] = 255 // node 0 stock
+      bad[nodeStart(bad) + 4 + 2 * count] = 1 // node 0 richness
+      rejects(bad, /resource nodes/)
+    })
+    it('a node tile off the map', () => {
+      const bad = good.slice()
+      const count = make(7).nodes.count
+      new DataView(bad.buffer).setUint32(nodeStart(bad) + 4 + 3 * count, 160 * 96, true)
+      rejects(bad, /resource nodes/)
+    })
+    it('keeps a half-drawn deposit half-drawn, and rebuilds the slot arrays from the nodes', () => {
+      const world = make(7)
+      let id = 0
+      while (world.nodes.kind[id] === 0 || world.nodes.stock[id] === 0) id += 1
+      world.nodes.setStock(id, Math.floor((world.nodes.stock[id] as number) / 2))
+      const back = decodeWorld(encodeWorld(world))
+      expect(Array.from(back.nodes.stock)).toEqual(Array.from(world.nodes.stock))
+      expect(back.terrain.resources.surface.stock).toEqual(world.terrain.resources.surface.stock)
+      expect(back.terrain.resources.ground.stock).toEqual(world.terrain.resources.ground.stock)
+      expect(back.terrain.resources.surface.type).toEqual(world.terrain.resources.surface.type)
+      expect(back.stateHash()).toBe(world.stateHash())
+    })
   })
 
   it('an invalid config in the header', () => {

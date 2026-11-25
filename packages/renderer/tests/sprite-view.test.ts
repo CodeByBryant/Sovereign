@@ -103,12 +103,19 @@ describe('roadMaskFromRoutes', () => {
   })
 })
 
-const snap = (tick: number, rows: Array<[number, number, number]>): UnitSnapshot => ({
+const snap = (
+  tick: number,
+  rows: Array<[number, number, number]>,
+  state: number[] = [],
+  carry: number[] = []
+): UnitSnapshot => ({
   tick,
   count: rows.length,
   id: Uint32Array.from(rows.map((r) => r[0])),
   kind: Uint8Array.from(rows.map(() => 1)),
   owner: Uint8Array.from(rows.map((r) => r[0] % 3)),
+  state: Uint8Array.from(rows.map((_, i) => state[i] ?? 0)),
+  carry: Uint8Array.from(rows.map((_, i) => carry[i] ?? 0)),
   x: Float32Array.from(rows.map((r) => r[1])),
   y: Float32Array.from(rows.map((r) => r[2]))
 })
@@ -230,6 +237,37 @@ describe('UnitInterpolator', () => {
     expect(Array.from(f.id)).toEqual([4, 5])
     expect(Array.from(f.owner)).toEqual([1, 2])
     expect(Array.from(f.kind)).toEqual([1, 1])
+  })
+  it('keeps what each unit is doing and what it carries, from the latest snapshot', () => {
+    const u = new UnitInterpolator()
+    u.push(
+      snap(
+        1,
+        [
+          [4, 1, 1],
+          [5, 2, 2]
+        ],
+        [0, 1],
+        [0, 0]
+      ),
+      0
+    )
+    u.push(
+      snap(
+        2,
+        [
+          [4, 1, 1],
+          [5, 2, 2],
+          [9, 3, 3]
+        ],
+        [2, 3, 0],
+        [0, 7, 0]
+      ),
+      100
+    )
+    const f = u.sample(150)
+    expect(Array.from(f.state)).toEqual([2, 3, 0])
+    expect(Array.from(f.carry)).toEqual([0, 7, 0])
   })
   it('is empty before the first snapshot, and after an empty one', () => {
     const u = new UnitInterpolator()

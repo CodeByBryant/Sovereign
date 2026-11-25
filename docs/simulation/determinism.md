@@ -133,6 +133,7 @@ A state hash is a 32-character lowercase hex string (128 bits).
 | `writeString`       | `writeUint32(byteLength)` then the UTF-8 bytes                                                                                                        |
 | `writeUint8Array`   | `writeUint32(length)` then the bytes                                                                                                                  |
 | `writeFloat32Array` | `writeUint32(length)` then each value as 4 bytes of exact IEEE-754 float32 bits, **big-endian**; -0 is written as +0; throws if a value is non-finite |
+| `writeUint32Array`  | `writeUint32(length)` then each value as 4 bytes, **big-endian**                                                                                      |
 
 Never decimal strings, `JSON.stringify` or `toFixed`.
 
@@ -162,7 +163,20 @@ output: hex(h1) hex(h2) hex(h3) hex(h4), each as 8 lowercase hex digits (uint32)
 
 A state hash begins with the four ASCII bytes `SOVH`, then `writeUint32(HASH_SCHEMA_VERSION)`. Any change to the field list, order or encoding of what is hashed requires bumping `HASH_SCHEMA_VERSION` and regenerating the golden hashes with a rationale in the PR. Old versions stay documented here rather than being edited in place, so a reader can tell what an older golden entry actually hashed.
 
-#### Version 5 (current)
+#### Version 6 (current)
+
+The canonical layout of a world, written in this order (`World.stateHash()`), after the `SOVH` header and version:
+
+1. `writeUint32(seed)` (the normalized engine seed), `writeFloat64(tick)`, `writeFloat64(timestep)`, `writeUint32(width)`, `writeUint32(height)`, `writeFloat64(seaLevel)` (the effective sea level after the land-ratio rescue).
+2. The tile layers, each as one array writer (so each carries its length): `elevation`, `temperature`, `humidity` as `writeFloat32Array`; `biomeIds`, `riverMask`, `riverWidth`, then `ownership`, all as `writeUint8Array`. The tile arrays of resources are not hashed: they mirror the node block below.
+   Then the resource nodes, one row per deposit in tile order (a tile's surface node before its ground node): `kind` (`writeUint8Array`), `stock` (`writeUint8Array`), `richness` (`writeUint8Array`), then `tile` as `writeUint32Array` (a uint32 count, then each tile index as 4 big-endian bytes). A node's stock is state (it changes by gathering and regrowth), so it is hashed along with its static kind, tile and richness.
+   Then the province cut, which is derived from the terrain but fingerprinted so that an engine that cuts it differently is caught: `writeUint32(province count)`, then for each province `area` (uint32) and `seed` (uint32, the tile it was seeded from).
+3. Strategic points: `writeUint32(count)`, then for each `x` (uint32), `y` (uint32), `type` (string), `value` (float64). Then the route hubs: `writeUint32(count)`, then for each `x` (uint32), `y` (uint32), `weight` (float64). Then the routes: `writeUint32(count)`, then for each `from` (uint32), `to` (uint32), `cost` (float64), `traffic` (float64), `writeUint32(path length)` and each path value as uint32.
+4. Nations: `writeUint32(count)`, then for each: `id` (string), `name` (string), the colour as three `writeUint8`, the flag `type` (string), `background` and `accent` (three float64 each), a `writeUint8` of 0 or 1 for whether there is a `detail` colour (and, if 1, its three float64), `government` (string), the personality (`aggression`, `expansionism`, `diplomacy`, `mercantilism`, `militarism`, float64 each, in that order), `capital` (uint32), `founded` (float64), the stats (`population`, `military`, `economy`, `diplomacy`, float64 each, in that order), the profile of its land (`area`, `food`, `timber`, `stone`, `horses`, `metals`, `luxuries`, `diversity`, `coast`, `river`, `highGround`, `defence`, `traffic`, `contacts`, float64 each, in that order), then `expansionPoints` (float64), then `writeUint32(province count)` and each owned province id as uint32 **in the order the provinces were claimed**.
+5. The villagers and halls (the entity store): `writeUint32(rows)`, where `rows` is the store's high-water mark (the number of rows ever allocated, empty rows included), then each column in this order: `kind`, `x`, `y`, `owner`, `state`, `home`, `target`, `wake`, `legStart`, `legEnd`, `hall`, `goal`, `carriedType`, `carriedCount`. The 8-bit columns (`kind`, `owner`, `state`) are written as one `writeUint8Array` of the first `rows` bytes (so each carries its length); every other column is `rows` values, each as `writeUint32` of the value taken as an unsigned 32-bit integer. An empty (despawned) row holds all zeros, so the hash does not depend on which rows came and went, only on what is alive where. Timers, routes and anchors are derived and not hashed.
+6. What each hall holds: `writeUint32(count)` of the halls that have a stockpile, then for each, lowest row id first: `writeUint32(row id)` and `writeUint32Array` of its 22 counters (resource id 1 first).
+
+#### Version 5 (superseded by version 6)
 
 The canonical layout of a world, written in this order (`World.stateHash()`), after the `SOVH` header and version:
 
@@ -172,6 +186,8 @@ The canonical layout of a world, written in this order (`World.stateHash()`), af
 3. Strategic points: `writeUint32(count)`, then for each `x` (uint32), `y` (uint32), `type` (string), `value` (float64). Then the route hubs: `writeUint32(count)`, then for each `x` (uint32), `y` (uint32), `weight` (float64). Then the routes: `writeUint32(count)`, then for each `from` (uint32), `to` (uint32), `cost` (float64), `traffic` (float64), `writeUint32(path length)` and each path value as uint32.
 4. Nations: `writeUint32(count)`, then for each: `id` (string), `name` (string), the colour as three `writeUint8`, the flag `type` (string), `background` and `accent` (three float64 each), a `writeUint8` of 0 or 1 for whether there is a `detail` colour (and, if 1, its three float64), `government` (string), the personality (`aggression`, `expansionism`, `diplomacy`, `mercantilism`, `militarism`, float64 each, in that order), `capital` (uint32), `founded` (float64), the stats (`population`, `military`, `economy`, `diplomacy`, float64 each, in that order), the profile of its land (`area`, `food`, `timber`, `stone`, `horses`, `metals`, `luxuries`, `diversity`, `coast`, `river`, `highGround`, `defence`, `traffic`, `contacts`, float64 each, in that order), then `expansionPoints` (float64), then `writeUint32(province count)` and each owned province id as uint32 **in the order the provinces were claimed**.
 5. The villagers (the entity store): `writeUint32(rows)`, where `rows` is the store's high-water mark (the number of rows ever allocated, empty rows included), then each column in this order: `kind`, `x`, `y`, `owner`, `state`, `home`, `target`, `wake`, `legStart`, `legEnd`. The 8-bit columns (`kind`, `owner`, `state`) are written as one `writeUint8Array` of the first `rows` bytes (so each carries its length); every other column is `rows` values, each as `writeUint32` of the value taken as an unsigned 32-bit integer. An empty (despawned) row holds all zeros, so the hash does not depend on which rows came and went, only on what is alive where. Timers, routes and anchors are derived and not hashed.
+
+Version 6 differs from version 5 in step 2 only: the six resource tile arrays are replaced by the node block (kind, stock, richness, tile), and `writeUint32Array` is a new array writer.
 
 #### Version 4 (superseded by version 5)
 
@@ -224,7 +240,7 @@ They are regression pins: the correctness of what is under them (RNG, noise, mat
 
 ## 9. Test vectors
 
-Produced by an independent reference implementation written from this document alone (Python integers and masks), and reproduced by the engine's tests. Hex values are lowercase. "Header" is `SOVH` and `writeUint32(5)` (schema version 5); the reference also reproduces the older versions' values (it takes the version as a parameter).
+Produced by an independent reference implementation written from this document alone (Python integers and masks), and reproduced by the engine's tests. Hex values are lowercase. "Header" is `SOVH` and `writeUint32(6)` (schema version 6); the reference also reproduces the older versions' values (it takes the version as a parameter).
 
 **xoshiro128\*\* reference** (state `[1, 2, 3, 4]`, decimal): `11520, 0, 5927040, 70819200, 2031721883`.
 

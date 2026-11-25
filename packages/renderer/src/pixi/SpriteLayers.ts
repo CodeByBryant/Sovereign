@@ -10,7 +10,7 @@
  * simulation state: it only draws what the world last said.
  */
 import { BufferImageSource, Container, Rectangle, Sprite, Texture } from 'pixi.js'
-import { NO_OWNER, type ResourceSlots, type UnitSnapshot } from '@sovereign/contracts'
+import { NO_OWNER, UnitState, type ResourceSlots, type UnitSnapshot } from '@sovereign/contracts'
 import type { Camera } from '../Camera'
 import {
   ROAD_PRESENT,
@@ -88,15 +88,30 @@ export interface SpriteStats {
   resources: number
   halls: number
   units: number
+  /** Villagers at work, and villagers carrying something home. */
+  working: number
+  carrying: number
+  /** Visible deposits that have had something taken from them. */
+  drawn: number
 }
 
 export class SpriteLayers {
-  readonly stats: SpriteStats = { active: false, roads: 0, resources: 0, halls: 0, units: 0 }
+  readonly stats: SpriteStats = {
+    active: false,
+    roads: 0,
+    resources: 0,
+    halls: 0,
+    units: 0,
+    working: 0,
+    carrying: 0,
+    drawn: 0
+  }
   readonly container = new Container()
   private readonly roadPool: SpritePool
   private readonly resourcePool: SpritePool
   private readonly buildingPool: SpritePool
   private readonly unitPool: SpritePool
+  private readonly carryPool: SpritePool
   private readonly textures = new Map<string, Texture>()
   private readonly source: BufferImageSource
   private readonly interpolator = new UnitInterpolator()
@@ -126,6 +141,7 @@ export class SpriteLayers {
     this.resourcePool = new SpritePool(layer())
     this.buildingPool = new SpritePool(layer())
     this.unitPool = new SpritePool(layer())
+    this.carryPool = new SpritePool(layer())
   }
 
   /** Set what the fixed layers draw from (the same object may be passed again after it changes). */
@@ -169,6 +185,7 @@ export class SpriteLayers {
 
     this.roadPool.begin()
     this.resourcePool.begin()
+    let drawn = 0
     for (let y = rect.y0; y < rect.y1; y += 1) {
       for (let x = rect.x0; x < rect.x1; x += 1) {
         const tile = y * world.width + x
@@ -184,6 +201,10 @@ export class SpriteLayers {
         const surface = world.resources.surface
         const g = ground.type[tile] as number
         const f = surface.type[tile] as number
+        if (g !== 0 && (ground.stock[tile] as number) < (ground.richness[tile] as number))
+          drawn += 1
+        if (f !== 0 && (surface.stock[tile] as number) < (surface.richness[tile] as number))
+          drawn += 1
         if (g !== 0) {
           const state = resourceSpriteState(
             ground.stock[tile] as number,
@@ -228,31 +249,56 @@ export class SpriteLayers {
     this.buildingPool.end()
 
     this.unitPool.begin()
+    this.carryPool.begin()
+    let working = 0
+    let carrying = 0
     const frame = this.interpolator.sample(nowMs)
     const left = rect.x0 - 1
     const right = rect.x1 + 1
     const top = rect.y0 - 1
     const bottom = rect.y1 + 1
     const step = Math.floor(nowMs / 180)
+    const swing = Math.floor(nowMs / 90)
     for (let i = 0; i < frame.count; i += 1) {
       const x = frame.x[i] as number
       const y = frame.y[i] as number
       if (x < left || x >= right || y < top || y >= bottom) continue
-      const walking = x % 1 !== 0 || y % 1 !== 0
       const id = frame.id[i] as number
-      const s = this.unitPool.take(this.texture(`villager.${walking ? (step + id) & 1 : 0}`))
+      const unitState = frame.state[i] as number
+      // walkers and haulers step, workers swing faster, and a rester stands
+      const pose =
+        unitState === UnitState.Walk || unitState === UnitState.Haul
+          ? (step + id) & 1
+          : unitState === UnitState.Work
+            ? (swing + id) & 1
+            : 0
+      if (unitState === UnitState.Work) working += 1
+      const s = this.unitPool.take(this.texture(`villager.${pose}`))
       s.anchor.set(0.5, 0.85)
       s.scale.set(this.scale * UNIT_SCALE)
       s.position.set(originX + (x + 0.5) * ts, originY + (y + 0.5) * ts)
       const owner = frame.owner[i] as number
       s.tint = owner === NO_OWNER ? GREY : (this.nationColors[owner] ?? GREY)
+      const carry = frame.carry[i] as number
+      if (carry !== 0) {
+        // what it carries, small, over its head
+        carrying += 1
+        const c = this.carryPool.take(this.texture(resourceFrameName(carry, 0)))
+        c.anchor.set(0.5, 1)
+        c.scale.set(this.scale * 0.55)
+        c.position.set(originX + (x + 0.5) * ts, originY + (y + 0.5) * ts - ts * 0.55)
+      }
     }
     this.unitPool.end()
+    this.carryPool.end()
     this.stats.active = true
     this.stats.roads = this.roadPool.shown
     this.stats.resources = this.resourcePool.shown
     this.stats.halls = this.buildingPool.shown / 2
     this.stats.units = this.unitPool.shown
+    this.stats.working = working
+    this.stats.drawn = drawn
+    this.stats.carrying = carrying
   }
 
   destroy(): void {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { WorldConfigOverrides } from '@sovereign/config'
 import { biomeRgba, politicalRgba } from '@sovereign/renderer'
 import { World } from '@sovereign/simulation'
+import { applyStockChanges } from '../src/host/stock'
 import { TickRunner } from '../src/host/tickRunner'
 
 const STYLE = { alpha: 0.45, darken: 0.35, provinceDarken: 0.18 }
@@ -109,6 +110,53 @@ describe('TickRunner: the units', () => {
   })
 })
 
+describe('TickRunner: stock changes', () => {
+  it('sends none when nothing has been gathered yet', () => {
+    const { runner } = setup()
+    expect(runner.run(0).message.stock).toBeUndefined()
+  })
+
+  it('sends the deposits that changed in the run, with what is left in each', () => {
+    const { world, runner } = setup()
+    const { message } = runner.run(150)
+    const stock = message.stock
+    expect(stock).toBeDefined()
+    expect(stock!.tile.length).toBeGreaterThan(0)
+    stock!.tile.forEach((tile, i) => {
+      const id = world.nodes.nodeAt(tile, stock!.layer[i] === 1 ? 'ground' : 'surface')
+      expect(stock!.value[i]).toBe(world.nodes.stock[id])
+    })
+  })
+
+  it('sends each change once: the next run only has what changed in it', () => {
+    const { runner } = setup()
+    runner.run(150)
+    expect(runner.run(0).message.stock).toBeUndefined()
+  })
+
+  it('applied to a copy of the slots it brings them up to the world', () => {
+    const { world, runner } = setup()
+    const copy = {
+      surface: {
+        type: world.terrain.resources.surface.type.slice(),
+        richness: world.terrain.resources.surface.richness.slice(),
+        stock: world.terrain.resources.surface.stock.slice()
+      },
+      ground: {
+        type: world.terrain.resources.ground.type.slice(),
+        richness: world.terrain.resources.ground.richness.slice(),
+        stock: world.terrain.resources.ground.stock.slice()
+      }
+    }
+    for (let i = 0; i < 4; i += 1) {
+      const { message } = runner.run(60)
+      if (message.stock !== undefined) applyStockChanges(copy, message.stock)
+    }
+    expect(copy.surface.stock).toEqual(world.terrain.resources.surface.stock)
+    expect(copy.ground.stock).toEqual(world.terrain.resources.ground.stock)
+  })
+})
+
 describe('TickRunner: ownership and the political overlay', () => {
   it('sends nothing about ownership when nothing was claimed', () => {
     const { runner } = setup()
@@ -162,9 +210,21 @@ describe('TickRunner: ownership and the political overlay', () => {
     const { runner } = setup()
     const { message, transfer } = runner.run(300, { political: true })
     const u = message.units
-    const buffers = [u.id, u.kind, u.owner, u.x, u.y, message.ownership, message.political].map(
-      (a) => a?.buffer
-    )
+    const s = message.stock
+    const buffers = [
+      u.id,
+      u.kind,
+      u.owner,
+      u.state,
+      u.carry,
+      u.x,
+      u.y,
+      s?.tile,
+      s?.layer,
+      s?.value,
+      message.ownership,
+      message.political
+    ].map((a) => a?.buffer)
     expect(transfer).toEqual(buffers)
   })
 
@@ -172,7 +232,10 @@ describe('TickRunner: ownership and the political overlay', () => {
     const { runner } = setup()
     const { message, transfer } = runner.run(0)
     const u = message.units
-    expect(transfer).toEqual([u.id, u.kind, u.owner, u.x, u.y].map((a) => a.buffer))
+    expect(message.stock).toBeUndefined()
+    expect(transfer).toEqual(
+      [u.id, u.kind, u.owner, u.state, u.carry, u.x, u.y].map((a) => a.buffer)
+    )
   })
 })
 

@@ -5,7 +5,7 @@ import { utf8Bytes } from './utf8'
  * Any change to the field list, order or encoding of what a state hash covers bumps this number
  * and regenerates the golden hashes.
  */
-export const HASH_SCHEMA_VERSION = 5
+export const HASH_SCHEMA_VERSION = 6
 
 const TWO_POW_32 = 4_294_967_296
 
@@ -65,6 +65,18 @@ export class ByteHasher {
   writeUint8Array(values: Uint8Array): void {
     this.writeUint32(values.length)
     for (let i = 0; i < values.length; i += 1) this.writeByte(values[i] as number)
+  }
+
+  /** A uint32 length, then each value as 4 bytes, big-endian. */
+  writeUint32Array(values: Uint32Array): void {
+    this.writeUint32(values.length)
+    for (let i = 0; i < values.length; i += 1) {
+      const v = values[i] as number
+      this.writeByte(v >>> 24)
+      this.writeByte((v >>> 16) & 0xff)
+      this.writeByte((v >>> 8) & 0xff)
+      this.writeByte(v & 0xff)
+    }
   }
 
   /**
