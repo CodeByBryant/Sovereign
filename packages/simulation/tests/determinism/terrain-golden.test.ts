@@ -18,31 +18,31 @@ import { hashTerrain } from '../support/fieldHash'
 import { smallTerrainRequest, smallTerrainRequestWithDefaults } from '../support/terrainRequest'
 
 const scenarios = [
-  { name: 'seed 1', request: smallTerrainRequest(1), hash: '040a6dad1ebb4f1c363d800de138f73d' },
+  { name: 'seed 1', request: smallTerrainRequest(1), hash: 'bf1e951535b1a62f57af23fae28b0751' },
   {
     name: 'seed 12345',
     request: smallTerrainRequest(12345),
-    hash: 'ccf4a8d0d7821bc53ce51426fd755093'
+    hash: '0666bb31f1daf59e89117d81f6b9f8bd'
   },
   {
     name: 'text seed',
     request: smallTerrainRequest('sovereign'),
-    hash: '1d773096f7463cc6ef4cad69b73e12d5'
+    hash: '31da575e9f3cdc11d7f05e2c0934d269'
   },
   {
     name: 'island mode',
     request: smallTerrainRequest(7, { islandMode: true }),
-    hash: 'c62c03f13b29c8a2ec533a3ac86ac4d6'
+    hash: 'e429bb0ed8fb65401eb50c145b134bc2'
   },
   {
     name: 'optional config fields omitted (their defaults apply)',
     request: smallTerrainRequestWithDefaults(5),
-    hash: 'fc1b39affa1ee4bbe4b5ee4f672af4d8'
+    hash: '3cdad0bf07837ca672bef4e3d6fd4d3e'
   },
   {
     name: 'land-ratio rescue (sea level lowered)',
     request: smallTerrainRequest(3, { minLandRatio: 0.7 }),
-    hash: '11f4945ba6898c4d17b11e9a5acf817c'
+    hash: '779d6d614c0b900d4f9015d71a65f0e8'
   }
 ]
 
@@ -54,6 +54,6 @@ describe('terrain goldens', () => {
   it('a text seed and the number it hashes to are the same world', async () => {
     const { normalizeSeed } = await import('../../src/random/seed')
     const asNumber = smallTerrainRequest(normalizeSeed('sovereign'))
-    expect(hashTerrain(generateTerrain(asNumber))).toBe('1d773096f7463cc6ef4cad69b73e12d5')
+    expect(hashTerrain(generateTerrain(asNumber))).toBe('31da575e9f3cdc11d7f05e2c0934d269')
   })
 })

@@ -69,10 +69,10 @@ describe('golden depletion', () => {
         }
       }
     }
-    expect(taken).toBe(763)
+    expect(taken).toBe(797)
     world.run(700)
     expect(world.validate()).toEqual([])
-    expect(world.stateHash()).toBe('d3fdf826182c1a0737705ac4be3636cc')
+    expect(world.stateHash()).toBe('b8c2946e80010ca9e6982188e9f55e96')
   })
 })
 
