@@ -7,7 +7,9 @@ export const EntityKind = {
   /** An empty row. */
   None: 0,
   /** A person: walks, works, carries. */
-  Villager: 1
+  Villager: 1,
+  /** A hall: where a village's villagers live and drop what they gather. It never moves. */
+  Hall: 2
 } as const
 
 export type EntityKindId = (typeof EntityKind)[keyof typeof EntityKind]
@@ -20,7 +22,11 @@ export const UnitState = {
   /** Standing about; `wake` is the tick it next sets off. */
   Rest: 0,
   /** On a route toward `target`; it arrives at tick `wake` (= `legEnd`). */
-  Walk: 1
+  Walk: 1,
+  /** Working a resource node (`goal`); it finishes at tick `wake`. */
+  Work: 2,
+  /** Walking home with what it gathered (`carriedType`, `carriedCount`); it arrives at tick `wake`. */
+  Haul: 3
 } as const
 
 export type UnitStateId = (typeof UnitState)[keyof typeof UnitState]

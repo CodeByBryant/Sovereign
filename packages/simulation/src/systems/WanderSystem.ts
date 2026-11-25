@@ -56,13 +56,14 @@ export class WanderSystem {
   }
 
   /** Put a villager on a tile, resting, with its first wake-up a little way off (so a crowd does not set off together). */
-  spawnVillager(x: number, y: number, owner: number, home: number, tick = 0): number {
+  spawnVillager(x: number, y: number, owner: number, home: number, tick = 0, hall = 0): number {
     const id = this.o.entities.spawn({
       kind: EntityKind.Villager,
       x,
       y,
       owner,
       home,
+      hall,
       state: UnitState.Rest
     })
     this.o.entities.wake[id] = tick + this.rest(id, tick)
@@ -73,7 +74,9 @@ export class WanderSystem {
   /** Find every villager's timer again from its row: after a restore, or to put the wheel back in order. */
   rebuild(): void {
     for (const bucket of this.wheel) bucket.length = 0
-    for (const id of this.o.entities.ids()) this.schedule(id)
+    for (const id of this.o.entities.ids()) {
+      if (this.o.entities.kind[id] === EntityKind.Villager) this.schedule(id)
+    }
   }
 
   /** Handle everyone who is due on this tick, lowest id first. */

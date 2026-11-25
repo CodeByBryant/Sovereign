@@ -40,6 +40,7 @@ import type {
 } from '@sovereign/contracts'
 import { EntityStore, type EntityColumns } from '../entities/EntityStore'
 import { NodeStore } from '../resources/NodeStore'
+import { Stockpiles } from '../world/Stockpiles'
 import { Nation } from '../nations/Nation'
 import { PROFILE_FIELDS, World } from '../world/World'
 import { utf8Bytes, utf8Decode } from './utf8'
@@ -124,6 +125,7 @@ export function encodeWorld(world: World): Uint8Array {
       path: [...route.path]
     })),
     entities: world.entities.toColumns(),
+    stockpiles: world.stockpiles.toJson(),
     nations: world.nations.map((n) => ({
       id: n.id,
       name: n.name,
@@ -425,6 +427,14 @@ function decode(bytes: Uint8Array): World {
   if (!Array.isArray(header.routes)) throw new SaveFormatError('the header routes is not a list')
   const nations = header.nations.map((n, i) => nationFromJson(n, i))
   const entities = entitiesFromJson(header.entities)
+  let stockpiles: Stockpiles
+  try {
+    stockpiles = Stockpiles.fromJson(header.stockpiles)
+  } catch (error) {
+    throw new SaveFormatError(
+      `the header stockpiles are malformed: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
   const strategicPoints = header.strategicPoints.map(strategicPointFromJson)
   const hubs = header.hubs.map(hubFromJson)
   const routes = header.routes.map(routeFromJson)
@@ -473,5 +483,15 @@ function decode(bytes: Uint8Array): World {
     hubs,
     routes
   }
-  return World.restore({ seed, config, tick, terrain, nations, ownership, entities, nodes })
+  return World.restore({
+    seed,
+    config,
+    tick,
+    terrain,
+    nations,
+    ownership,
+    entities,
+    nodes,
+    stockpiles
+  })
 }

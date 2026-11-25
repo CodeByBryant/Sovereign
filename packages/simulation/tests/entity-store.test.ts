@@ -1,6 +1,6 @@
 import { EntityKind } from '@sovereign/contracts'
 import { describe, expect, it } from 'vitest'
-import { EntityStore } from '../src/entities/EntityStore'
+import { COLUMN_NAMES, EntityStore } from '../src/entities/EntityStore'
 
 const spawn = (store: EntityStore, x = 0, y = 0): number =>
   store.spawn({ kind: EntityKind.Villager, x, y })
@@ -71,6 +71,48 @@ describe('EntityStore: spawning', () => {
       store.legEnd[id],
       store.owner[id]
     ]).toEqual([8, 9, 10, 11, 6])
+  })
+
+  it('keeps the hall, the goal and the carried stack it was given, and defaults them to none', () => {
+    const store = new EntityStore()
+    const id = store.spawn({
+      kind: 1,
+      x: 3,
+      y: 4,
+      hall: 7,
+      goal: 99,
+      carriedType: 5,
+      carriedCount: 12
+    })
+    expect([store.hall[id], store.goal[id], store.carriedType[id], store.carriedCount[id]]).toEqual(
+      [7, 99, 5, 12]
+    )
+    const plain = store.spawn({ kind: 1, x: 0, y: 0 })
+    expect([
+      store.hall[plain],
+      store.goal[plain],
+      store.carriedType[plain],
+      store.carriedCount[plain]
+    ]).toEqual([0, 0, 0, 0])
+  })
+
+  it('zeroes the hall, goal and carried stack of a row it removes', () => {
+    const store = new EntityStore()
+    const id = store.spawn({
+      kind: 1,
+      x: 3,
+      y: 4,
+      hall: 7,
+      goal: 99,
+      carriedType: 5,
+      carriedCount: 12
+    })
+    store.despawn(id)
+    expect([store.hall[id], store.goal[id], store.carriedType[id], store.carriedCount[id]]).toEqual(
+      [0, 0, 0, 0]
+    )
+    expect(store.spawn({ kind: 1, x: 1, y: 1 })).toBe(id)
+    expect(store.hall[id]).toBe(0)
   })
 
   it('grows past its first capacity without losing a row', () => {
@@ -172,7 +214,11 @@ describe('EntityStore: columns, for saving and restoring', () => {
         target: 20 + i,
         wake: 30 + i,
         legStart: 40 + i,
-        legEnd: 50 + i
+        legEnd: 50 + i,
+        hall: 60 + i,
+        goal: 70 + i,
+        carriedType: 1 + i,
+        carriedCount: 10 * i
       })
     }
     store.despawn(1)
@@ -188,6 +234,10 @@ describe('EntityStore: columns, for saving and restoring', () => {
     expect(c.x).toEqual([0, 0, 2, 3, 0, 5])
     expect(c.owner).toEqual([0, 255, 2, 0, 255, 2])
     expect(c.legEnd).toEqual([50, 0, 52, 53, 0, 55])
+    expect(c.hall).toEqual([60, 0, 62, 63, 0, 65])
+    expect(c.goal).toEqual([70, 0, 72, 73, 0, 75])
+    expect(c.carriedType).toEqual([1, 0, 3, 4, 0, 6])
+    expect(c.carriedCount).toEqual([0, 0, 20, 30, 0, 50])
   })
 
   it('rebuilds the same store from them: the same rows, the same count, the same ids handed out next', () => {
@@ -237,11 +287,17 @@ describe('EntityStore: columns, for saving and restoring', () => {
     bad({ wake: [30, 0, 32, 33, 0, 2 ** 31] })
     bad({ legStart: [40, 0, 42, 43, 0, -(2 ** 31) - 1] })
     bad({ legEnd: [50, 0, 52, 53, 0, Infinity] })
+    bad({ hall: [60, 0, 62, 63, 0, -1] })
+    bad({ goal: [70, 0, 72, 73, 0, 2 ** 31] })
+    bad({ carriedType: [1, 0, 3, 4, 0, 256] })
+    bad({ carriedCount: [0, 0, 20, 30, 0, -1] })
     const edge = {
       ...c,
       x: [0, 0, 2, 3, 0, 65535],
       wake: [30, 0, 32, 33, 0, 2 ** 31 - 1],
-      legStart: [40, 0, 42, 43, 0, -(2 ** 31)]
+      legStart: [40, 0, 42, 43, 0, -(2 ** 31)],
+      carriedCount: [0, 0, 20, 30, 0, 255],
+      goal: [70, 0, 72, 73, 0, 2 ** 31 - 1]
     }
     expect(() => EntityStore.fromColumns(edge)).not.toThrow()
   })
@@ -266,6 +322,18 @@ describe('EntityStore: columns, for saving and restoring', () => {
     const c = filled().toColumns()
     expect(() => EntityStore.fromColumns({ ...c, x: [0, 9, 2, 3, 0, 5] })).toThrow(RangeError)
   })
+
+  it.each(COLUMN_NAMES.filter((name) => name !== 'kind'))(
+    'refuses an empty row whose %s is not back to its empty value',
+    (name) => {
+      const c = filled().toColumns()
+      const column = [...c[name]]
+      column[1] = name === 'owner' ? 3 : 1 // row 1 is empty: its owner should be 255, the rest 0
+      expect(() => EntityStore.fromColumns({ ...c, [name]: column })).toThrow(
+        /empty but not zeroed/
+      )
+    }
+  )
 
   it('copies: changing the columns afterwards does not change the store', () => {
     const c = filled().toColumns()

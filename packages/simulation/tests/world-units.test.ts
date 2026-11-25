@@ -8,6 +8,10 @@ import { smallWorldOverrides } from './support/worldOptions'
 const make = (seed = 11, units: { perNation?: number } = {}, nations = 6): World =>
   World.create({ seed, config: { ...smallWorldOverrides({ nations }), units } })
 
+/** The living villagers of a world, by id (its halls are rows too). */
+const villagersOf = (w: World): number[] =>
+  [...w.entities.ids()].filter((id) => w.entities.kind[id] === EntityKind.Villager)
+
 const cellOf = (w: World, tile: number): number => {
   const cell = w.config.routes.cell
   const x = tile % w.terrain.width
@@ -20,8 +24,9 @@ describe('a world has villagers', () => {
 
   it('starts each nation with its share, resting at its capital', () => {
     expect(w.nations.length).toBeGreaterThan(2)
-    expect(w.entities.count).toBe(24 * w.nations.length)
-    for (const id of w.entities.ids()) {
+    expect(villagersOf(w).length).toBe(24 * w.nations.length)
+    expect(w.entities.count).toBe(25 * w.nations.length) // and a hall each
+    for (const id of villagersOf(w)) {
       const owner = w.entities.owner[id]!
       const capital = w.nations[owner]!.capital
       expect(w.entities.kind[id]).toBe(EntityKind.Villager)
@@ -35,8 +40,8 @@ describe('a world has villagers', () => {
   })
 
   it('has none when asked for none, or when there are no nations', () => {
-    expect(make(11, { perNation: 0 }).entities.count).toBe(0)
-    expect(make(11, { perNation: 24 }, 0).entities.count).toBe(0)
+    expect(villagersOf(make(11, { perNation: 0 })).length).toBe(0)
+    expect(make(11, { perNation: 24 }, 0).entities.count).toBe(0) // no nations, no halls either
   })
 
   it('is a sound world as made', () => {
@@ -80,8 +85,8 @@ describe('unitPositions: for a host to draw', () => {
     w.run(60)
     const snap = w.unitPositions()
     expect(snap.tick).toBe(60)
-    expect(snap.count).toBe(w.entities.count)
-    expect(Array.from(snap.id)).toEqual([...w.entities.ids()])
+    expect(snap.count).toBe(villagersOf(w).length)
+    expect(Array.from(snap.id)).toEqual(villagersOf(w))
     snap.id.forEach((id, i) => {
       expect(snap.kind[i]).toBe(EntityKind.Villager)
       expect(snap.owner[i]).toBe(w.entities.owner[id])
@@ -129,7 +134,7 @@ describe('villagers are part of the state: replay, hash and save', () => {
 
   it('has a hash that sees every column of a villager', () => {
     const w = make(7)
-    const id = [...w.entities.ids()][3]!
+    const id = villagersOf(w)[3]!
     const base = w.stateHash()
     for (const name of COLUMN_NAMES) {
       if (name === 'kind') continue
@@ -166,7 +171,7 @@ describe('validate: villagers that do not add up', () => {
   const fresh = (): { w: World; id: number } => {
     const w = make(11)
     w.run(40)
-    return { w, id: [...w.entities.ids()][0]! }
+    return { w, id: villagersOf(w)[0]! }
   }
   const walkerOf = (w: World): number => {
     for (let t = 0; t < 200; t += 1) {
