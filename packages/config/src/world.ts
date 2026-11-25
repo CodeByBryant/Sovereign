@@ -568,7 +568,8 @@ export const defaultWorldConfig: WorldConfig = {
     rules: {
       // ---- surface, land: renewable ----
       timber: {
-        share: 0.17,
+        share: 0.035,
+        spacing: 2,
         biomes: {
           boreal_forest: 1,
           taiga: 0.9,
@@ -586,7 +587,8 @@ export const defaultWorldConfig: WorldConfig = {
         regionSize: 150
       },
       grain: {
-        share: 0.13,
+        share: 0.02,
+        spacing: 2,
         biomes: {
           grassland: 1,
           steppe: 0.7,
@@ -602,7 +604,8 @@ export const defaultWorldConfig: WorldConfig = {
         regionSize: 120
       },
       pasture: {
-        share: 0.08,
+        share: 0.015,
+        spacing: 2,
         biomes: {
           steppe: 1,
           grassland: 0.9,
@@ -616,21 +619,24 @@ export const defaultWorldConfig: WorldConfig = {
         regionSize: 140
       },
       horses: {
-        share: 0.025,
+        share: 0.005,
+        spacing: 3,
         biomes: { steppe: 1, grassland: 0.8, cold_steppe: 0.7, savanna: 0.6 },
         temperature: [0.2, 0.85],
         regional: 0.7,
         regionSize: 200
       },
       fur: {
-        share: 0.06,
+        share: 0.01,
+        spacing: 3,
         biomes: { taiga: 1, boreal_forest: 1, tundra: 0.8, cold_steppe: 0.4, alpine: 0.3 },
         temperature: [0, 0.45],
         regional: 0.4,
         regionSize: 160
       },
       cotton: {
-        share: 0.018,
+        share: 0.008,
+        spacing: 3,
         biomes: {
           savanna: 0.8,
           chaparral: 0.8,
@@ -645,7 +651,8 @@ export const defaultWorldConfig: WorldConfig = {
         regionSize: 160
       },
       spices: {
-        share: 0.012,
+        share: 0.006,
+        spacing: 3,
         biomes: { tropical_forest: 1, rainforest: 1, savanna: 0.3, mangrove: 0.4 },
         temperature: [0.65, 1],
         humidity: [0.5, 1],
@@ -654,7 +661,8 @@ export const defaultWorldConfig: WorldConfig = {
         regionSize: 140
       },
       wine: {
-        share: 0.01,
+        share: 0.005,
+        spacing: 3,
         biomes: { chaparral: 1, woodland: 0.6, grassland: 0.4, temperate_forest: 0.4, steppe: 0.2 },
         temperature: [0.45, 0.75],
         humidity: [0.25, 0.6],
@@ -663,7 +671,8 @@ export const defaultWorldConfig: WorldConfig = {
         regionSize: 130
       },
       tea: {
-        share: 0.006,
+        share: 0.003,
+        spacing: 3,
         biomes: { highland: 1, tropical_forest: 0.6, temperate_forest: 0.5, woodland: 0.4 },
         temperature: [0.4, 0.8],
         humidity: [0.55, 1],
@@ -672,7 +681,8 @@ export const defaultWorldConfig: WorldConfig = {
         regionSize: 140
       },
       ivory: {
-        share: 0.004,
+        share: 0.002,
+        spacing: 3,
         biomes: { savanna: 1, tropical_forest: 0.5, grassland: 0.3 },
         temperature: [0.6, 1],
         regional: 0.9,
@@ -680,28 +690,32 @@ export const defaultWorldConfig: WorldConfig = {
       },
       // ---- ground: finite ----
       stone: {
-        share: 0.07,
+        share: 0.025,
+        spacing: 2,
         biomes: { mountain: 1, highland: 1, alpine: 1, badlands: 0.8 },
         prefer: { height: 1.5, slope: 1 },
         regional: 0.2,
         regionSize: 150
       },
       iron: {
-        share: 0.03,
+        share: 0.012,
+        spacing: 2,
         elevation: [0.45, 1],
         prefer: { ridge: 2, height: 1 },
         regional: 0.9,
         regionSize: 160
       },
       copper: {
-        share: 0.014,
+        share: 0.007,
+        spacing: 2,
         elevation: [0.45, 1],
         prefer: { ridge: 1.5, slope: 0.5 },
         regional: 0.95,
         regionSize: 150
       },
       coal: {
-        share: 0.03,
+        share: 0.012,
+        spacing: 2,
         elevation: [0.38, 0.7],
         prefer: { basin: 2.5 },
         regional: 0.9,
@@ -730,7 +744,8 @@ export const defaultWorldConfig: WorldConfig = {
         regionSize: 130
       },
       salt: {
-        share: 0.015,
+        share: 0.01,
+        spacing: 2,
         biomes: {
           desert: 1,
           temperate_desert: 1,
@@ -752,14 +767,16 @@ export const defaultWorldConfig: WorldConfig = {
       },
       // ---- surface, water: renewable ----
       fish: {
-        share: 0.05,
+        share: 0.03,
+        spacing: 2,
         coastDistance: [1, 60],
         prefer: { coast: { within: 60, weight: 1.5 } },
         regional: 0.5,
         regionSize: 200
       },
       pearls: {
-        share: 0.004,
+        share: 0.006,
+        spacing: 3,
         coastDistance: [1, 25],
         temperature: [0.6, 1],
         prefer: { coast: { within: 25, weight: 1 } },
@@ -767,7 +784,8 @@ export const defaultWorldConfig: WorldConfig = {
         regionSize: 150
       },
       whales: {
-        share: 0.015,
+        share: 0.005,
+        spacing: 3,
         coastDistance: [40, 255],
         temperature: [0, 0.5],
         regional: 0.8,
@@ -1168,6 +1186,12 @@ function validateResourcePlacement(settings: ResourcePlacementSettings, problems
     if (!(rule.regional >= 0 && rule.regional <= 1))
       problems.push(`${name}.regional must be from 0 to 1`)
     if (!(rule.regionSize > 0)) problems.push(`${name}.regionSize must be greater than 0`)
+    if (
+      rule.spacing !== undefined &&
+      (!Number.isInteger(rule.spacing) || rule.spacing < 1 || rule.spacing > 8)
+    ) {
+      problems.push(`${name}.spacing must be a whole number from 1 to 8`)
+    }
     checkRange(`${name}.elevation`, rule.elevation)
     checkRange(`${name}.temperature`, rule.temperature)
     checkRange(`${name}.humidity`, rule.humidity)

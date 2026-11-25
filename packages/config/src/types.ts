@@ -242,6 +242,13 @@ export interface ResourceRule {
   /** The size of those regions, in tiles. */
   regionSize: number
   /**
+   * The room between objects, in tiles (a whole number from 1 to 8; omit or 1 for none). Tiles are taken best
+   * first as before, but a tile is skipped if an object of this resource already placed is closer than this, so a patch is a scatter of objects with open ground between them instead of a
+   * solid block. The share still counts what is placed: it is reached with the best tiles that leave the room, or
+   * as many as fit.
+   */
+  spacing?: number
+  /**
    * Oil and salt: the share of the **water** tiles within the coast distance range (and, if given, the
    * elevation range: how deep it can lie) that also hold it, under the sea. The rule's own elevation,
    * temperature and humidity limits are for the land and do not apply here.
