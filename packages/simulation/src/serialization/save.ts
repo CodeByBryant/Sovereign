@@ -14,12 +14,12 @@
  *               points, route hubs, routes, nations with their province ids and expansion points,
  *               the units as columns (entities);
  *               the provinces themselves are derived from the terrain and rebuilt on load)
- * then          thirteen tile layers, each width*height long, in this order:
+ * then          seven tile layers, each width*height long, in this order:
  *               elevation, temperature, humidity (float32, little-endian),
- *               biome ids, river mask, river width,
- *               surface resource type, richness, stock,
- *               ground resource type, richness, stock,
- *               ownership (one byte each)
+ *               biome ids, river mask, river width, ownership (one byte each)
+ * then          the resource nodes to the end of the file: a count (uint32 LE), the kinds, stocks and
+ *               richnesses (one byte each per node), then the tiles (uint32 LE); the tile slot arrays
+ *               are rebuilt from them
  * ```
  *
  * A save is untrusted input. Every failure to read one is a `SaveFormatError`.
@@ -39,16 +39,17 @@ import type {
   TerrainFields
 } from '@sovereign/contracts'
 import { EntityStore, type EntityColumns } from '../entities/EntityStore'
+import { NodeStore } from '../resources/NodeStore'
 import { Nation } from '../nations/Nation'
 import { PROFILE_FIELDS, World } from '../world/World'
 import { utf8Bytes, utf8Decode } from './utf8'
 
-export const SAVE_FORMAT_VERSION = 6
+export const SAVE_FORMAT_VERSION = 7
 
 const MAGIC = [0x53, 0x4f, 0x56, 0x57] // "SOVW"
 const PREAMBLE = 12
 const FLOAT_LAYERS = 3
-const BYTE_LAYERS = 10
+const BYTE_LAYERS = 4
 
 const GOVERNMENTS = [
   'monarchy',
@@ -145,7 +146,10 @@ export function encodeWorld(world: World): Uint8Array {
   }
   const json = utf8Bytes(JSON.stringify(header))
 
-  const out = new Uint8Array(PREAMBLE + json.length + layerBytes(t.width, t.height))
+  const nodeBytes = world.nodes.toBytes()
+  const out = new Uint8Array(
+    PREAMBLE + json.length + layerBytes(t.width, t.height) + nodeBytes.length
+  )
   out.set(MAGIC, 0)
   const view = new DataView(out.buffer)
   view.setUint32(4, SAVE_FORMAT_VERSION, false)
@@ -157,21 +161,11 @@ export function encodeWorld(world: World): Uint8Array {
     out.set(new Uint8Array(layer.buffer, layer.byteOffset, layer.byteLength), at)
     at += layer.byteLength
   }
-  for (const layer of [
-    t.biomeIds,
-    t.riverMask,
-    t.riverWidth,
-    t.resources.surface.type,
-    t.resources.surface.richness,
-    t.resources.surface.stock,
-    t.resources.ground.type,
-    t.resources.ground.richness,
-    t.resources.ground.stock,
-    world.map.ownership
-  ]) {
+  for (const layer of [t.biomeIds, t.riverMask, t.riverWidth, world.map.ownership]) {
     out.set(layer, at)
     at += layer.length
   }
+  out.set(nodeBytes, at)
   return out
 }
 
@@ -417,9 +411,9 @@ function decode(bytes: Uint8Array): World {
 
   const layersAt = PREAMBLE + headerLength
   const expected = layerBytes(width, height)
-  if (bytes.length - layersAt !== expected) {
+  if (bytes.length - layersAt < expected + 4) {
     throw new SaveFormatError(
-      `the tile layers have the wrong size: expected ${expected} bytes, found ${bytes.length - layersAt}`
+      `the tile layers have the wrong size: expected at least ${expected + 4} bytes, found ${bytes.length - layersAt}`
     )
   }
 
@@ -453,11 +447,16 @@ function decode(bytes: Uint8Array): World {
   const biomeIds = byteLayer()
   const riverMask = byteLayer()
   const riverWidth = byteLayer()
-  const resources: ResourceSlots = {
-    surface: { type: byteLayer(), richness: byteLayer(), stock: byteLayer() },
-    ground: { type: byteLayer(), richness: byteLayer(), stock: byteLayer() }
-  }
   const ownership = byteLayer()
+  let nodes: NodeStore
+  try {
+    nodes = NodeStore.fromBytes(bytes.slice(at), tiles)
+  } catch (error) {
+    throw new SaveFormatError(
+      `the resource nodes are malformed: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+  const resources: ResourceSlots = nodes.slots
 
   const terrain: TerrainFields = {
     width,
@@ -474,5 +473,5 @@ function decode(bytes: Uint8Array): World {
     hubs,
     routes
   }
-  return World.restore({ seed, config, tick, terrain, nations, ownership, entities })
+  return World.restore({ seed, config, tick, terrain, nations, ownership, entities, nodes })
 }

@@ -45,6 +45,7 @@ import { generateTerrain } from '../terrain/pipeline'
 import { NO_PROVINCE, type ProvinceMap } from '../terrain/provinces'
 import { costGridOf } from './costGrid'
 import { buildProvinceLayer, type ProvinceLayer } from './provinceLayer'
+import { NodeStore } from '../resources/NodeStore'
 import { buildRegrowthTable, ResourceStocks, type ResourceLayerName } from './ResourceStocks'
 import { WorldMap } from './WorldMap'
 
@@ -113,6 +114,11 @@ export interface WorldState {
   ownership: Uint8Array
   /** The units, when restoring a world that has them (a new world is given its own). */
   entities?: EntityStore
+  /**
+   * The resource nodes, when restoring a world that has them: their slot arrays must be the terrain's
+   * `resources`. A new world makes its own from the terrain.
+   */
+  nodes?: NodeStore
 }
 
 export class World {
@@ -135,7 +141,9 @@ export class World {
   private readonly dirtyProvinces = new Set<number>()
   /** Nations growing into free provinces (derived state: its borders are rebuilt from the land held). */
   private readonly expansion: ExpansionSystem
-  /** Drawing resources down and letting the renewable ones grow back (it works on `terrain.resources`). */
+  /** Every resource deposit as a row; the tile slot arrays in `terrain.resources` are its write-through views. */
+  readonly nodes: NodeStore
+  /** Drawing resources down and letting the renewable ones grow back (it works through the node store). */
   private readonly stocks: ResourceStocks
   /** Everything that lives and acts: villagers for now (saved and hashed). */
   readonly entities: EntityStore
@@ -166,8 +174,12 @@ export class World {
       resources: state.terrain.resources,
       ownership: state.ownership
     })
+    if (state.nodes !== undefined && state.nodes.slots !== state.terrain.resources) {
+      throw new RangeError('the nodes and the terrain must share the resource slot arrays')
+    }
+    this.nodes = state.nodes ?? NodeStore.fromSlots(state.terrain.resources)
     this.stocks = new ResourceStocks(
-      state.terrain.resources,
+      this.nodes,
       buildRegrowthTable(state.config.resources.regrowth),
       (tile) => this.noteStockChange(tile)
     )
@@ -418,12 +430,13 @@ export class World {
     h.writeUint8Array(t.biomeIds)
     h.writeUint8Array(t.riverMask)
     h.writeUint8Array(t.riverWidth)
-    for (const layer of ['surface', 'ground'] as const) {
-      h.writeUint8Array(t.resources[layer].type)
-      h.writeUint8Array(t.resources[layer].richness)
-      h.writeUint8Array(t.resources[layer].stock)
-    }
     h.writeUint8Array(this.map.ownership)
+
+    // the resource deposits (hash schema 6), as rows rather than the six tile layers they mirror
+    h.writeUint8Array(this.nodes.kind)
+    h.writeUint8Array(this.nodes.stock)
+    h.writeUint8Array(this.nodes.richness)
+    h.writeUint32Array(this.nodes.tile)
 
     // the province cut is derived, but its fingerprint catches an engine that cuts it differently
     h.writeUint32(this.provinces.count)
@@ -587,6 +600,7 @@ export class World {
     checkRange('biome ids', t.biomeIds, BIOME_KEYS.length - 1)
     checkRange('river mask', t.riverMask, 1)
     this.validateResources(problems)
+    this.validateNodes(problems)
 
     for (const p of t.strategicPoints) {
       if (p.x < 0 || p.x >= t.width || p.y < 0 || p.y >= t.height) {
@@ -808,6 +822,38 @@ export class World {
           problems.push(`${layer} stock ${stock} at tile ${i} is above its richness ${richness}`)
           break
         }
+      }
+    }
+  }
+
+  /** The node store and the tile slot arrays that mirror it must say the same thing. */
+  private validateNodes(problems: string[]): void {
+    const size = this.terrain.width * this.terrain.height
+    const nodes = this.nodes
+    let filled = 0
+    for (const layer of ['surface', 'ground'] as const) {
+      const slot = this.terrain.resources[layer]
+      if (slot.type.length !== size) return // already reported
+      for (let i = 0; i < size; i += 1) if (slot.type[i] !== 0) filled += 1
+    }
+    if (filled !== nodes.count) {
+      problems.push(
+        `the slots hold ${filled} resources but the node store has ${nodes.count} nodes`
+      )
+      return
+    }
+    for (let id = 0; id < nodes.count; id += 1) {
+      const tile = nodes.tile[id] as number
+      const slot = this.terrain.resources[nodes.layerOf(id)]
+      if (
+        slot.type[tile] !== nodes.kind[id] ||
+        slot.stock[tile] !== nodes.stock[id] ||
+        slot.richness[tile] !== nodes.richness[id]
+      ) {
+        problems.push(
+          `node ${id} on tile ${tile} disagrees with the ${nodes.layerOf(id)} slot there`
+        )
+        return
       }
     }
   }
