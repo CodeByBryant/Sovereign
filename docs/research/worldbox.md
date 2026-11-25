@@ -49,4 +49,4 @@ Every gatherable is a small object worth a few units: tree 5 wood; stone deposit
 4. Borders are claimed in blocks (8 x 8) by what the village does, not bought with points.
 5. Trees, plants and animals live: seeds spread, plants are eaten, animals hunt and breed.
 6. The ground should be drawn from a few tile variants per biome (with a high and a low shade), chosen by a hash of the tile, so a meadow looks like one without an overlay.
-7. Yields should be a handful of units per object: timber 5, stone 3, metals 2, gems 1, berries 3, with a stock of one to a few yields.
+7. Yields should be a handful of units per object: timber 5, stone 3, metals 2, gems 1, berries 3, with a stock of one to a few yields. (Done: `maxRichness` and the gather table, see ADR 0009.)
