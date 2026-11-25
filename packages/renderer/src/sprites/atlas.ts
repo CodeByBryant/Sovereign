@@ -9,6 +9,9 @@ import { PixelCanvas } from './canvas'
 import { drawBanner, drawHall, drawHouse, drawRoad, drawVillager } from './buildings'
 import { drawResource } from './resources'
 
+/** How many tree pictures a forest is drawn from (see `resourceLook`). */
+export const TREE_VARIANTS = 3
+
 /** Every sprite is this many pixels square. */
 export const SPRITE_SIZE = 16
 
@@ -79,6 +82,27 @@ export function buildSpriteAtlas(): SpriteAtlas {
     }
   }
   for (let mask = 0; mask < 16; mask += 1) add(roadFrameName(mask), (c) => drawRoad(c, mask))
+  // the other two trees (variants 1 and 2) of a living state: see `resourceLook`
+  const timber = RESOURCE_CATALOG.find((d) => d.key === 'timber')
+  if (timber !== undefined) {
+    for (const s of [0, 1] as const) {
+      for (let v = 1; v < TREE_VARIANTS; v += 1) {
+        add(`resource.timber.${RESOURCE_SPRITE_STATES[s]}.v${v}`, (c) =>
+          drawResource(c, timber.id, timber.color, s, v)
+        )
+      }
+    }
+  }
+  // a flat ellipse, drawn dark and translucent under objects
+  add('shadow', (c) => {
+    for (let y = 0; y < SPRITE_SIZE; y += 1) {
+      for (let x = 0; x < SPRITE_SIZE; x += 1) {
+        const dx = (x - 7.5) / 7.5
+        const dy = (y - 7.5) / 3.2
+        if (dx * dx + dy * dy <= 1) c.set(x, y, [0, 0, 0])
+      }
+    }
+  })
 
   const rows = Math.ceil(sprites.length / COLUMNS)
   const width = COLUMNS * SPRITE_SIZE

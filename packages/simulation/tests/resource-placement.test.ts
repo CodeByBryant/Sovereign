@@ -931,3 +931,31 @@ describe('placeResources: small deposits (maxRichness)', () => {
     expect(() => placeResources(build({ timber: rule({ maxRichness: 255 }) }))).not.toThrow()
   })
 })
+
+describe('placeResources: rivers are water, not ground for objects', () => {
+  const onRiver = (input: ReturnType<typeof build>, slot: Uint8Array): number => {
+    let n = 0
+    for (let i = 0; i < slot.length; i += 1) if (slot[i] !== 0 && input.riverMask[i] !== 0) n += 1
+    return n
+  }
+
+  it('puts no surface object (a tree, a field, a herd) on a river tile', () => {
+    const input = build({
+      timber: rule({ share: 0.5 }),
+      grain: rule({ share: 0.5 }),
+      fur: rule({ share: 0.5 })
+    })
+    const slots = placeResources(input)
+    let river = 0
+    for (let i = 0; i < input.riverMask.length; i += 1) river += input.riverMask[i] as number
+    expect(river).toBeGreaterThan(20)
+    expect(onRiver(input, slots.surface.type)).toBe(0)
+    expect(tilesOf(slots.surface, ResourceType.Timber).length).toBeGreaterThan(100)
+  })
+
+  it('still lets a mineral lie under a river (placer gold, ore in a river bed)', () => {
+    const input = build({ gold: rule({ share: 0.9, prefer: { river: { within: 4, weight: 6 } } }) })
+    const slots = placeResources(input)
+    expect(onRiver(input, slots.ground.type)).toBeGreaterThan(0)
+  })
+})

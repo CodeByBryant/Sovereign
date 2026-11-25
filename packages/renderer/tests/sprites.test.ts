@@ -77,7 +77,7 @@ describe('the atlas', () => {
   })
   it('keeps every frame square, inside the sheet, and clear of every other frame', () => {
     const frames = Object.values(atlas.frames)
-    expect(frames.length).toBe(22 * 3 + 2 + 3 + 16)
+    expect(frames.length).toBe(22 * 3 + 2 + 3 + 16 + 4 + 1) // + 4 tree variants + the shadow
     const seen = new Set<string>()
     for (const f of frames) {
       expect(f.w).toBe(SPRITE_SIZE)
@@ -98,7 +98,7 @@ describe('the atlas', () => {
     expect(again.rgba).toEqual(atlas.rgba)
     let h = 0x811c9dc5
     for (const b of atlas.rgba) h = Math.imul(h ^ b, 0x01000193) >>> 0
-    expect(h.toString(16)).toBe('910827fd')
+    expect(h.toString(16)).toBe('bf33aa2f')
   })
 })
 

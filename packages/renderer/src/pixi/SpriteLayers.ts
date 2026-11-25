@@ -18,6 +18,7 @@ import {
   UnitInterpolator,
   buildSpriteAtlas,
   resourceFrameName,
+  resourceLook,
   resourceSpriteState,
   roadFrameName
 } from '../sprites'
@@ -37,7 +38,10 @@ export interface SpriteWorld {
 const GREY = 0xc8c8c8
 
 /** Resource objects fill this much of a tile, so neighbours do not touch. */
-const RESOURCE_SCALE = 0.8
+/** Objects stand with their foot this far down their tile (0 top, 1 bottom). */
+const GROUND_LINE = 0.85
+/** How dark the shadows under objects are. */
+const SHADOW_ALPHA = 0.28
 /** Villagers are drawn this many times a tile's sprite size, so they read among the objects. */
 const UNIT_SCALE = 1.9
 
@@ -108,6 +112,7 @@ export class SpriteLayers {
   }
   readonly container = new Container()
   private readonly roadPool: SpritePool
+  private readonly shadowPool: SpritePool
   private readonly resourcePool: SpritePool
   private readonly buildingPool: SpritePool
   private readonly unitPool: SpritePool
@@ -138,6 +143,7 @@ export class SpriteLayers {
     this.container.visible = false
     const layer = (): Container => this.container.addChild(new Container())
     this.roadPool = new SpritePool(layer())
+    this.shadowPool = new SpritePool(layer())
     this.resourcePool = new SpritePool(layer())
     this.buildingPool = new SpritePool(layer())
     this.unitPool = new SpritePool(layer())
@@ -165,6 +171,16 @@ export class SpriteLayers {
     return t
   }
 
+  /** A flat dark ellipse `width` pixels wide with its centre at (cx, cy). */
+  private placeShadow(cx: number, cy: number, width: number): void {
+    const s = this.shadowPool.take(this.texture('shadow'))
+    const k = width / SPRITE_SIZE
+    s.scale.set(k)
+    s.alpha = SHADOW_ALPHA
+    s.tint = 0x000000
+    s.position.set(cx - width / 2, cy - 7.5 * k)
+  }
+
   /** Bring the sprites up to date for this frame. Call before rendering, inside the world container. */
   update(camera: Camera, viewportWidth: number, viewportHeight: number, nowMs: number): void {
     const world = this.world
@@ -184,10 +200,15 @@ export class SpriteLayers {
     })
 
     this.roadPool.begin()
+    this.shadowPool.begin()
     this.resourcePool.begin()
     let drawn = 0
-    for (let y = rect.y0; y < rect.y1; y += 1) {
-      for (let x = rect.x0; x < rect.x1; x += 1) {
+    // a tree is taller and wider than its tile, so the row below and the columns beside the view can reach into it
+    const yEnd = Math.min(world.height, rect.y1 + 1)
+    const xStart = Math.max(0, rect.x0 - 1)
+    const xEnd = Math.min(world.width, rect.x1 + 1)
+    for (let y = rect.y0; y < yEnd; y += 1) {
+      for (let x = xStart; x < xEnd; x += 1) {
         const tile = y * world.width + x
         const px = originX + x * ts
         const py = originY + y * ts
@@ -210,25 +231,36 @@ export class SpriteLayers {
             ground.stock[tile] as number,
             ground.richness[tile] as number
           )
-          const s = this.resourcePool.take(this.texture(resourceFrameName(g, state)))
+          const look = resourceLook(g, state, tile)
           // under a surface resource, a mineral is drawn smaller in the corner so both can be seen
-          const shrink = f !== 0 ? 0.5 : RESOURCE_SCALE
-          s.scale.set(this.scale * shrink)
-          const inset = f !== 0 ? ts * 0.45 : (ts * (1 - RESOURCE_SCALE)) / 2
-          s.position.set(px + inset, py + inset)
+          const size = f !== 0 ? 0.5 : look.size
+          const left = f !== 0 ? px + ts * 0.45 : px + ts / 2 - (size * ts) / 2
+          const top = f !== 0 ? py + ts * 0.45 : py + ts * GROUND_LINE - look.anchorY * size * ts
+          if (f === 0 && look.shadow > 0)
+            this.placeShadow(px + ts / 2, py + ts * GROUND_LINE, look.shadow * ts)
+          const s = this.resourcePool.take(this.texture(look.frame))
+          s.scale.set(this.scale * size)
+          s.position.set(left, top)
         }
         if (f !== 0) {
           const state = resourceSpriteState(
             surface.stock[tile] as number,
             surface.richness[tile] as number
           )
-          const s = this.resourcePool.take(this.texture(resourceFrameName(f, state)))
-          s.scale.set(this.scale * RESOURCE_SCALE)
-          s.position.set(px + (ts * (1 - RESOURCE_SCALE)) / 2, py + (ts * (1 - RESOURCE_SCALE)) / 2)
+          const look = resourceLook(f, state, tile)
+          if (look.shadow > 0)
+            this.placeShadow(px + ts / 2, py + ts * GROUND_LINE, look.shadow * ts)
+          const s = this.resourcePool.take(this.texture(look.frame))
+          s.scale.set(this.scale * look.size)
+          s.position.set(
+            px + ts / 2 - (look.size * ts) / 2,
+            py + ts * GROUND_LINE - look.anchorY * look.size * ts
+          )
         }
       }
     }
     this.roadPool.end()
+    this.shadowPool.end()
     this.resourcePool.end()
 
     this.buildingPool.begin()

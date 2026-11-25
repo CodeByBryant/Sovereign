@@ -16,7 +16,7 @@ const WATER: Rgb = [150, 198, 238]
 const WHITE: Rgb = [244, 244, 236]
 const ROCK: Rgb = [128, 124, 118]
 
-type Draw = (c: PixelCanvas, color: Rgb, state: ResourceSpriteState) => void
+type Draw = (c: PixelCanvas, color: Rgb, state: ResourceSpriteState, variant: number) => void
 
 const pick = <T>(state: ResourceSpriteState, full: T, low: T, empty: T): T =>
   state === 0 ? full : state === 1 ? low : empty
@@ -28,7 +28,8 @@ function ripples(c: PixelCanvas, fewer = false): void {
   if (!fewer) c.line(9, 10, 13, 10, WATER)
 }
 
-const timber: Draw = (c, color, state) => {
+/** A tree. Variant 0 is round, 1 is a conifer, 2 a broad bush of a tree, so a forest is not one picture repeated. */
+const timber: Draw = (c, color, state, variant) => {
   if (state === 2) {
     c.fillRect(6, 9, 4, 4, WOOD)
     c.fillRect(6, 9, 4, 1, tint(WOOD, 0.45)) // the cut top
@@ -38,7 +39,36 @@ const timber: Draw = (c, color, state) => {
   }
   const full = state === 0
   c.fillRect(7, full ? 9 : 10, 2, full ? 5 : 4, WOOD)
-  if (full) {
+  if (variant === 1) {
+    // a conifer: stacked, widening tiers
+    const dark = shade(color, 0.85)
+    const tiers: Array<[number, number, number]> = full
+      ? [
+          [7, 1, 2],
+          [6, 4, 4],
+          [5, 7, 6],
+          [4, 10, 8]
+        ]
+      : [
+          [7, 6, 2],
+          [6, 8, 4],
+          [5, 10, 6]
+        ]
+    tiers.forEach(([x, y, w], i) => {
+      c.fillRect(x, y, w, 3, i % 2 === 0 ? dark : color)
+      c.set(x, y, shade(color, 1.3))
+    })
+  } else if (variant === 2) {
+    // a broad bush of a tree: two crowns side by side
+    if (full) {
+      c.ellipse(5.5, 7, 4.5, 4, shade(color, 0.92))
+      c.ellipse(10.5, 6, 4.5, 4.5, color)
+      c.ellipse(8, 4, 3, 2.5, shade(color, 1.3))
+    } else {
+      c.ellipse(6, 9, 2.5, 2, shade(color, 0.92))
+      c.ellipse(10, 8, 3, 2.5, color)
+    }
+  } else if (full) {
     c.ellipse(8, 6, 5.5, 5, color)
     c.ellipse(6, 4.5, 2, 1.5, shade(color, 1.35))
   } else {
@@ -400,10 +430,11 @@ export function drawResource(
   c: PixelCanvas,
   type: number,
   color: Rgb,
-  state: ResourceSpriteState
+  state: ResourceSpriteState,
+  variant = 0
 ): void {
   const draw = DRAWERS[type]
   if (draw === undefined) throw new RangeError(`no art for resource ${type}`)
-  draw(c, color, state)
+  draw(c, color, state, variant)
   c.outline(OUTLINE)
 }

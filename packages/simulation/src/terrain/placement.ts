@@ -322,6 +322,7 @@ export function placeResources(input: PlacementInput): ResourceSlots {
     // ---- score every tile that passes the gates ----
     // The rule's limits and weights are read once, not per tile.
     const tiles = pass.water ? seaTiles : landTiles
+    const surfaceLand = !pass.water && def.layer === 'surface'
     const eLo = pass.elevation?.[0] ?? -Infinity
     const eHi = pass.elevation?.[1] ?? Infinity
     const tLo = pass.temperature?.[0] ?? -Infinity
@@ -346,6 +347,8 @@ export function placeResources(input: PlacementInput): ResourceSlots {
     for (let k = 0; k < tiles.length; k += 1) {
       const i = tiles[k]
       if (slot.type[i] !== 0) continue
+      // a river is drawn as water: nothing stands on it (a mineral can lie in its bed)
+      if (surfaceLand && riverMask[i] !== 0) continue
       const base = pass.water ? 1 : biomeWeight[biomeIds[i]]
       if (base <= 0) continue
       const e = elevation[i]
